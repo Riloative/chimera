@@ -89,7 +89,8 @@ export function ChatPage() {
       resetDraft();
       const p = send(convId, { content, attachments: attachments.map((a) => a.id), ...target(model) }, attachments);
       navigate(`/c/${convId}`, { replace: true });
-      await p.catch(() => undefined);
+      // Rejections propagate so the composer restores what was typed.
+      await p;
       return;
     }
     await send(convId, { content, attachments: attachments.map((a) => a.id), ...target(model) }, attachments);

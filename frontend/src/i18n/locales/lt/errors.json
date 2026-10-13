@@ -138,6 +138,7 @@
     "engine_bad_response": "Paieškos sistema ({{engine}}) grąžino netikėtą atsakymą.",
     "engine_config": "Paieškos sistemos adresas arba raktas netinkamas.",
     "searxng_json_disabled": "SearXNG atsisakė pateikti JSON. Jo settings.yml skiltyje search.formats pridėkite „json“.",
+    "searxng_engines_unreachable": "SearXNG atsakė, bet nepasiekė savo paieškos sistemų ({{engines}}). Patikrinkite, ar jis turi prieigą prie interneto.",
     "no_results": "Paieška negrąžino rezultatų.",
     "all_fetches_failed": "Nepavyko perskaityti nė vieno paieškos rezultato.",
     "no_query": "Šioje žinutėje nėra ko ieškoti.",

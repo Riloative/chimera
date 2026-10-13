@@ -344,6 +344,9 @@ def create_web_app(self_links: bool = False) -> FastAPI:
             return PlainTextResponse("boom", status_code=500)
         if "noresults" in q:
             return {"query": q, "results": []}
+        if "offline" in q:  # what a real SearXNG returns without internet access
+            return {"query": q, "results": [], "unresponsive_engines": [["brave", "Suspended: HTTP connection error"],
+                                                                        ["duckduckgo", "Suspended: HTTP connection error"]]}
         if "allfail" in q:
             return {"query": q, "results": [{"title": "Broken", "url": link(request, "news.example.org", "/status/500"), "content": ""}]}
         if "[slowsearch]" in q:

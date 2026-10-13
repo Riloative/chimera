@@ -1,7 +1,8 @@
 # Chimera with Docker Compose.
 #
-#   docker compose up -d                 # Chimera only (llama-server runs on your host)
-#   docker compose --profile llama up -d # also run llama-server in a container
+#   docker compose up -d                   # Chimera only (llama-server runs on your host)
+#   docker compose --profile llama up -d   # also run llama-server in a container
+#   docker compose --profile searxng up -d # also run SearXNG for web search (see docs/WEB.md)
 #
 # Open http://localhost:8700
 services:
@@ -48,6 +49,32 @@ services:
     # Not published to the host: only Chimera talks to it on the compose network.
     expose:
       - "8080"
+
+  # Optional: self-hosted metasearch for web search. Not published to the host;
+  # only Chimera reaches it on the compose network. Set SEARXNG_SECRET in .env
+  # (openssl rand -hex 32), then in Chimera: Settings → Web → Engine "SearXNG",
+  # address http://searxng:8080 (or set CHIMERA_WEB_SEARXNG_URL=http://searxng:8080).
+  searxng:
+    profiles: ["searxng"]
+    image: docker.io/searxng/searxng:latest
+    container_name: chimera-searxng
+    restart: unless-stopped
+    environment:
+      # Unset → SearXNG's own "unset" marker, which it refuses to start with (fails closed).
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-ultrasecretkey}
+      SEARXNG_BASE_URL: http://searxng:8080/
+      # Listen on IPv4: the image's default (::) fails on hosts without IPv6.
+      GRANIAN_HOST: 0.0.0.0
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    expose:
+      - "8080"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
 
 volumes:
   chimera-data:

@@ -19,9 +19,15 @@ database, no microservices.
    │       │                          as background tasks, persists partial output,
    │       │                          fans events out to subscribers, cancel/reattach
    │       ├── services/knowledge.py  chunking, FTS5 + embeddings, hybrid retrieval
+   │       ├── web/pipeline.py        per-turn link reading, query writing, search,
+   │       │                          context budgeting, step events (docs/WEB.md)
    │       ├── services/files.py      attachment storage
    │       └── services/settings.py   validated preferences
    │
+   ├── api/web_routes.py ─────────── web status, stored sources (+ re-read), admin web settings
+   ├── web/ ──────────────────────── fetcher.py (SSRF-hardened HTTP, the only outbound web path),
+   │                                  netguard.py, extract.py (trafilatura), search.py (SearXNG,
+   │                                  Brave, Tavily), rank.py (BM25), prompting.py, service.py
    ├── services/providers.py ─────── ProviderRegistry: connections, status, discovery
    │       └── providers/            normalized Provider interface
    │             ├── openai_compat.py  llama-server (LlamaCppProvider) + generic
@@ -115,6 +121,7 @@ see [I18N.md](I18N.md).
 | `start` | `generation_id`, `assistant_message`, `user_message` (send/edit) |
 | `snapshot` | (reattach only) current partial `message` |
 | `sources` | retrieved knowledge excerpts |
+| `web` | `message_id`, full current `web` state (steps, queries, citation map) and source metadata; sent on every change and replayed on reattach |
 | `delta` | `{content}` and/or `{reasoning}` |
 | `done` / `error` | final persisted `message`, `error` text |
 | `title` | generated conversation title |
@@ -133,7 +140,9 @@ providers(id, name, kind, base_url, api_path, api_key, auth_header, timeout, ena
 conversations(id, title, title_source, provider_id, model, system_prompt, params,
               collection_ids, pinned, created_at, updated_at)
 messages(id, conversation_id → conversations, position, role, content, reasoning, status,
-         error, provider_id, model, attachments, sources, metrics, created_at, updated_at)
+         error, provider_id, model, attachments, sources, metrics, web, created_at, updated_at)
+web_sources(id, user_id, conversation_id, message_id → messages, origin pasted|search, url,
+            final_url, title, published, status ok|snippet|error, error_code, content, rank, ...)
 files(id, filename, mime, size, kind, text, truncated, storage_name, created_at)
 prompts(id, title, description, category, content, ...)
 settings(key, value)                     -- JSON values validated by AppSettings

@@ -138,6 +138,7 @@
     "engine_bad_response": "The search engine ({{engine}}) returned an unexpected response.",
     "engine_config": "The search engine address or key is not valid.",
     "searxng_json_disabled": "SearXNG refused JSON output. Add \"json\" to search.formats in its settings.yml.",
+    "searxng_engines_unreachable": "SearXNG answered, but could not reach its search engines ({{engines}}). Check that it has internet access.",
     "no_results": "The search returned no results.",
     "all_fetches_failed": "None of the search results could be read.",
     "no_query": "There is nothing to search for in this message.",

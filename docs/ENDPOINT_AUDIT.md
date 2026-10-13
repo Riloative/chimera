@@ -1,8 +1,10 @@
 # API endpoint audit (accounts & data isolation)
 
-Every route under `/api` was reviewed when accounts were introduced. The table
-lists all 65 registered routes (generated from the live route table) with how
-access is enforced.
+Every route under `/api` was reviewed when accounts were introduced, and again
+when web reading and search were added (version 0.3: six new routes, marked
+**new**). The table lists every registered route with how access is enforced;
+`tests/test_security.py` enumerates the live route table, so new routes are
+covered automatically.
 
 **How enforcement works**
 
@@ -44,7 +46,12 @@ their own data · **Admin** – administrators only (404 for others).
 | DELETE | `/api/admin/users/{uid}` | Admin | Cannot delete self; last-admin guard |
 | GET/PATCH | `/api/admin/settings` | Admin | Registration mode, connection URL policy |
 | GET | `/api/info` | User | Paths/DB size/user count only for admins |
-| GET/PATCH | `/api/settings` | User | `user_settings WHERE user_id = me` |
+| GET/PATCH | `/api/settings` | User | `user_settings WHERE user_id = me` (includes personal web preferences) |
+| GET | `/api/web/status` **new** | User | Instance-wide switch, whether search is available, limits; no secrets or addresses |
+| GET | `/api/web/sources/{sid}` **new** | User | `WHERE id = ? AND user_id = me` → 404; returns extracted text, never raw bytes |
+| POST | `/api/web/sources/{sid}/refetch` **new** | User | Owned source → 404; CSRF; 403 `web.disabled` when web access is off; 409 while that conversation is generating; counts against the hourly fetch quota; only re-reads the stored URL (no caller-supplied URL) |
+| GET/PATCH | `/api/admin/web` **new** | Admin | Web settings; engine keys write-only (`has_key` only), encrypted at rest |
+| POST | `/api/admin/web/test` **new** | Admin | Runs one real search against the given engine; a typed SearXNG URL is validated; a stored key is used if none is typed |
 | GET | `/api/providers` | User | Own connections + shared ones |
 | POST | `/api/providers` | User | Owner = me; `shared` admin-only; URL policy for non-admins |
 | PATCH/DELETE | `/api/providers/{id}` | User | Visible → else 404; own or (shared and admin) → else 403 read-only |
@@ -54,7 +61,7 @@ their own data · **Admin** – administrators only (404 for others).
 | GET/POST | `/api/conversations` | User | `WHERE user_id = me`; provider/collection references filtered to visible/owned |
 | GET | `/api/conversations/search` | User | `WHERE c.user_id = me` (titles and message content) |
 | GET/PATCH/DELETE | `/api/conversations/{cid}` | User | `owned()` → 404 |
-| POST | `/api/conversations/{cid}/messages` | User | Owned conversation; attachments must be own files; provider must be visible |
+| POST | `/api/conversations/{cid}/messages` | User | Owned conversation; attachments must be own files; provider must be visible; `urls` must appear in the message (others ignored); `web_search`/`urls` → 403 `web.disabled` when web access is off |
 | POST | `/api/conversations/{cid}/regenerate` | User | Owned conversation |
 | POST | `/api/conversations/{cid}/messages/{mid}/edit` | User | Owned conversation and message |
 | GET | `/api/conversations/{cid}/stream` | User | Owned conversation; generation's owner checked |
@@ -88,3 +95,8 @@ Internal paths that also had to be scoped (no route of their own):
   user doesn't own before querying, so no caller can widen the scope.
 - **Model list cache** – stored per connection; contains only what the server
   reported (model IDs, capabilities), never user content.
+- **Web pipeline** – runs inside the user's generation: pages are stored with
+  that user's ID on that conversation's messages; the read cache and `robots.txt`
+  cache are keyed by user; quotas are per user; the composed prompt only
+  includes sources of the conversation being answered. Account deletion and
+  *Delete all my data* remove `web_sources` rows and the user's cache entries.

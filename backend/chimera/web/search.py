@@ -129,6 +129,13 @@ class SearxngEngine(SearchEngine):
         if not isinstance(data, dict) or not isinstance(data.get("results"), list):
             raise WebError("web.engine_bad_response", "The search engine returned an unexpected response.", engine=self.label)
         out = []
+        if not data["results"]:
+            # SearXNG answers even when every upstream engine failed; say so
+            # instead of reporting "no results" (common with no internet access).
+            failed = [str(e[0]) for e in data.get("unresponsive_engines") or [] if isinstance(e, (list, tuple)) and e]
+            if failed:
+                raise WebError("web.searxng_engines_unreachable", "SearXNG could not reach its search engines.",
+                               engines=", ".join(failed[:6]))
         for item in data["results"]:
             if not isinstance(item, dict):
                 continue

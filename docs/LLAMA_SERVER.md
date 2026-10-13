@@ -41,6 +41,7 @@ Useful options:
 | `--mmproj mmproj.gguf` | Multimodal projector for vision models (enables image attachments). |
 | `--embeddings` | Enables `/v1/embeddings` for the knowledge base. |
 | `--host 0.0.0.0` | Listen on the LAN. Only do this with `--api-key` on a trusted network. |
+| `-c 16384` | Larger context for web search: reading one link needs ~8k tokens, search with 5 results ~16k. Chimera reads the size from `/props` and fits web text into it (see [WEB.md](WEB.md#context-budget-and-relevance)). With `-np N` the context is divided between slots, so raise `-c` accordingly. |
 
 ## 2. Add the connection in Chimera
 

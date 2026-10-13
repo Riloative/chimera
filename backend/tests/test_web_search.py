@@ -67,6 +67,9 @@ def test_searxng_errors(web_server):
     assert exc.value.code == "web.engine_error"
     assert run_engine(web_server, searx(web_server), query="noresults")[0] == []
     with pytest.raises(WebError) as exc:
+        run_engine(web_server, searx(web_server), query="offline")
+    assert exc.value.code == "web.searxng_engines_unreachable" and exc.value.params["engines"] == "brave, duckduckgo"
+    with pytest.raises(WebError) as exc:
         run_engine(web_server, EngineConfig(kind="searxng", base_url="http://127.0.0.1:1"))
     assert exc.value.code == "web.engine_unreachable"
     with pytest.raises(WebError) as exc:

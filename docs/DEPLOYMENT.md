@@ -52,6 +52,18 @@ published to the host). The default image is CPU-only; for NVIDIA GPUs use
 `ghcr.io/ggml-org/llama.cpp:server-cuda` with
 `deploy.resources.reservations.devices` (see the llama.cpp Docker docs).
 
+## Web search with SearXNG in Compose
+
+```bash
+echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
+docker compose --profile searxng up -d
+```
+
+Then Settings → Web: allow web access, engine **SearXNG**, address
+`http://searxng:8080`, **Test search**, **Save engine**. The SearXNG container
+is not published to the host and refuses to start without a secret. Details,
+API engines and the security model: [WEB.md](WEB.md).
+
 ## Native
 
 ```bash
@@ -151,6 +163,16 @@ upgrade:
   attachments, knowledge collections). A one-time notice in the UI lists what
   was adopted, and the server log records it. Accounts created later start empty.
 - Stored API keys are encrypted at rest on first start.
+
+### Upgrading to 0.3 (web reading and search)
+
+Migration 3 adds the `web_sources` table and a `messages.web` column (a backup
+is written first, as for every migration). Web access stays **off** until an
+administrator enables it; nothing else changes for users. The change is
+additive, so 0.2 can still open a 0.3 database if you need to roll back (it
+ignores the web data), but the backup copy is the clean way back. New Python
+dependencies (`trafilatura`, `lxml`, `charset-normalizer`) are installed by
+`./scripts/install.sh` or the Docker build.
 
 ### Rolling back a migration
 

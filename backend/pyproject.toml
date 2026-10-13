@@ -1,6 +1,6 @@
 [project]
 name = "chimera"
-version = "0.1.0"
+version = "0.2.0"
 description = "A minimalist, privacy-first, self-hosted AI chat workspace for local LLMs (llama.cpp / llama-server, Ollama, OpenAI-compatible servers)."
 requires-python = ">=3.11"
 dependencies = [

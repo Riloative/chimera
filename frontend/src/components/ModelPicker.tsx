@@ -1,7 +1,9 @@
 import * as Popover from "@radix-ui/react-popover";
 import { AlertCircle, Check, ChevronDown, Eye, RefreshCw, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { providerErrorText } from "@/lib/errors";
 import type { ModelRef } from "@/lib/types";
 import { cn, compactNumber, modelLabel } from "@/lib/utils";
 import { findProvider, useModels } from "@/stores/models";
@@ -20,6 +22,7 @@ export function ModelPicker({
   side?: "top" | "bottom";
   compact?: boolean;
 }) {
+  const { t } = useTranslation("models");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const { entries, loading, refreshing, load } = useModels();
@@ -52,14 +55,14 @@ export function ModelPicker({
       <Popover.Trigger asChild>
         <button
           type="button"
-          aria-label={`Model: ${value ? modelLabel(value.model) : "none selected"}`}
+          aria-label={value ? t("picker.current", { model: modelLabel(value.model) }) : t("picker.none")}
           className={cn(
             "flex h-8 max-w-[15rem] min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-[0.8125rem] text-muted transition-colors hover:bg-hover hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
             compact && "max-w-[11rem]",
           )}
         >
-          {status === "error" && <AlertCircle className="size-3.5 shrink-0 text-danger" aria-label="Connection unreachable" />}
-          <span className="truncate">{value ? modelLabel(value.model) : "Select a model"}</span>
+          {status === "error" && <AlertCircle className="size-3.5 shrink-0 text-danger" aria-label={t("picker.unreachable")} />}
+          <span className="truncate" title={value?.model}>{value ? modelLabel(value.model) : t("picker.select")}</span>
           <ChevronDown className="size-3.5 shrink-0 opacity-70" />
         </button>
       </Popover.Trigger>
@@ -79,32 +82,32 @@ export function ModelPicker({
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search models"
-              aria-label="Search models"
+              placeholder={t("picker.search")}
+              aria-label={t("picker.search")}
               className="h-7 min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-faint focus:outline-none"
             />
             <button
               type="button"
               onClick={() => load(true)}
-              aria-label="Refresh models"
-              title="Refresh models"
+              aria-label={t("refreshModels")}
+              title={t("refreshModels")}
               className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-fg"
             >
               <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
             </button>
           </div>
 
-          <div className="max-h-[min(24rem,60vh)] overflow-y-auto p-1" role="listbox" aria-label="Models">
+          <div className="max-h-[min(24rem,60vh)] overflow-y-auto p-1" role="listbox" aria-label={t("title")}>
             {loading && !entries.length && (
               <div className="flex items-center gap-2 px-3 py-4 text-sm text-muted">
-                <Spinner /> Discovering models…
+                <Spinner /> {t("picker.discovering")}
               </div>
             )}
             {!loading && entries.length === 0 && (
               <div className="px-3 py-5 text-center text-sm text-muted">
-                No connections yet.
+                {t("picker.noConnections")}
                 <button type="button" className="mt-2 block w-full text-accent-text hover:underline" onClick={() => navigate("/models")}>
-                  Connect to llama-server
+                  {t("picker.connect")}
                 </button>
               </div>
             )}
@@ -118,14 +121,14 @@ export function ModelPicker({
                 </div>
                 {entry.error && (
                   <p className="mx-2.5 mb-1 rounded-md bg-danger-soft px-2 py-1.5 text-[0.75rem] leading-snug text-danger">
-                    {entry.error}
-                    {entry.stale && " Showing the last known models."}
+                    {providerErrorText(entry.error_code, entry.error_params, entry.error)}
+                    {entry.stale && ` ${t("picker.stale")}`}
                   </p>
                 )}
-                {!entry.provider.enabled && <p className="px-2.5 pb-1 text-[0.75rem] text-faint">Connection disabled.</p>}
+                {!entry.provider.enabled && <p className="px-2.5 pb-1 text-[0.75rem] text-faint">{t("picker.disabled")}</p>}
                 {entry.provider.enabled && !entry.error && entry.models.length === 0 && !q && (
                   <p className="px-2.5 pb-1 text-[0.75rem] text-faint">
-                    {entry.provider.status === "unknown" ? "Not tested yet." : "The server reported no models."}
+                    {entry.provider.status === "unknown" ? t("picker.notTested") : t("picker.noModels")}
                   </p>
                 )}
                 {entry.models.map((m) => {
@@ -151,14 +154,14 @@ export function ModelPicker({
                           {m.name || modelLabel(m.id)}
                         </span>
                         <span className="flex items-center gap-2 text-[0.72rem] text-faint">
-                          {ctx ? <span>{compactNumber(ctx)} ctx</span> : null}
+                          {ctx ? <span>{t("ctx", { value: compactNumber(ctx) })}</span> : null}
                           {m.vision && (
                             <span className="inline-flex items-center gap-0.5">
-                              <Eye className="size-3" /> vision
+                              <Eye className="size-3" /> {t("vision")}
                             </span>
                           )}
-                          {m.source === "manual" && <span>manual</span>}
-                          {m.loaded === false && <span>not loaded</span>}
+                          {m.source === "manual" && <span>{t("manual")}</span>}
+                          {m.loaded === false && <span>{t("notLoaded")}</span>}
                         </span>
                       </span>
                       {selected && <Check className="size-4 shrink-0 text-accent" />}
@@ -168,7 +171,7 @@ export function ModelPicker({
               </div>
             ))}
             {q && totalModels > 0 && filtered.every((e) => e.models.length === 0) && (
-              <p className="px-3 py-4 text-center text-sm text-muted">No models match “{query}”.</p>
+              <p className="px-3 py-4 text-center text-sm text-muted">{t("picker.noMatch", { query })}</p>
             )}
           </div>
 
@@ -181,7 +184,7 @@ export function ModelPicker({
               }}
               className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg"
             >
-              <Settings2 className="size-3.5" /> Manage connections
+              <Settings2 className="size-3.5" /> {t("picker.manage")}
             </button>
           </div>
         </Popover.Content>

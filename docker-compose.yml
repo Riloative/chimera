@@ -11,8 +11,9 @@ services:
     container_name: chimera
     restart: unless-stopped
     ports:
-      # Published on the host's loopback interface only. To use Chimera from
-      # other devices, set CHIMERA_PASSWORD in .env and change this to "8700:8700".
+      # Published on the host's loopback interface only. For LAN access change
+      # this to "8700:8700", add your host name to CHIMERA_ALLOWED_HOSTS and
+      # preferably put HTTPS in front (see docs/SECURITY.md).
       - "127.0.0.1:8700:8700"
     env_file:
       - path: .env
@@ -23,10 +24,8 @@ services:
       CHIMERA_PORT: "8700"
       CHIMERA_DATA_DIR: /data
       CHIMERA_STATIC_DIR: /app/static
-      # Requests reach the container from the Docker bridge, not loopback, so
-      # unauthenticated access must be allowed explicitly. The loopback-only
-      # port binding above is what keeps it private. Ignored once a password is set.
-      CHIMERA_ALLOW_UNAUTHENTICATED_REMOTE: ${CHIMERA_ALLOW_UNAUTHENTICATED_REMOTE:-true}
+      # Accounts: the first registration creates the administrator.
+      CHIMERA_REGISTRATION_MODE: ${CHIMERA_REGISTRATION_MODE:-first_user_only}
       # First-run connection: llama-server on the Docker host.
       CHIMERA_SEED_PROVIDER_URL: ${CHIMERA_SEED_PROVIDER_URL:-http://host.docker.internal:8080}
     extra_hosts:

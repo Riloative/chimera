@@ -14,8 +14,12 @@ export default defineConfig({
   retries: 0,
   timeout: 30_000,
   reporter: [["list"]],
+  globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: `http://127.0.0.1:${APP_PORT}`,
+    // Every test starts signed in as the administrator created in global setup.
+    storageState: "test-results/admin-state.json",
+    locale: "en-US",
     trace: "retain-on-failure",
     viewport: { width: 1280, height: 800 },
   },
@@ -38,6 +42,8 @@ export default defineConfig({
         CHIMERA_STATIC_DIR: "dist",
         CHIMERA_SEED_PROVIDER_URL: `http://127.0.0.1:${MOCK_PORT}`,
         CHIMERA_LOG_LEVEL: "warning",
+        // Open so the auth flow test can register more accounts.
+        CHIMERA_REGISTRATION_MODE: "open",
       },
     },
   ],

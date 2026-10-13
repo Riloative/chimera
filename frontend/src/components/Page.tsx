@@ -1,14 +1,16 @@
 import { Menu } from "lucide-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useUI } from "@/stores/ui";
 import { IconButton } from "./ui";
 
 export function PageShell({ children, wide }: { children: ReactNode; wide?: boolean }) {
+  const { t } = useTranslation("sidebar");
   const setMobile = useUI((s) => s.setMobileSidebar);
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-14 shrink-0 items-center px-3 md:hidden">
-        <IconButton label="Open sidebar" onClick={() => setMobile(true)}>
+        <IconButton label={t("open")} onClick={() => setMobile(true)}>
           <Menu className="size-[18px]" />
         </IconButton>
       </div>
@@ -42,6 +44,16 @@ export function Section({ title, description, children, actions }: { title: Reac
         {actions}
       </div>
       {children}
+    </section>
+  );
+}
+
+export function Group({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="mb-10 last:mb-0">
+      <h2 className="text-[0.9375rem] font-medium text-fg">{title}</h2>
+      {description && <p className="mt-0.5 text-[0.8125rem] leading-relaxed text-muted">{description}</p>}
+      <div className="mt-4 space-y-5">{children}</div>
     </section>
   );
 }

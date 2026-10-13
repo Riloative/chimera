@@ -5,12 +5,15 @@ and a JSON/SSE API, with SQLite for storage. No message broker, no second
 database, no microservices.
 
 ```
- Browser (React SPA)
-   │  same-origin fetch + SSE (X-Chimera-Request header, session cookie)
+ Browser (React SPA, i18next)
+   │  same-origin fetch + SSE (session cookie + X-CSRF-Token header)
    ▼
- FastAPI ── SecurityMiddleware (host allow-list, CSRF, auth, CSP)
-   │
-   ├── api/routes.py ─────────────── thin HTTP layer, Pydantic validation
+ FastAPI ── SecurityMiddleware (host allow-list, origin check, session → user,
+   │                            401 for every non-public /api path, CSRF, CSP)
+   ├── api/auth_routes.py ────────── register/login/logout, account, admin users
+   ├── api/routes.py ─────────────── chat, connections, files, prompts, knowledge, data
+   │      every route: user = Depends(current_user); every query scoped by user_id
+   ├── services/auth.py ──────────── users, Argon2id, sessions, throttling, adoption
    │
    ├── services/chat.py ──────────── ChatEngine: builds requests, runs generations
    │       │                          as background tasks, persists partial output,
@@ -78,6 +81,29 @@ message shown and whether a connection is marked unreachable.
 3. Add it to `KINDS` in `frontend/src/pages/ModelsPage.tsx`.
 4. Test it against a mock (see `tests/mock_llama_server.py` and the Ollama test
    using `httpx.MockTransport`).
+
+## Accounts and isolation
+
+- `users`, `sessions` (hashed tokens + hashed CSRF token), `auth_throttle`,
+  `user_settings`, `app_settings` (registration mode, connection URL policy).
+- Ownership: `user_id` on `conversations`, `prompts`, `files`, `collections`,
+  `providers` (plus `shared`). Messages, documents and chunks are owned through
+  their parent and always queried via a join or a parent ownership check.
+- The middleware authenticates before routing (secure by default); routes use
+  `current_user`/`require_admin` and owner-scoped store methods (`owned()`,
+  `visible()`), returning 404 for anything else. The generation engine carries
+  the user on each `Generation`, so retrieval, attachments, settings and title
+  generation are scoped too. See [ENDPOINT_AUDIT.md](ENDPOINT_AUDIT.md).
+- Migration 2 adds all of this to existing databases (after an automatic
+  backup); the first registered account adopts rows whose `user_id` is NULL.
+
+## Errors and localization
+
+API errors are `{"detail": {"code", "message", "params"}}` (`chimera/errors.py`).
+Provider failures carry `code` + `params` (`name`, `status`, server `detail`)
+and are stored on messages/connections (`error_code`, `error_params`) so the UI
+can render them in the user's language. The UI uses i18next with typed keys;
+see [I18N.md](I18N.md).
 
 ## Streaming protocol (backend → browser)
 

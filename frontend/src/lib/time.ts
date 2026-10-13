@@ -1,6 +1,7 @@
+import { currentLanguage } from "@/i18n";
 import type { Conversation } from "./types";
 
-export type GroupKey = "Pinned" | "Today" | "Yesterday" | "Previous 7 Days" | "Previous 30 Days" | "Older";
+export type GroupKey = "pinned" | "today" | "yesterday" | "week" | "month" | "older";
 
 function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -9,54 +10,55 @@ function startOfDay(d: Date) {
 export function groupConversations(items: Conversation[], now = new Date()): { key: GroupKey; items: Conversation[] }[] {
   const today = startOfDay(now);
   const day = 86_400_000;
-  const groups: Record<GroupKey, Conversation[]> = {
-    Pinned: [],
-    Today: [],
-    Yesterday: [],
-    "Previous 7 Days": [],
-    "Previous 30 Days": [],
-    Older: [],
-  };
+  const groups: Record<GroupKey, Conversation[]> = { pinned: [], today: [], yesterday: [], week: [], month: [], older: [] };
   for (const c of items) {
     if (c.pinned) {
-      groups.Pinned.push(c);
+      groups.pinned.push(c);
       continue;
     }
     const t = startOfDay(new Date(c.updated_at));
-    if (t >= today) groups.Today.push(c);
-    else if (t >= today - day) groups.Yesterday.push(c);
-    else if (t >= today - 7 * day) groups["Previous 7 Days"].push(c);
-    else if (t >= today - 30 * day) groups["Previous 30 Days"].push(c);
-    else groups.Older.push(c);
+    if (t >= today) groups.today.push(c);
+    else if (t >= today - day) groups.yesterday.push(c);
+    else if (t >= today - 7 * day) groups.week.push(c);
+    else if (t >= today - 30 * day) groups.month.push(c);
+    else groups.older.push(c);
   }
   return (Object.keys(groups) as GroupKey[])
     .map((key) => ({ key, items: groups[key].sort((a, b) => b.updated_at.localeCompare(a.updated_at)) }))
     .filter((g) => g.items.length > 0);
 }
 
-export function formatTime(iso: string): string {
+/** Message timestamp: time today, otherwise date + time, in the UI language. */
+export function formatTime(iso: string, locale: string = currentLanguage(), now = new Date()): string {
   const d = new Date(iso);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  if (sameDay) return time;
+  const time = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(d);
+  if (d.toDateString() === now.toDateString()) return time;
   const sameYear = d.getFullYear() === now.getFullYear();
-  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) })}, ${time}`;
+  const date = new Intl.DateTimeFormat(locale, { month: "long", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) }).format(d);
+  return `${date}, ${time}`;
 }
 
-export function relativeTime(iso: string | null): string {
-  if (!iso) return "never";
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 45) return "just now";
-  if (diff < 3600) return `${Math.round(diff / 60)} min ago`;
-  if (diff < 86400) return `${Math.round(diff / 3600)} h ago`;
-  return new Date(iso).toLocaleDateString();
+export function formatDateTime(iso: string, locale: string = currentLanguage()): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 }
 
-export function greeting(now = new Date()): string {
+/** "just now", "5 minutes ago", "yesterday"… via Intl.RelativeTimeFormat. */
+export function relativeTime(iso: string, locale: string = currentLanguage(), now = Date.now()): string {
+  const diff = (new Date(iso).getTime() - now) / 1000;
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const abs = Math.abs(diff);
+  if (abs < 45) return rtf.format(0, "second");
+  if (abs < 3600) return rtf.format(Math.round(diff / 60), "minute");
+  if (abs < 86400) return rtf.format(Math.round(diff / 3600), "hour");
+  if (abs < 86400 * 30) return rtf.format(Math.round(diff / 86400), "day");
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(iso));
+}
+
+export type GreetingKey = "night" | "morning" | "afternoon" | "evening";
+export function greetingKey(now = new Date()): GreetingKey {
   const h = now.getHours();
-  if (h < 5) return "Working late";
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
+  if (h < 5) return "night";
+  if (h < 12) return "morning";
+  if (h < 18) return "afternoon";
+  return "evening";
 }

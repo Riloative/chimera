@@ -1,5 +1,6 @@
 import { Library } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { Collection, GenerationParams, Prompt } from "@/lib/types";
@@ -31,6 +32,7 @@ export function ConversationSettings({
   supportedParams?: string[];
   initialTab?: Tab;
 }) {
+  const { t } = useTranslation(["chat", "common", "knowledge"]);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [useDefault, setUseDefault] = useState(true);
@@ -66,29 +68,29 @@ export function ConversationSettings({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Conversation settings"
-      description="These apply to this conversation only. Empty fields use your defaults from Settings."
+      title={t("settings.title")}
+      description={t("settings.description")}
       size="md"
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common:cancel")}
           </Button>
           <Button variant="primary" onClick={save} loading={saving}>
-            Save
+            {t("common:save")}
           </Button>
         </>
       }
     >
       <div className="mb-4">
         <SegmentedControl<Tab>
-          label="Section"
+          label={t("settings.section")}
           value={tab}
           onChange={setTab}
           options={[
-            { value: "prompt", label: "System prompt" },
-            { value: "params", label: "Parameters" },
-            { value: "knowledge", label: collectionIds.length ? `Knowledge (${collectionIds.length})` : "Knowledge" },
+            { value: "prompt", label: t("settings.systemPrompt") },
+            { value: "params", label: t("settings.parameters") },
+            { value: "knowledge", label: collectionIds.length ? t("settings.knowledgeCount", { count: collectionIds.length }) : t("settings.knowledge") },
           ]}
         />
       </div>
@@ -97,11 +99,11 @@ export function ConversationSettings({
         <div className="space-y-3 pb-2">
           <label className="flex items-center gap-2 text-sm text-fg">
             <input type="checkbox" checked={useDefault} onChange={(e) => setUseDefault(e.target.checked)} className="accent-[var(--accent)]" />
-            Use the default system prompt
+            {t("settings.useDefault")}
           </label>
           {useDefault ? (
             <p className="rounded-lg bg-subtle px-3 py-2.5 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-muted">
-              {settings?.default_system_prompt || "No default system prompt is set."}
+              {settings?.default_system_prompt || t("settings.noDefault")}
             </p>
           ) : (
             <>
@@ -109,13 +111,13 @@ export function ConversationSettings({
                 rows={8}
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="You are a helpful assistant…"
-                aria-label="System prompt"
+                placeholder={t("settings.promptPlaceholder")}
+                aria-label={t("settings.systemPrompt")}
                 autoFocus
               />
               {prompts.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[0.75rem] text-faint">From library:</span>
+                  <span className="text-[0.75rem] text-faint">{t("settings.fromLibrary")}</span>
                   {prompts.slice(0, 8).map((p) => (
                     <button
                       key={p.id}
@@ -138,16 +140,16 @@ export function ConversationSettings({
       {tab === "knowledge" && (
         <div className="pb-2">
           <p className="mb-3 text-[0.8125rem] leading-relaxed text-muted">
-            Relevant excerpts from the selected collections are retrieved locally for each message and given to the model, with sources shown under the answer.
+            {t("settings.knowledgeHelp")}
           </p>
           {collections === null ? (
             <Spinner />
           ) : collections.length === 0 ? (
             <div className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-sm text-muted">
               <Library className="mx-auto mb-2 size-5 text-faint" />
-              No collections yet.{" "}
+              {t("settings.noCollections")}{" "}
               <Link to="/knowledge" className="text-accent-text hover:underline" onClick={() => onOpenChange(false)}>
-                Create one
+                {t("settings.createCollection")}
               </Link>
             </div>
           ) : (
@@ -171,7 +173,7 @@ export function ConversationSettings({
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm text-fg">{c.name}</span>
                         <span className="block text-[0.75rem] text-faint">
-                          {c.document_count} document{c.document_count === 1 ? "" : "s"} · {c.chunk_count} chunks
+                          {t("knowledge:documents", { count: c.document_count })} · {t("knowledge:chunks", { count: c.chunk_count })}
                         </span>
                       </span>
                     </label>

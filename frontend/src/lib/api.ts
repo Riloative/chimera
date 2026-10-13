@@ -14,46 +14,64 @@ import type {
   SearchHit,
   TestResult,
   Attachment,
+  AuthStatus,
+  User,
+  SessionInfo,
+  AdminSettings,
 } from "./types";
 
+/** An API failure with a stable, translatable code (see lib/errors.ts). */
 export class ApiError extends Error {
   status: number;
-  code?: string;
-  constructor(message: string, status: number, code?: string) {
+  code: string;
+  params: Record<string, unknown>;
+  constructor(message: string, status: number, code = "unknown", params: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.params = params;
   }
 }
 
-type Listener = () => void;
-const unauthorizedListeners = new Set<Listener>();
-export function onUnauthorized(fn: Listener) {
-  unauthorizedListeners.add(fn);
+type AuthEvent = "unauthorized" | "password_change_required";
+type Listener = (event: AuthEvent) => void;
+const authListeners = new Set<Listener>();
+export function onAuthEvent(fn: Listener) {
+  authListeners.add(fn);
   return () => {
-    unauthorizedListeners.delete(fn);
+    authListeners.delete(fn);
   };
 }
 
-const BASE_HEADERS = { "X-Chimera-Request": "1" };
+/** The double-submit CSRF token: readable cookie echoed in a header. */
+export function csrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)chimera_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function baseHeaders(): Record<string, string> {
+  const token = csrfToken();
+  return token ? { "X-CSRF-Token": token } : {};
+}
 
 async function parseError(res: Response): Promise<ApiError> {
   let message = `Request failed (${res.status})`;
-  let code: string | undefined;
+  let code = `http_${res.status}`;
+  let params: Record<string, unknown> = {};
   try {
     const body = await res.json();
     const detail = body?.detail;
-    if (typeof detail === "string") message = detail;
-    else if (detail && typeof detail === "object" && "message" in detail) {
-      message = String(detail.message);
-      code = detail.code;
-    } else if (Array.isArray(detail) && detail[0]?.msg) message = detail[0].msg;
-    code = code ?? body?.code;
+    if (detail && typeof detail === "object" && "code" in detail) {
+      code = String(detail.code);
+      message = String(detail.message ?? message);
+      params = (detail.params as Record<string, unknown>) ?? {};
+    } else if (typeof detail === "string") message = detail;
   } catch {
     /* non-JSON error */
   }
-  if (res.status === 401) unauthorizedListeners.forEach((fn) => fn());
-  return new ApiError(message, res.status, code);
+  if (res.status === 401 && code === "auth_required") authListeners.forEach((fn) => fn("unauthorized"));
+  if (res.status === 403 && code === "password_change_required") authListeners.forEach((fn) => fn("password_change_required"));
+  return new ApiError(message, res.status, code, params);
 }
 
 export async function request<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
@@ -62,7 +80,7 @@ export async function request<T>(path: string, init: RequestInit & { json?: unkn
   try {
     res = await fetch(path, {
       ...rest,
-      headers: { ...BASE_HEADERS, ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
+      headers: { ...baseHeaders(), ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
       body: json !== undefined ? JSON.stringify(json) : rest.body,
       credentials: "same-origin",
     });
@@ -86,7 +104,7 @@ export async function stream(path: string, init: RequestInit & { json?: unknown 
     res = await fetch(path, {
       ...rest,
       signal,
-      headers: { ...BASE_HEADERS, Accept: "text/event-stream", ...(json !== undefined ? { "Content-Type": "application/json" } : {}) },
+      headers: { ...baseHeaders(), Accept: "text/event-stream", ...(json !== undefined ? { "Content-Type": "application/json" } : {}) },
       body: json !== undefined ? JSON.stringify(json) : undefined,
       credentials: "same-origin",
     });
@@ -115,14 +133,37 @@ export async function stream(path: string, init: RequestInit & { json?: unknown 
 }
 
 export const api = {
-  health: () => request<{ status: string; version: string }>("/api/health"),
+  health: () => request<{ status: string }>("/api/health"),
   info: () =>
-    request<{ version: string; auth_enabled: boolean; data_dir: string; database: string; db_size: number; remote_access: boolean; telemetry: boolean }>(
+    request<{ version: string; telemetry: boolean; registration_mode: string; data_dir?: string; database?: string; db_size?: number; users?: number }>(
       "/api/info",
     ),
-  authStatus: () => request<{ auth_required: boolean; authenticated: boolean }>("/api/auth/status"),
-  login: (password: string) => request<{ authenticated: boolean }>("/api/auth/login", { method: "POST", json: { password } }),
+
+  authStatus: () => request<AuthStatus>("/api/auth/status"),
+  register: (data: { email: string; username: string; password: string; password_confirm: string; language?: string; setup_token?: string; remember?: boolean }) =>
+    request<User>("/api/auth/register", { method: "POST", json: data }),
+  login: (data: { identifier: string; password: string; remember?: boolean }) => request<User>("/api/auth/login", { method: "POST", json: data }),
   logout: () => request("/api/auth/logout", { method: "POST" }),
+  me: () => request<User>("/api/auth/me"),
+  updateAccount: (data: { email?: string; username?: string; language?: string; current_password?: string }) =>
+    request<User>("/api/account", { method: "PATCH", json: data }),
+  changePassword: (data: { current_password: string; new_password: string; new_password_confirm: string }) =>
+    request<User>("/api/account/password", { method: "POST", json: data }),
+  sessions: () => request<SessionInfo[]>("/api/account/sessions"),
+  revokeSession: (id: string) => request<void>(`/api/account/sessions/${id}`, { method: "DELETE" }),
+  revokeOtherSessions: () => request<{ revoked: number }>("/api/account/sessions/revoke-others", { method: "POST" }),
+  deleteAccount: (password: string) => request<void>("/api/account", { method: "DELETE", json: { password } }),
+  dismissNotice: () => request<void>("/api/account/notice/dismiss", { method: "POST" }),
+
+  adminUsers: () => request<User[]>("/api/admin/users"),
+  adminCreateUser: (data: { email: string; username: string; password?: string; role: "admin" | "user" }) =>
+    request<User & { temporary_password: string | null }>("/api/admin/users", { method: "POST", json: data }),
+  adminUpdateUser: (id: string, data: { role?: "admin" | "user"; active?: boolean }) =>
+    request<User>(`/api/admin/users/${id}`, { method: "PATCH", json: data }),
+  adminResetPassword: (id: string) => request<{ temporary_password: string }>(`/api/admin/users/${id}/reset-password`, { method: "POST" }),
+  adminDeleteUser: (id: string) => request<void>(`/api/admin/users/${id}`, { method: "DELETE" }),
+  adminSettings: () => request<AdminSettings>("/api/admin/settings"),
+  adminUpdateSettings: (data: Partial<AdminSettings>) => request<AdminSettings>("/api/admin/settings", { method: "PATCH", json: data }),
 
   settings: () => request<AppSettings>("/api/settings"),
   updateSettings: (patch: Partial<AppSettings> | Record<string, unknown>) =>

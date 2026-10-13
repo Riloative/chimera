@@ -1,0 +1,27 @@
+{
+  "title": "Užklausos",
+  "description": "Pakartotinai naudojami nurodymai ir šablonai. Įterpkite juos į žinutę arba naudokite kaip pokalbio sistemos užklausą.",
+  "new": "Nauja užklausa",
+  "edit": "Redaguoti užklausą",
+  "filter": "Filtruoti užklausas",
+  "empty": {
+    "title": "Jūsų užklausų biblioteka tuščia",
+    "body": "Išsaugokite dažnai naudojamus nurodymus – kodo peržiūrėtoją, vertėją, rašymo stilių."
+  },
+  "uncategorized": "Be kategorijos",
+  "use": "Naudoti",
+  "options": "Užklausos „{{title}}“ parinktys",
+  "useAsSystem": "Naujas pokalbis su šia sistemos užklausa",
+  "useAsSystemToast": "Naujame pokalbyje bus naudojama sistemos užklausa „{{title}}“",
+  "copy": "Kopijuoti",
+  "copied": "Nukopijuota",
+  "deleteTitle": "Ištrinti užklausą „{{title}}“?",
+  "fields": {
+    "title": "Pavadinimas",
+    "category": "Kategorija",
+    "categoryPlaceholder": "pvz., Kodas",
+    "description": "Aprašymas",
+    "optional": "Neprivaloma",
+    "content": "Užklausa"
+  }
+}

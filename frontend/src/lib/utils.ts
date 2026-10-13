@@ -1,4 +1,5 @@
 import { clsx, type ClassValue } from "clsx";
+import { currentLanguage } from "@/i18n";
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
@@ -7,23 +8,36 @@ export function cn(...inputs: ClassValue[]) {
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 export const modKey = isMac ? "⌘" : "Ctrl";
 
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+export function formatBytes(bytes: number, locale: string = currentLanguage()): string {
+  const units = ["byte", "kilobyte", "megabyte", "gigabyte"] as const;
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return new Intl.NumberFormat(locale, {
+    style: "unit",
+    unit: units[i],
+    unitDisplay: "short",
+    maximumFractionDigits: i === 0 || value >= 10 ? 0 : 1,
+  }).format(value);
 }
 
-export function formatNumber(n: number): string {
-  return new Intl.NumberFormat().format(n);
+export function formatNumber(n: number, locale: string = currentLanguage()): string {
+  return new Intl.NumberFormat(locale).format(n);
 }
 
-export function compactNumber(n: number): string {
-  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+export function compactNumber(n: number, locale: string = currentLanguage()): string {
+  return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+export function formatList(items: string[], locale: string = currentLanguage()): string {
+  return new Intl.ListFormat(locale, { type: "conjunction" }).format(items);
 }
 
 export function modelLabel(model: string | null | undefined): string {
-  if (!model) return "No model";
+  if (!model) return "";
   const base = model.split(/[\\/]/).pop() || model;
   return base.replace(/\.(gguf|bin)$/i, "");
 }

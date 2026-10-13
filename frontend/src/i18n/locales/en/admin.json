@@ -1,0 +1,66 @@
+{
+  "saved": "Saved",
+  "registration": {
+    "title": "Registration",
+    "help": "Who may create an account on this installation.",
+    "mode": "Registration mode",
+    "first_user_only": "Closed after setup",
+    "closed": "Closed",
+    "open": "Open to anyone",
+    "first_user_onlyHelp": "Only the first account could register itself. New accounts are created by administrators.",
+    "closedHelp": "Only administrators can create accounts.",
+    "openHelp": "Anyone who can reach this server may register. Use only on a trusted network."
+  },
+  "users": {
+    "title": "Users",
+    "help": "Accounts on this installation. Each user sees only their own data.",
+    "create": "Add user",
+    "admin": "Administrator",
+    "disabled": "Disabled",
+    "mustChange": "Must change password",
+    "you": "(you)",
+    "lastLogin": "last signed in {{when}}",
+    "neverLoggedIn": "never signed in",
+    "options": "Options for {{username}}",
+    "makeAdmin": "Make administrator",
+    "makeUser": "Remove administrator role",
+    "disable": "Disable account",
+    "enable": "Enable account",
+    "resetPassword": "Reset password",
+    "delete": "Delete user",
+    "deleteTitle": "Delete {{username}}?",
+    "deleteBody": "The account and all of its data — conversations, prompts, knowledge, uploads and connections — will be permanently deleted."
+  },
+  "urlPolicy": {
+    "title": "Connection addresses",
+    "help": "Connections make this server send requests to the address a user enters. Limit what non-administrators may use. Administrators are never restricted.",
+    "label": "Allowed for users",
+    "private": "Local and private networks",
+    "custom": "Only listed hosts",
+    "any": "Any address",
+    "privateHelp": "Loopback, private (e.g. 192.168.x.x) and link-local addresses only.",
+    "customHelp": "Only the host names and networks listed below.",
+    "anyHelp": "No restriction. Users could make this server reach internal services.",
+    "allowlist": "Allowed hosts and networks",
+    "allowlistHelp": "One per line: a host name (gpu-box.lan) or a network (10.0.0.0/8)."
+  },
+  "create": {
+    "title": "Add user",
+    "help": "Leave the password empty to generate a temporary one that must be changed at first sign-in.",
+    "email": "Email",
+    "username": "Login name",
+    "password": "Password",
+    "passwordHint": "Optional.",
+    "role": "Role",
+    "roleUser": "User",
+    "roleAdmin": "Administrator",
+    "submit": "Add user"
+  },
+  "temporary": {
+    "title": "Temporary password",
+    "body": "Give this password to {{username}} through a safe channel. It is shown only once and must be changed at the next sign-in.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "done": "Done"
+  }
+}

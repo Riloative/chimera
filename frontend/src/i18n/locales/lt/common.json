@@ -1,0 +1,26 @@
+{
+  "loading": "Įkeliama",
+  "close": "Uždaryti",
+  "cancel": "Atšaukti",
+  "delete": "Ištrinti",
+  "save": "Išsaugoti",
+  "create": "Sukurti",
+  "edit": "Redaguoti",
+  "dismiss": "Paslėpti",
+  "retry": "Bandyti dar kartą",
+  "error": "Klaida",
+  "success": "Pavyko",
+  "dialog": "Dialogo langas",
+  "language": "Kalba",
+  "skipToContent": "Pereiti prie turinio",
+  "status": {
+    "connected": "Prisijungta",
+    "error": "Nepasiekiamas",
+    "unknown": "Netikrinta",
+    "disabled": "Išjungta"
+  },
+  "offline": {
+    "title": "Nepavyksta pasiekti „Chimera“ serverio.",
+    "body": "Įsitikinkite, kad jis veikia, ir bandykite dar kartą."
+  }
+}

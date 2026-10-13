@@ -77,16 +77,39 @@ The embedding connection/model couldn't be used (server not started with
 `--embeddings`, wrong model ID). Documents still work with keyword search. Fix
 the setting, then click *Re-index* on each document.
 
-## "Remote access is disabled. Set CHIMERA_PASSWORD…"
+## "Incorrect login or password" / "Too many attempts"
 
-You're reaching Chimera from another device (or through a proxy that connects
-from a non-loopback address) without a password. Set `CHIMERA_PASSWORD`. See
-[SECURITY.md](SECURITY.md).
+Sign-in errors are deliberately generic. After 5 failures in 15 minutes an
+account is locked briefly (60 s, doubling with repeated failures, at most 1 h).
+An administrator can reset the password, or on the server:
+`python -m chimera.cli reset-password <login>` (this also clears the lock).
+
+## "Registration is closed"
+
+The default mode closes self-registration after the first account. Ask an
+administrator to add you (Settings → Users), or as admin switch the mode, or run
+`python -m chimera.cli registration open`.
+
+## "Your security token expired"
+
+The CSRF token is tied to your session. Reload the page (e.g. after signing in
+in another tab or after the session expired).
+
+## Every request returns 401 behind a proxy / after enabling HTTPS
+
+If `CHIMERA_COOKIE_SECURE=true` but the site is served over plain HTTP, browsers
+drop the session cookie. Use `auto` (default), or serve over HTTPS and list the
+proxy in `CHIMERA_TRUSTED_PROXIES` so `X-Forwarded-Proto` is honoured.
+
+## "Your administrator does not allow connections to this address"
+
+Non-admin users may only add connections allowed by Settings → Users →
+Connection addresses (default: local and private networks).
 
 ## "Host not allowed. Add it to CHIMERA_ALLOWED_HOSTS."
 
-You're using a hostname other than `localhost`/`127.0.0.1` without a password.
-Add it to `CHIMERA_ALLOWED_HOSTS`, or set a password (which allows any host).
+You're using a hostname or IP other than `localhost`/`127.0.0.1`. Add it to
+`CHIMERA_ALLOWED_HOSTS` (comma-separated), or `*` to disable the check.
 
 ## Streaming arrives all at once behind a reverse proxy
 
@@ -103,4 +126,4 @@ built `dist` directory.
 - Docker: `docker compose logs -f chimera`
 - Native: stdout of `scripts/start.sh`; set `CHIMERA_LOG_LEVEL=debug` for more.
 
-Logs never contain message content or API keys.
+Logs never contain message content, passwords, session tokens or API keys.

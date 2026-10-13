@@ -1,6 +1,8 @@
 import { AlertTriangle, ArrowDown, Download, Menu, MoreHorizontal, Pencil, Pin, PinOff, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { errorText, providerErrorText } from "@/lib/errors";
 import { Composer } from "@/components/Composer";
 import { ConversationSettings, type ConversationSettingsValue } from "@/components/ConversationSettings";
 import { LogoMark } from "@/components/Logo";
@@ -8,7 +10,7 @@ import { AssistantMessage, UserMessage } from "@/components/MessageView";
 import { Button, ConfirmDialog, Dialog, IconButton, Input, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useActiveModel } from "@/lib/hooks";
-import { greeting } from "@/lib/time";
+import { greetingKey } from "@/lib/time";
 import type { Attachment, Conversation, Message, ModelRef } from "@/lib/types";
 import { cn, modelLabel } from "@/lib/utils";
 import { useChat } from "@/stores/chat";
@@ -17,14 +19,10 @@ import { findProvider, modelSupportsVision, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { toast, useUI } from "@/stores/ui";
 
-const EXAMPLES = [
-  { label: "Explain a concept", text: "Explain how transformers use attention, with a small worked example." },
-  { label: "Review code", text: "Review this function for bugs and readability:\n\n```python\n\n```" },
-  { label: "Write", text: "Draft a short, friendly email asking to reschedule a meeting to next week." },
-  { label: "Plan", text: "Help me plan a 3-day learning schedule to get comfortable with Rust." },
-];
+const EXAMPLES = ["explain", "review", "write", "plan"] as const;
 
 export function ChatPage() {
+  const { t } = useTranslation(["chat", "common", "sidebar"]);
   const { id } = useParams();
   const navigate = useNavigate();
   const conv = useConversations((s) => s.items.find((c) => c.id === id));
@@ -63,7 +61,7 @@ export function ChatPage() {
       try {
         await useConversations.getState().patch(id, { provider_id: ref.providerId, model: ref.model });
       } catch (err) {
-        toast((err as Error).message, "error");
+        toast(errorText(err), "error");
       }
     }
   };
@@ -81,7 +79,7 @@ export function ChatPage() {
           collection_ids: draft.collectionIds,
         })
         .catch((err) => {
-          toast((err as Error).message, "error");
+          toast(errorText(err), "error");
           throw err;
         });
       useConversations.getState().upsert(created);
@@ -103,9 +101,9 @@ export function ChatPage() {
     if (id && conv) {
       try {
         await useConversations.getState().patch(id, { system_prompt: v.systemPrompt, params: v.params, collection_ids: v.collectionIds });
-        toast("Conversation settings saved");
+        toast(t("settings.saved"));
       } catch (err) {
-        toast((err as Error).message, "error");
+        toast(errorText(err), "error");
         throw err;
       }
     } else setDraft(v);
@@ -151,19 +149,19 @@ export function ChatPage() {
           <div className="flex w-full max-w-[var(--chat-width)] flex-1 flex-col justify-center pb-[8vh]">
             <div className="animate-fade-in mb-8 flex items-center justify-center gap-3">
               <LogoMark className="size-8 text-accent" />
-              <h1 className="text-[1.75rem] font-medium tracking-[-0.02em] text-fg">{greeting()}</h1>
+              <h1 className="text-[1.75rem] font-medium tracking-[-0.02em] text-fg">{t(`greeting.${greetingKey()}`)}</h1>
             </div>
             {(noConnections || noModels) && <SetupCard noConnections={noConnections} />}
             {composer}
             <div className="mt-3 flex flex-wrap justify-center gap-2">
               {EXAMPLES.map((ex) => (
                 <button
-                  key={ex.label}
+                  key={ex}
                   type="button"
-                  onClick={() => useUI.getState().insertIntoComposer(ex.text)}
+                  onClick={() => useUI.getState().insertIntoComposer(t(`examples.${ex}.text`))}
                   className="h-8 rounded-lg border border-line px-3 text-[0.8125rem] text-muted transition-colors hover:border-line-strong hover:bg-hover hover:text-fg"
                 >
-                  {ex.label}
+                  {t(`examples.${ex}.label`)}
                 </button>
               ))}
             </div>
@@ -179,10 +177,10 @@ export function ChatPage() {
       <div className="flex h-full flex-col">
         <TopBar />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-          <p className="text-fg">This conversation could not be loaded.</p>
-          <p className="text-sm text-muted">{chat?.loadError ?? "It may have been deleted."}</p>
+          <p className="text-fg">{t("loadFailed")}</p>
+          <p className="text-sm text-muted">{chat?.loadError ?? t("maybeDeleted")}</p>
           <Button variant="outline" onClick={() => navigate("/")}>
-            Start a new chat
+            {t("startNew")}
           </Button>
         </div>
       </div>
@@ -201,17 +199,19 @@ export function ChatPage() {
         loading={!chat?.loaded}
         busy={busy}
         showReasoning={settings?.show_reasoning ?? true}
-        onRegenerate={(mid) => regenerate(id, mid, target(model)).catch((e) => toast(e.message, "error"))}
-        onEdit={(mid, content) => edit(id, mid, content, target(model)).catch((e) => toast(e.message, "error"))}
-        onDelete={(mid) => deleteMessage(id, mid).catch((e) => toast(e.message, "error"))}
+        onRegenerate={(mid) => regenerate(id, mid, target(model)).catch((e) => toast(errorText(e), "error"))}
+        onEdit={(mid, content) => edit(id, mid, content, target(model)).catch((e) => toast(errorText(e), "error"))}
+        onDelete={(mid) => deleteMessage(id, mid).catch((e) => toast(errorText(e), "error"))}
       >
         <div className="mx-auto w-full max-w-[var(--chat-width)] px-4 pb-3 md:px-6">
-          {provider && provider.status === "error" && <ProviderBanner providerId={provider.id} name={provider.name} error={provider.last_error} />}
+          {provider && provider.status === "error" && (
+            <ProviderBanner providerId={provider.id} name={provider.name} error={providerErrorText(provider.last_error_code, provider.last_error_params, provider.last_error)} />
+          )}
           {chat?.sendError && (
             <div role="alert" className="mb-3 flex items-start gap-2.5 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[0.8125rem]">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" />
               <span className="flex-1 text-fg">{chat.sendError}</span>
-              <button type="button" aria-label="Dismiss" onClick={() => clearSendError(id)} className="text-muted hover:text-fg">
+              <button type="button" aria-label={t("common:dismiss")} onClick={() => clearSendError(id)} className="text-muted hover:text-fg">
                 <X className="size-4" />
               </button>
             </div>
@@ -225,33 +225,36 @@ export function ChatPage() {
 }
 
 function SetupCard({ noConnections }: { noConnections: boolean }) {
+  const { t } = useTranslation(["chat", "common", "sidebar"]);
   return (
     <div className="mb-4 rounded-2xl border border-line bg-elevated px-5 py-4">
-      <p className="text-sm font-medium text-fg">{noConnections ? "Connect a local model to begin" : "No models available yet"}</p>
+      <p className="text-sm font-medium text-fg">{noConnections ? t("setup.connectTitle") : t("setup.noModelsTitle")}</p>
       <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">
         {noConnections ? (
           <>
-            Start <code className="rounded bg-subtle px-1 font-mono text-[0.78rem]">llama-server -m model.gguf --port 8080</code>, then add it as a connection.
+            {t("setup.connectBefore")} <code className="rounded bg-subtle px-1 font-mono text-[0.78rem]">llama-server -m model.gguf --port 8080</code>
+            {t("setup.connectAfter")}
           </>
         ) : (
-          "Your connections haven't reported any models. Check that the server is running, then test the connection."
+          t("setup.noModelsBody")
         )}
       </p>
       <Link to="/models" className="mt-3 inline-flex h-8 items-center rounded-lg bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:opacity-90">
-        {noConnections ? "Add a connection" : "Open connections"}
+        {noConnections ? t("setup.add") : t("setup.open")}
       </Link>
     </div>
   );
 }
 
 function ProviderBanner({ providerId, name, error }: { providerId: string; name: string; error: string | null }) {
+  const { t } = useTranslation(["chat", "common", "sidebar"]);
   const [testing, setTesting] = useState(false);
   const loadModels = useModels((s) => s.load);
   return (
     <div role="status" className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-line bg-elevated px-3.5 py-2.5 text-[0.8125rem]">
       <span className="flex items-center gap-2 text-fg">
         <span className="size-1.5 rounded-full bg-danger" aria-hidden />
-        <strong className="font-medium">{name}</strong> is unreachable
+        <span className="font-medium">{t("banner.unreachable", { name })}</span>
       </span>
       {error && <span className="min-w-0 flex-1 truncate text-muted" title={error}>{error}</span>}
       <span className="ml-auto flex gap-1">
@@ -263,19 +266,19 @@ function ProviderBanner({ providerId, name, error }: { providerId: string; name:
             setTesting(true);
             try {
               const r = await api.testProvider(providerId);
-              toast(r.ok ? `${name} is reachable again` : r.error ?? "Still unreachable", r.ok ? "success" : "error");
+              toast(r.ok ? t("banner.reachable", { name }) : providerErrorText(r.error_code, r.error_params, r.error) || t("banner.still"), r.ok ? "success" : "error");
               await loadModels();
             } catch (err) {
-              toast((err as Error).message, "error");
+              toast(errorText(err), "error");
             } finally {
               setTesting(false);
             }
           }}
         >
-          Retry connection
+          {t("banner.retry")}
         </Button>
         <Link to="/models" className="inline-flex h-8 items-center rounded-lg px-2.5 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg">
-          Settings
+          {t("banner.settings")}
         </Link>
       </span>
     </div>
@@ -293,6 +296,7 @@ function TopBar({
   onOpenSettings?: () => void;
   messages?: Message[];
 }) {
+  const { t } = useTranslation(["chat", "common", "sidebar"]);
   const setMobile = useUI((s) => s.setMobileSidebar);
   const navigate = useNavigate();
   const patch = useConversations((s) => s.patch);
@@ -306,7 +310,7 @@ function TopBar({
     if (!conversation || !messages) return;
     const lines = [`# ${conversation.title}`, ""];
     for (const m of messages) {
-      lines.push(m.role === "user" ? "## You" : `## ${modelLabel(m.model)}`, "", m.content, "");
+      lines.push(m.role === "user" ? `## ${t("export.you")}` : `## ${modelLabel(m.model)}`, "", m.content, "");
     }
     const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
@@ -319,7 +323,7 @@ function TopBar({
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 px-3 md:px-4">
-      <IconButton label="Open sidebar" className="md:hidden" onClick={() => setMobile(true)}>
+      <IconButton label={t("sidebar:open")} className="md:hidden" onClick={() => setMobile(true)}>
         <Menu className="size-[18px]" />
       </IconButton>
       {conversation && (
@@ -342,20 +346,20 @@ function TopBar({
                   setRenameOpen(true);
                 }}
               >
-                Rename
+                {t("sidebar:rename")}
               </MenuItem>
               <MenuItem icon={conversation.pinned ? <PinOff /> : <Pin />} onSelect={() => patch(conversation.id, { pinned: !conversation.pinned })}>
-                {conversation.pinned ? "Unpin" : "Pin"}
+                {conversation.pinned ? t("sidebar:unpin") : t("sidebar:pin")}
               </MenuItem>
               <MenuItem icon={<SlidersHorizontal />} onSelect={() => onOpenSettings?.()}>
-                Conversation settings
+                {t("settings.title")}
               </MenuItem>
               <MenuItem icon={<Download />} onSelect={exportMarkdown}>
-                Export as Markdown
+                {t("export.markdown")}
               </MenuItem>
               <MenuSeparator />
               <MenuItem icon={<Trash2 />} destructive onSelect={() => setConfirm(true)}>
-                Delete
+                {t("common:delete")}
               </MenuItem>
             </MenuContent>
           </MenuRoot>
@@ -365,22 +369,22 @@ function TopBar({
       <Dialog
         open={renameOpen}
         onOpenChange={setRenameOpen}
-        title="Rename conversation"
+        title={t("renameTitle")}
         size="sm"
         footer={
           <>
             <Button variant="ghost" onClick={() => setRenameOpen(false)}>
-              Cancel
+              {t("common:cancel")}
             </Button>
             <Button
               variant="primary"
               disabled={!title.trim()}
               onClick={async () => {
-                if (conversation) await patch(conversation.id, { title: title.trim() }).catch((e) => toast(e.message, "error"));
+                if (conversation) await patch(conversation.id, { title: title.trim() }).catch((e) => toast(errorText(e), "error"));
                 setRenameOpen(false);
               }}
             >
-              Save
+              {t("common:save")}
             </Button>
           </>
         }
@@ -389,19 +393,19 @@ function TopBar({
           className="pb-2"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (conversation && title.trim()) await patch(conversation.id, { title: title.trim() }).catch((err) => toast(err.message, "error"));
+            if (conversation && title.trim()) await patch(conversation.id, { title: title.trim() }).catch((err) => toast(errorText(err), "error"));
             setRenameOpen(false);
           }}
         >
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus aria-label="Title" />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus aria-label={t("sidebar:titleLabel")} />
         </form>
       </Dialog>
       {conversation && (
         <ConfirmDialog
           open={confirm}
           onOpenChange={setConfirm}
-          title="Delete conversation?"
-          description={`“${conversation.title}” and all of its messages will be permanently deleted.`}
+          title={t("sidebar:deleteTitle")}
+          description={t("sidebar:deleteBody", { title: conversation.title })}
           onConfirm={async () => {
             await remove(conversation.id);
             forget(conversation.id);
@@ -432,6 +436,7 @@ function MessageList({
   onDelete: (messageId: string) => void;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation(["chat", "common", "sidebar"]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [showJump, setShowJump] = useState(false);
@@ -484,7 +489,7 @@ function MessageList({
               <Spinner />
             </div>
           ) : (
-            <ol className="space-y-8" aria-label="Messages">
+            <ol className="space-y-8" aria-label={t("messages")}>
               {messages.map((m) => (
                 <li key={m.id} className={cn("animate-fade-in", m.role === "assistant" && "pr-1")}>
                   {m.role === "user" ? (
@@ -514,9 +519,9 @@ function MessageList({
               scrollToBottom(true);
             }}
             className="animate-fade-in absolute -top-11 left-1/2 z-10 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-elevated px-3 text-[0.8125rem] text-muted shadow-pop hover:text-fg"
-            aria-label="Jump to latest message"
+            aria-label={t("jumpLatest")}
           >
-            <ArrowDown className="size-3.5" /> Latest
+            <ArrowDown className="size-3.5" /> {t("latest")}
           </button>
         )}
         {children}

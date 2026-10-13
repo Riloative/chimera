@@ -68,7 +68,7 @@ test("upstream errors are shown, and editing a message resubmits it", async ({ p
   await page.getByRole("button", { name: "Edit" }).first().click();
   const editor = page.getByLabel("Edit message");
   await editor.fill("please succeed");
-  await page.getByRole("button", { name: "Save & submit" }).click();
+  await page.getByRole("button", { name: "Save and resubmit" }).click();
   await expect(page.getByText("You said: please succeed")).toBeVisible();
   await expect(page.getByText("the mock server exploded")).toHaveCount(0);
 });
@@ -102,7 +102,7 @@ test("conversation rename, pin and delete from the sidebar", async ({ page }) =>
   await expect(page.getByText("You said: manage me")).toBeVisible();
   const item = page.getByRole("link", { name: "Mock Conversation Title" }).first();
   await item.hover();
-  await page.getByRole("button", { name: "Options for Mock Conversation Title" }).first().click();
+  await page.getByRole("button", { name: "Options for “Mock Conversation Title”" }).first().click();
   await page.getByRole("menuitem", { name: "Rename" }).click();
   const input = page.getByRole("textbox", { name: "Conversation title" });
   await input.fill("Renamed chat");
@@ -110,12 +110,12 @@ test("conversation rename, pin and delete from the sidebar", async ({ page }) =>
   await expect(page.getByRole("link", { name: "Renamed chat" })).toBeVisible();
 
   await page.getByRole("link", { name: "Renamed chat" }).hover();
-  await page.getByRole("button", { name: "Options for Renamed chat" }).click();
+  await page.getByRole("button", { name: "Options for “Renamed chat”" }).click();
   await page.getByRole("menuitem", { name: "Pin" }).click();
   await expect(page.getByRole("heading", { name: "Pinned" })).toBeVisible();
 
   await page.getByRole("link", { name: "Renamed chat" }).hover();
-  await page.getByRole("button", { name: "Options for Renamed chat" }).click();
+  await page.getByRole("button", { name: "Options for “Renamed chat”" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByRole("link", { name: "Renamed chat" })).toHaveCount(0);

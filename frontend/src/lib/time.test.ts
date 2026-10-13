@@ -21,11 +21,11 @@ describe("groupConversations", () => {
       now,
     );
     expect(groups.map((g) => [g.key, g.items.map((i) => i.id)])).toEqual([
-      ["Pinned", ["pinned-old"]],
-      ["Today", ["today"]],
-      ["Yesterday", ["yesterday"]],
-      ["Previous 7 Days", ["week"]],
-      ["Older", ["old"]],
+      ["pinned", ["pinned-old"]],
+      ["today", ["today"]],
+      ["yesterday", ["yesterday"]],
+      ["week", ["week"]],
+      ["older", ["old"]],
     ]);
   });
 });

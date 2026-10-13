@@ -1,0 +1,155 @@
+{
+  "messages": "Messages",
+  "latest": "Latest",
+  "jumpLatest": "Jump to the latest message",
+  "loadFailed": "This conversation could not be loaded.",
+  "maybeDeleted": "It may have been deleted.",
+  "startNew": "Start a new chat",
+  "renameTitle": "Rename conversation",
+  "greeting": {
+    "night": "Working late",
+    "morning": "Good morning",
+    "afternoon": "Good afternoon",
+    "evening": "Good evening"
+  },
+  "examples": {
+    "explain": {
+      "label": "Explain a concept",
+      "text": "Explain how transformers use attention, with a small worked example."
+    },
+    "review": {
+      "label": "Review code",
+      "text": "Review this function for bugs and readability:\n\n```python\n\n```"
+    },
+    "write": {
+      "label": "Write",
+      "text": "Draft a short, friendly email asking to reschedule a meeting to next week."
+    },
+    "plan": {
+      "label": "Plan",
+      "text": "Help me plan a 3-day learning schedule to get comfortable with Rust."
+    }
+  },
+  "setup": {
+    "connectTitle": "Connect a local model to begin",
+    "connectBefore": "Start",
+    "connectAfter": ", then add it as a connection.",
+    "noModelsTitle": "No models available yet",
+    "noModelsBody": "Your connections haven't reported any models. Check that the server is running, then test the connection.",
+    "add": "Add a connection",
+    "open": "Open connections"
+  },
+  "banner": {
+    "unreachable": "{{name}} is unreachable",
+    "reachable": "{{name}} is reachable again",
+    "still": "Still unreachable",
+    "retry": "Retry connection",
+    "settings": "Settings"
+  },
+  "export": {
+    "markdown": "Export as Markdown",
+    "you": "You"
+  },
+  "composer": {
+    "label": "Message",
+    "placeholder": "Message Chimera…",
+    "attachments": "Attachments",
+    "attach": "Attach files",
+    "insertPrompt": "Insert a saved prompt",
+    "noPrompts": "No saved prompts yet.",
+    "managePrompts": "Manage prompt library",
+    "knowledgeActive_one": "Searching {{count}} knowledge collection",
+    "knowledgeActive_other": "Searching {{count}} knowledge collections",
+    "stop": "Stop generating",
+    "send": "Send message",
+    "hintEnter": "Enter to send · Shift+Enter for a new line",
+    "hintMod": "{{key}}+Enter to send",
+    "selectModel": "Select a model to start chatting.",
+    "noVision": "This model doesn't accept images. Choose a vision model or remove the image.",
+    "removeFailed": "Remove the attachments that failed to upload.",
+    "cantReadImages": "This model can't read images",
+    "reading": "Reading…",
+    "truncated": "{{size}} · truncated",
+    "remove": "Remove {{name}}"
+  },
+  "message": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyResponse": "Copy response",
+    "edit": "Edit",
+    "editLabel": "Edit message",
+    "editWarning": "Later messages will be replaced.",
+    "saveSubmit": "Save and resubmit",
+    "deleteMessage": "Delete message",
+    "deleteMessageTitle": "Delete this message?",
+    "deleteMessageBody": "Only this message is removed; the rest of the conversation stays.",
+    "deleteResponse": "Delete response",
+    "deleteResponseTitle": "Delete this response?",
+    "regenerate": "Regenerate",
+    "retry": "Retry",
+    "failed": "The response failed",
+    "stopped": "Stopped",
+    "interrupted": "Interrupted before it finished",
+    "waiting": "Waiting for the model",
+    "thinking": "Thinking…",
+    "thoughtProcess": "Thought process",
+    "sources": "Sources",
+    "excerpt": "Excerpt {{n}} · {{method}}",
+    "truncated": "truncated",
+    "imageAttachment": "Image attachment",
+    "extractedText": "Text extracted from this file and sent to the model.",
+    "unknownModel": "Assistant",
+    "tokensPerSecond": "{{value}} tok/s",
+    "tokens_one": "{{count}} token",
+    "tokens_other": "{{count}} tokens",
+    "hitMaxTokens": "stopped at the token limit"
+  },
+  "method": {
+    "keyword": "keyword match",
+    "semantic": "semantic match",
+    "hybrid": "hybrid match"
+  },
+  "code": {
+    "plainText": "text",
+    "wrap": "Toggle line wrap",
+    "copy": "Copy code",
+    "copied": "Code copied",
+    "copyShort": "Copy",
+    "copiedShort": "Copied",
+    "imageAlt": "image: {{alt}}",
+    "imageBlocked": "external image blocked"
+  },
+  "settings": {
+    "title": "Conversation settings",
+    "description": "These apply to this conversation only. Empty fields use your defaults from Settings.",
+    "section": "Section",
+    "systemPrompt": "System prompt",
+    "parameters": "Parameters",
+    "knowledge": "Knowledge",
+    "knowledgeCount": "Knowledge ({{count}})",
+    "useDefault": "Use the default system prompt",
+    "noDefault": "No default system prompt is set.",
+    "promptPlaceholder": "You are a helpful assistant…",
+    "fromLibrary": "From the library:",
+    "knowledgeHelp": "Relevant excerpts from the selected collections are retrieved locally for each message and given to the model, with sources shown under the answer.",
+    "noCollections": "No collections yet.",
+    "createCollection": "Create one",
+    "saved": "Conversation settings saved"
+  },
+  "params": {
+    "unsupported": "Not supported by this connection.",
+    "default": "default",
+    "useDefault": "Use the default",
+    "reset": "Reset {{name}}",
+    "temperature": { "label": "Temperature", "hint": "Randomness. Lower is more focused." },
+    "top_p": { "label": "Top-p", "hint": "Nucleus sampling probability mass." },
+    "top_k": { "label": "Top-k", "hint": "Sample from the k most likely tokens." },
+    "min_p": { "label": "Min-p", "hint": "Drop tokens below this relative probability." },
+    "max_tokens": { "label": "Max output tokens", "hint": "Upper bound on response length." },
+    "repeat_penalty": { "label": "Repeat penalty", "hint": "Penalize repeated tokens (1 = off)." },
+    "presence_penalty": { "label": "Presence penalty", "hint": "Encourage new topics." },
+    "frequency_penalty": { "label": "Frequency penalty", "hint": "Discourage frequent tokens." },
+    "seed": { "label": "Seed", "hint": "Fixed seed for reproducible output (-1 = random)." },
+    "stop": { "label": "Stop sequences", "hint": "One per line (up to 8). Generation stops when any of them appears." }
+  }
+}

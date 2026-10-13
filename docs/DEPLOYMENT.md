@@ -10,10 +10,37 @@ docker compose logs -f chimera
 
 - Data lives in the named volume `chimera-data` (mounted at `/data`).
 - The container has a health check (`GET /api/health`).
-- The port is bound to `127.0.0.1:8700`. For LAN access set `CHIMERA_PASSWORD`
-  in `.env` and change the mapping to `"8700:8700"`.
+- The port is bound to `127.0.0.1:8700`. For LAN access change the mapping to
+  `"8700:8700"` and set `CHIMERA_ALLOWED_HOSTS` in `.env` (see
+  [SECURITY.md](SECURITY.md); HTTPS is strongly recommended off-localhost).
 
-### Running llama-server in Compose too
+## First run: create the administrator
+
+Open the app. With no accounts yet, Chimera shows **Set up Chimera**: the first
+account you create becomes the **administrator**. With the default registration
+mode (`first_user_only`) self-registration then closes; add further people in
+**Settings → Users** (or switch the mode to *Open*). If others can reach the app
+before you finish setup, set `CHIMERA_SETUP_TOKEN` so only someone who knows it
+can create the first account.
+
+## Password recovery (no email needed)
+
+- An administrator: **Settings → Users → ⋯ → Reset password** shows a one-time
+  temporary password; the user must choose a new one at next sign-in.
+- Lost the only admin password? On the server:
+
+  ```bash
+  # native
+  backend/.venv/bin/python -m chimera.cli reset-password <login-or-email>
+  # docker
+  docker compose exec chimera python -m chimera.cli reset-password <login-or-email>
+  ```
+
+  Other commands: `list-users`, `create-user <email> <login> [--admin]`,
+  `set-role <login> admin|user`, `enable|disable <login>`,
+  `registration open|closed|first_user_only`.
+
+## Running llama-server in Compose too
 
 ```bash
 mkdir -p models && cp ~/Downloads/qwen2.5-7b-instruct-q4_k_m.gguf models/
@@ -77,14 +104,18 @@ docker load < chimera.tar.gz
 
 Three options, from simplest:
 
-1. **Settings → Privacy & data → Download backup.** A consistent SQLite copy
-   (made with SQLite's online backup API) of everything: conversations,
-   connections (including API keys), prompts, knowledge collections and
-   settings. *Restore from backup* replaces the current data.
-2. **Export JSON**: conversations, prompts and settings in a portable format
-   (no API keys, no knowledge index). *Import JSON* merges into existing data.
-3. **File-level**: stop Chimera and copy the data directory
-   (`chimera.sqlite*`, `uploads/`, `.secret_key`). With Docker:
+1. **Settings → Privacy & data → Download backup** (administrators). A
+   consistent SQLite copy (SQLite's online backup API) of everything: all
+   accounts, conversations, connections (API keys stay encrypted), prompts,
+   knowledge collections and settings. *Restore from backup* replaces the
+   current data for everyone.
+2. **Export JSON** (every user): your own conversations, prompts and settings
+   in a portable format (no API keys, no knowledge index). *Import JSON* merges
+   into your account.
+3. **File-level**: stop Chimera and copy the whole data directory
+   (`chimera.sqlite*`, `uploads/`, `backups/`, `.encryption_key`). Without
+   `.encryption_key` (or `CHIMERA_ENCRYPTION_KEY`) stored API keys can't be
+   decrypted. With Docker:
 
    ```bash
    docker compose stop chimera
@@ -102,5 +133,36 @@ include the directory for complete file-level backups.
 2. Update the code: `git pull`.
 3. Docker: `docker compose up -d --build`. Native: `./scripts/install.sh` then restart.
 
-Database migrations run automatically at startup. They are forward-only and
-transactional: a failed migration leaves the database unchanged.
+Database migrations run automatically at startup. They are transactional (a
+failed migration leaves the database unchanged), and before migrating a
+populated database Chimera **writes a copy** to
+`data/backups/pre-migration-v<old>-to-v<new>-<timestamp>.sqlite` and logs its
+path.
+
+### Upgrading from a version without accounts
+
+Version 0.1 had no accounts (optionally a single shared password). After the
+upgrade:
+
+- `CHIMERA_PASSWORD` and `CHIMERA_ALLOW_UNAUTHENTICATED_REMOTE` are no longer
+  used; remove them from `.env`/compose.
+- Open the app and register: the **first account becomes the administrator and
+  adopts all existing data** (conversations, prompts, settings, connections,
+  attachments, knowledge collections). A one-time notice in the UI lists what
+  was adopted, and the server log records it. Accounts created later start empty.
+- Stored API keys are encrypted at rest on first start.
+
+### Rolling back a migration
+
+Stop Chimera, then put the pre-migration copy back and run the previous
+version:
+
+```bash
+cp data/backups/pre-migration-v1-to-v2-*.sqlite data/chimera.sqlite
+rm -f data/chimera.sqlite-wal data/chimera.sqlite-shm
+git checkout <previous-tag> && ./scripts/install.sh && ./scripts/start.sh
+```
+
+(Docker: do the same inside the `chimera-data` volume, e.g. with a temporary
+`alpine` container as shown above.) Data created after the upgrade is lost by a
+rollback.

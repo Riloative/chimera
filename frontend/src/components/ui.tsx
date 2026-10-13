@@ -3,6 +3,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { Loader2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { forwardRef, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 import type { ProviderStatus } from "@/lib/types";
@@ -197,25 +198,28 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
 }
 
 /* ------------------------------------------------------------------ Status */
-const STATUS: Record<ProviderStatus, { label: string; className: string }> = {
-  connected: { label: "Connected", className: "bg-success" },
-  error: { label: "Unreachable", className: "bg-danger" },
-  unknown: { label: "Not tested", className: "bg-faint" },
-  disabled: { label: "Disabled", className: "bg-line-strong" },
+const STATUS_CLASS: Record<ProviderStatus, string> = {
+  connected: "bg-success",
+  error: "bg-danger",
+  unknown: "bg-faint",
+  disabled: "bg-line-strong",
 };
 
 export function StatusDot({ status, withLabel, className }: { status: ProviderStatus; withLabel?: boolean; className?: string }) {
-  const s = STATUS[status] ?? STATUS.unknown;
+  const { t } = useTranslation();
+  const known = status in STATUS_CLASS ? status : "unknown";
+  const label = t(`status.${known}`);
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
-      <span className={cn("size-1.5 shrink-0 rounded-full", s.className)} aria-hidden />
-      {withLabel ? <span>{s.label}</span> : <span className="sr-only">{s.label}</span>}
+      <span className={cn("size-1.5 shrink-0 rounded-full", STATUS_CLASS[known])} aria-hidden />
+      {withLabel ? <span>{label}</span> : <span className="sr-only">{label}</span>}
     </span>
   );
 }
 
 export function Spinner({ className }: { className?: string }) {
-  return <Loader2 className={cn("size-4 animate-spin text-muted", className)} aria-label="Loading" />;
+  const { t } = useTranslation();
+  return <Loader2 className={cn("size-4 animate-spin text-muted", className)} aria-label={t("loading")} />;
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
@@ -240,6 +244,7 @@ export function Dialog({
   footer?: ReactNode;
   size?: "sm" | "md" | "lg";
 }) {
+  const { t } = useTranslation();
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -258,11 +263,11 @@ export function Dialog({
               {description ? (
                 <DialogPrimitive.Description className="mt-1 text-sm leading-relaxed text-muted">{description}</DialogPrimitive.Description>
               ) : (
-                <DialogPrimitive.Description className="sr-only">{typeof title === "string" ? title : "Dialog"}</DialogPrimitive.Description>
+                <DialogPrimitive.Description className="sr-only">{typeof title === "string" ? title : t("dialog")}</DialogPrimitive.Description>
               )}
             </div>
             <DialogPrimitive.Close asChild>
-              <IconButton label="Close" size="sm" tooltip={false} className="-mt-0.5 -mr-2">
+              <IconButton label={t("close")} size="sm" tooltip={false} className="-mt-0.5 -mr-2">
                 <X className="size-4" />
               </IconButton>
             </DialogPrimitive.Close>
@@ -280,9 +285,10 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "Delete",
+  confirmLabel,
   destructive = true,
   onConfirm,
+  children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -291,7 +297,9 @@ export function ConfirmDialog({
   confirmLabel?: string;
   destructive?: boolean;
   onConfirm: () => Promise<void> | void;
+  children?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   return (
     <Dialog
@@ -303,7 +311,7 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             variant={destructive ? "danger" : "primary"}
@@ -319,11 +327,13 @@ export function ConfirmDialog({
               }
             }}
           >
-            {confirmLabel}
+            {confirmLabel ?? t("delete")}
           </Button>
         </>
       }
-    />
+    >
+      {children}
+    </Dialog>
   );
 }
 

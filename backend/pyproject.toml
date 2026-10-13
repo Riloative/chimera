@@ -2,9 +2,7 @@
 name = "chimera"
 version = "0.1.0"
 description = "A minimalist, privacy-first, self-hosted AI chat workspace for local LLMs (llama.cpp / llama-server, Ollama, OpenAI-compatible servers)."
-readme = "../README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
 dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn>=0.30,<1",

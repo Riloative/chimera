@@ -70,8 +70,33 @@ class Config:
         return bool(self.password)
 
 
+def read_dotenv(path: Path) -> dict[str, str]:
+    """Minimal .env parser (KEY=VALUE, comments, optional quotes)."""
+    values: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        elif " #" in value:
+            value = value.split(" #", 1)[0].rstrip()
+        values[key] = value
+    return values
+
+
 def load_config(env: dict[str, str] | None = None) -> Config:
-    env = dict(os.environ if env is None else env)
+    if env is None:
+        # Real environment variables win over values from a .env file.
+        env = {**read_dotenv(Path(os.environ.get("CHIMERA_ENV_FILE", ".env"))), **os.environ}
+    env = dict(env)
     data_dir = Path(env.get("CHIMERA_DATA_DIR", "data")).expanduser().resolve()
     static = env.get("CHIMERA_STATIC_DIR")
     static_dir = Path(static).resolve() if static else _default_static_dir()

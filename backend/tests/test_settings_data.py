@@ -126,3 +126,15 @@ def test_unsaved_test_can_reuse_stored_key(client, mock):
     assert not without["ok"]
     reused = client.post("/api/providers/test", json={"kind": "llamacpp", "base_url": mock.url, "provider_id": p["id"]}).json()
     assert reused["ok"]
+
+
+def test_dotenv_parsing_and_precedence(tmp_path, monkeypatch):
+    from chimera.config import load_config, read_dotenv
+
+    env_file = tmp_path / ".env"
+    env_file.write_text('# comment\nCHIMERA_PORT=9999\nexport CHIMERA_PASSWORD="s3cret pw"\nCHIMERA_LOG_LEVEL=debug # trailing\n')
+    assert read_dotenv(env_file) == {"CHIMERA_PORT": "9999", "CHIMERA_PASSWORD": "s3cret pw", "CHIMERA_LOG_LEVEL": "debug"}
+    monkeypatch.setenv("CHIMERA_ENV_FILE", str(env_file))
+    monkeypatch.setenv("CHIMERA_PORT", "8123")
+    cfg = load_config()
+    assert cfg.port == 8123 and cfg.password == "s3cret pw" and cfg.allowed_hosts == ["*"]

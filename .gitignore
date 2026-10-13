@@ -231,3 +231,5 @@ backend/chimera/static/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+data-dev/
+*.tsbuildinfo

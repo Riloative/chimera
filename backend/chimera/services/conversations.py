@@ -45,6 +45,8 @@ def message_out(row: dict) -> dict[str, Any]:
         "reasoning": row["reasoning"],
         "status": row["status"],
         "error": row["error"],
+        "error_code": row.get("error_code"),
+        "error_params": loads(row.get("error_params"), {}),
         "provider_id": row["provider_id"],
         "model": row["model"],
         "attachments": loads(row["attachments"], []),
@@ -59,22 +61,27 @@ class ConversationStore:
     def __init__(self, db: Database):
         self.db = db
 
-    def list(self, limit: int = 500) -> list[dict]:
+    def list(self, user_id: str, limit: int = 500) -> list[dict]:
         rows = self.db.all(
-            "SELECT * FROM conversations ORDER BY pinned DESC, updated_at DESC LIMIT ?", (limit,)
+            "SELECT * FROM conversations WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC LIMIT ?", (user_id, limit)
         )
         return [conversation_out(r) for r in rows]
 
     def get(self, cid: str) -> dict | None:
+        """Unscoped lookup for internal use (the generation engine)."""
         return self.db.one("SELECT * FROM conversations WHERE id = ?", (cid,))
 
-    def create(self, data: dict[str, Any]) -> dict:
+    def owned(self, user_id: str, cid: str) -> dict | None:
+        return self.db.one("SELECT * FROM conversations WHERE id = ? AND user_id = ?", (cid, user_id))
+
+    def create(self, user_id: str, data: dict[str, Any]) -> dict:
         cid, ts = new_id(), now_iso()
         self.db.execute(
-            """INSERT INTO conversations(id, title, provider_id, model, system_prompt, params, collection_ids,
-                   created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO conversations(id, user_id, title, provider_id, model, system_prompt, params, collection_ids,
+                   created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 cid,
+                user_id,
                 data.get("title") or "New conversation",
                 data.get("provider_id"),
                 data.get("model"),
@@ -112,11 +119,11 @@ class ConversationStore:
             self.db.execute(f"UPDATE conversations SET {', '.join(sets)} WHERE id = ?", (*values, cid))
         return self.get(cid)
 
-    def delete(self, cid: str) -> bool:
-        return self.db.execute("DELETE FROM conversations WHERE id = ?", (cid,)).rowcount > 0
+    def delete(self, user_id: str, cid: str) -> bool:
+        return self.db.execute("DELETE FROM conversations WHERE id = ? AND user_id = ?", (cid, user_id)).rowcount > 0
 
-    def delete_all(self) -> int:
-        return self.db.execute("DELETE FROM conversations").rowcount
+    def delete_all(self, user_id: str) -> int:
+        return self.db.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,)).rowcount
 
     def messages(self, cid: str) -> list[dict]:
         rows = self.db.all("SELECT * FROM messages WHERE conversation_id = ? ORDER BY position", (cid,))
@@ -125,7 +132,13 @@ class ConversationStore:
     def message(self, mid: str) -> dict | None:
         return self.db.one("SELECT * FROM messages WHERE id = ?", (mid,))
 
-    def search(self, query: str, limit: int = 50) -> list[dict]:
+    def owned_message(self, user_id: str, mid: str) -> dict | None:
+        return self.db.one(
+            "SELECT m.* FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE m.id = ? AND c.user_id = ?",
+            (mid, user_id),
+        )
+
+    def search(self, user_id: str, query: str, limit: int = 50) -> list[dict]:
         q = query.strip()
         if not q:
             return []
@@ -137,10 +150,10 @@ class ConversationStore:
                    ORDER BY m.position LIMIT 1
                ) AS match_text
                FROM conversations c
-               WHERE c.title LIKE ? ESCAPE '\\'
-                  OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\')
+               WHERE c.user_id = ? AND (c.title LIKE ? ESCAPE '\\'
+                  OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'))
                ORDER BY c.updated_at DESC LIMIT ?""",
-            (pattern, pattern, pattern, limit),
+            (pattern, user_id, pattern, pattern, limit),
         )
         out = []
         for row in rows:

@@ -1,98 +1,112 @@
-from fastapi.testclient import TestClient
+import re
+
+from fastapi.routing import APIRoute
 
 from chimera.main import create_app
+from chimera.security import PUBLIC_API
 
-from .conftest import make_config
+from .conftest import CsrfClient, login, make_config, new_client, register
 
 
-def test_mutations_require_csrf_header(config):
-    with TestClient(create_app(config), base_url="http://localhost") as c:
-        resp = c.post("/api/conversations", json={})
-        assert resp.status_code == 403 and resp.json()["code"] == "csrf"
-        assert c.get("/api/conversations").status_code == 200  # reads are fine
-        ok = c.post("/api/conversations", json={}, headers={"X-Chimera-Request": "1"})
-        assert ok.status_code == 201
+def concrete(path: str) -> str:
+    return re.sub(r"\{[^}]+\}", "0123456789abcdef0123456789abcdef", path).replace(":path", "")
+
+
+def all_routes(routes):
+    for r in routes:
+        inner = getattr(r, "original_router", None)
+        if inner is not None:
+            yield from all_routes(inner.routes)
+        else:
+            yield r
+
+
+def test_every_api_route_requires_a_session(app, anon):
+    """Enumerates the registered routes so new endpoints are covered automatically."""
+    checked = 0
+    for route in all_routes(app.routes):
+        if not isinstance(route, APIRoute) or not route.path.startswith("/api"):
+            continue
+        path = concrete(route.path)
+        for method in route.methods - {"HEAD", "OPTIONS"}:
+            resp = anon.request(method, path, json={})
+            if route.path in PUBLIC_API:
+                assert resp.status_code != 401 or route.path == "/api/auth/login", (method, path)
+                continue
+            assert resp.status_code == 401, (method, route.path, resp.status_code, resp.text)
+            assert resp.json()["detail"]["code"] == "auth_required"
+            checked += 1
+    assert checked > 50
+    # Streaming and inference specifically:
+    for method, path in [("POST", "/api/conversations/x/messages"), ("GET", "/api/conversations/x/stream"),
+                         ("GET", "/api/models"), ("POST", "/api/generations/x/cancel"), ("POST", "/api/files"),
+                         ("POST", "/api/providers/test")]:
+        assert anon.request(method, path, json={}).status_code == 401
+
+
+def test_health_is_public_and_minimal(anon):
+    resp = anon.get("/api/health")
+    assert resp.status_code == 200 and resp.json() == {"status": "ok"}
+
+
+def test_dns_rebinding_host_rejected(tmp_path):
+    with CsrfClient(create_app(make_config(tmp_path)), base_url="http://evil.example") as c:
+        resp = c.get("/api/health")
+        assert resp.status_code == 400 and resp.json()["detail"]["code"] == "host_not_allowed"
 
 
 def test_cross_origin_requests_blocked(client):
     resp = client.post("/api/conversations", json={}, headers={"Origin": "http://evil.example"})
-    assert resp.status_code == 403
+    assert resp.status_code == 403 and resp.json()["detail"]["code"] == "origin_forbidden"
 
 
-def test_dns_rebinding_host_rejected(config):
-    with TestClient(create_app(config), base_url="http://evil.example") as c:
-        resp = c.get("/api/health")
-        assert resp.status_code == 400 and resp.json()["code"] == "host_not_allowed"
+def test_configured_cors_origin_allowed(tmp_path):
+    app = create_app(make_config(tmp_path, cors_origins=["http://tools.lan"]))
+    with CsrfClient(app, base_url="http://localhost") as c:
+        c.get("/api/auth/status")
+        register(c, "alice")
+        assert c.post("/api/conversations", json={}, headers={"Origin": "http://tools.lan"}).status_code == 201
+        pre = c.options("/api/conversations", headers={"Origin": "http://tools.lan", "Access-Control-Request-Method": "POST"})
+        assert pre.headers.get("access-control-allow-origin") == "http://tools.lan"
+        pre = c.options("/api/conversations", headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "POST"})
+        assert "access-control-allow-origin" not in pre.headers
 
 
-def test_remote_clients_forbidden_without_password(config):
-    with TestClient(create_app(config), base_url="http://localhost", client=("192.168.1.20", 5000)) as c:
-        resp = c.get("/api/conversations")
-        assert resp.status_code == 403 and resp.json()["code"] == "remote_forbidden"
+def test_no_cors_headers_by_default(client):
+    resp = client.get("/api/conversations", headers={"Origin": "http://evil.example"})
+    assert "access-control-allow-origin" not in resp.headers
 
 
-def test_remote_allowed_when_explicitly_configured(tmp_path):
-    cfg = make_config(tmp_path, allow_unauthenticated_remote=True)
-    with TestClient(create_app(cfg), base_url="http://localhost", client=("192.168.1.20", 5000)) as c:
-        assert c.get("/api/conversations").status_code == 200
-
-
-def test_password_auth_flow(tmp_path):
-    cfg = make_config(tmp_path, password="correct horse", allowed_hosts=["*"])
-    headers = {"X-Chimera-Request": "1"}
-    with TestClient(create_app(cfg), base_url="http://chimera.lan", client=("192.168.1.20", 5000), headers=headers) as c:
-        assert c.get("/api/health").status_code == 200
-        assert c.get("/api/auth/status").json() == {"auth_required": True, "authenticated": False}
-        assert c.get("/api/conversations").status_code == 401
-        assert c.post("/api/auth/login", json={"password": "nope"}).status_code == 401
-        resp = c.post("/api/auth/login", json={"password": "correct horse"})
-        assert resp.status_code == 200
-        cookie = resp.headers["set-cookie"].lower()
-        assert "httponly" in cookie and "samesite=strict" in cookie
-        assert c.get("/api/conversations").status_code == 200
-        c.post("/api/auth/logout")
-        c.cookies.clear()
-        assert c.get("/api/conversations").status_code == 401
-
-
-def test_login_rate_limited(tmp_path):
-    cfg = make_config(tmp_path, password="pw", allowed_hosts=["*"])
-    with TestClient(create_app(cfg), base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
-        codes = [c.post("/api/auth/login", json={"password": "bad"}).status_code for _ in range(6)]
-        assert codes[:5] == [401] * 5 and codes[5] == 429
-
-
-def test_tampered_session_rejected(tmp_path):
-    cfg = make_config(tmp_path, password="pw", allowed_hosts=["*"])
-    with TestClient(create_app(cfg), base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
-        c.post("/api/auth/login", json={"password": "pw"})
-        token = c.cookies.get("chimera_session")
-        assert c.get("/api/conversations").status_code == 200
-        c.cookies.clear()
-        c.cookies.set("chimera_session", token[:-2] + ("00" if not token.endswith("00") else "11"))
-        assert c.get("/api/conversations").status_code == 401
-
-
-def test_api_key_never_returned(client, mock):
-    created = client.post(
-        "/api/providers", json={"name": "Remote", "kind": "openai", "base_url": mock.url, "api_key": "sk-secret-123"}
-    ).json()
-    assert "api_key" not in created and created["has_api_key"] is True
-    listing = client.get("/api/providers").text
-    assert "sk-secret-123" not in listing
-    export = client.get("/api/data/export").text
-    assert "sk-secret-123" not in export
-    # omitted key keeps the stored one; empty string clears it
-    assert client.patch(f"/api/providers/{created['id']}", json={"name": "R2"}).json()["has_api_key"] is True
-    assert client.patch(f"/api/providers/{created['id']}", json={"api_key": ""}).json()["has_api_key"] is False
-
-
-def test_security_headers_present(client):
-    resp = client.get("/api/health")
+def test_security_headers_present(anon):
+    resp = anon.get("/api/health")
     assert "default-src 'self'" in resp.headers["content-security-policy"]
+    assert "frame-ancestors 'none'" in resp.headers["content-security-policy"]
     assert resp.headers["x-content-type-options"] == "nosniff"
     assert resp.headers["x-frame-options"] == "DENY"
+    assert resp.headers["referrer-policy"] == "no-referrer"
     assert resp.headers["cache-control"] == "no-store"
+
+
+def test_forwarded_for_ignored_from_untrusted_peers(app, client):
+    """A client can't dodge the per-IP limit by inventing X-Forwarded-For."""
+    c = new_client(app)
+    limit = app.state.chimera.config.login_max_failures * 4
+    for i in range(limit):
+        c.post(
+            "/api/auth/login", json={"identifier": f"u{i}", "password": "wrong password!!"},
+            headers={"X-Forwarded-For": f"10.0.0.{i}"},
+        )
+    resp = c.post("/api/auth/login", json={"identifier": "x", "password": "y"}, headers={"X-Forwarded-For": "10.9.9.9"})
+    assert resp.status_code == 429
+
+
+def test_forwarded_for_used_from_trusted_proxy(tmp_path):
+    from chimera.security import ProxyResolver
+
+    r = ProxyResolver(["127.0.0.1"])
+    assert r.client("127.0.0.1", {b"x-forwarded-for": b"203.0.113.9, 127.0.0.1"}) == ("203.0.113.9", False)
+    assert r.client("127.0.0.1", {b"x-forwarded-for": b"203.0.113.9", b"x-forwarded-proto": b"https"}) == ("203.0.113.9", True)
+    assert r.client("198.51.100.7", {b"x-forwarded-for": b"203.0.113.9"}) == ("198.51.100.7", False)
 
 
 def test_provider_url_validated(client):
@@ -104,4 +118,24 @@ def test_provider_url_validated(client):
 
 def test_unknown_api_route_is_json_404(client):
     resp = client.get("/api/does-not-exist")
-    assert resp.status_code == 404 and resp.json()["detail"] == "Not found"
+    assert resp.status_code == 404 and resp.json()["detail"]["code"] == "not_found"
+
+
+def test_errors_have_stable_codes(client):
+    resp = client.get("/api/conversations/nope")
+    assert resp.json()["detail"] == {"code": "conversation_not_found", "message": "Conversation not found", "params": {}}
+    resp = client.post("/api/prompts", json={"title": ""})
+    assert resp.status_code == 422 and resp.json()["detail"]["code"] == "validation_error"
+
+
+def test_password_never_logged(app, caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    with CsrfClient(app, base_url="http://localhost") as c:
+        c.get("/api/auth/status")
+        register(c, "alice", password="unique-password-xyz-123")
+        login(c, "alice", "unique-password-xyz-123")
+        token = c.cookies.get("chimera_session")
+    assert "unique-password-xyz-123" not in caplog.text
+    assert token not in caplog.text

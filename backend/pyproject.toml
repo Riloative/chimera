@@ -10,6 +10,8 @@ dependencies = [
   "python-multipart>=0.0.9",
   "pypdf>=4.0",
   "numpy>=1.26",
+  "argon2-cffi>=23.1",
+  "cryptography>=42",
 ]
 
 [project.optional-dependencies]
@@ -26,7 +28,7 @@ build-backend = "setuptools.build_meta"
 include = ["chimera*"]
 
 [tool.setuptools.package-data]
-chimera = ["static/**/*"]
+chimera = ["static/**/*", "data/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -2,9 +2,8 @@ import threading
 import time
 
 from chimera.main import create_app
-from fastapi.testclient import TestClient
 
-from .conftest import read_sse
+from .conftest import CsrfClient, login, read_sse, register
 
 SLOW_WORDS = 150
 
@@ -177,8 +176,11 @@ def test_reattach_stream_after_disconnect(live_app, mock):
     """A real HTTP disconnect (page reload) must not stop or lose the answer."""
     import httpx
 
-    headers = {"X-Chimera-Request": "1"}
-    with httpx.Client(base_url=live_app.url, headers=headers, trust_env=False, timeout=30) as c:
+    with httpx.Client(base_url=live_app.url, trust_env=False, timeout=30) as c:
+        c.get("/api/auth/status")
+        c.headers["X-CSRF-Token"] = c.cookies["chimera_csrf"]
+        assert register(c, "live").status_code == 201
+        c.headers["X-CSRF-Token"] = c.cookies["chimera_csrf"]  # rotated with the session
         prov = c.post("/api/providers", json={"name": "L", "kind": "llamacpp", "base_url": mock.url}).json()
         conv = c.post("/api/conversations", json={"provider_id": prov["id"], "model": mock.app.state.models[0]}).json()
         with c.stream("POST", f"/api/conversations/{conv['id']}/messages", json={"content": "go [slow]"}) as resp:
@@ -219,7 +221,9 @@ def test_disconnected_provider_error_and_status(client, conversation):
 
 def test_interrupted_generation_recovered_on_restart(config, mock):
     app = create_app(config)
-    with TestClient(app, base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
+    with CsrfClient(app, base_url="http://localhost") as c:
+        c.get("/api/auth/status")
+        register(c, "alice")
         prov = c.post("/api/providers", json={"name": "L", "kind": "llamacpp", "base_url": mock.url}).json()
         conv = c.post("/api/conversations", json={"provider_id": prov["id"], "model": mock.app.state.models[0]}).json()
         state = app.state.chimera
@@ -230,7 +234,9 @@ def test_interrupted_generation_recovered_on_restart(config, mock):
             (conv["id"],),
         )
     app2 = create_app(config)
-    with TestClient(app2, base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
+    with CsrfClient(app2, base_url="http://localhost") as c:
+        c.get("/api/auth/status")
+        login(c, "alice")
         msgs = c.get(f"/api/conversations/{conv['id']}").json()["messages"]
         assert msgs[0]["status"] == "interrupted" and msgs[0]["content"] == "partial"
 
@@ -238,7 +244,9 @@ def test_interrupted_generation_recovered_on_restart(config, mock):
 def test_conversations_persist_across_restart(config, mock):
     for attempt in range(2):
         app = create_app(config)
-        with TestClient(app, base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
+        with CsrfClient(app, base_url="http://localhost") as c:
+            c.get("/api/auth/status")
+            (register if attempt == 0 else login)(c, "alice")
             if attempt == 0:
                 prov = c.post("/api/providers", json={"name": "L", "kind": "llamacpp", "base_url": mock.url}).json()
                 conv = c.post("/api/conversations", json={"provider_id": prov["id"], "model": mock.app.state.models[0]}).json()

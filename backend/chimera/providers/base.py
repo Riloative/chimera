@@ -37,14 +37,25 @@ ALL_PARAMS = (
 class ProviderError(Exception):
     """A normalized, user-presentable provider failure."""
 
-    def __init__(self, message: str, code: str = "provider_error", status: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        code: str = "provider_error",
+        status: int | None = None,
+        *,
+        name: str | None = None,
+        detail: str | None = None,
+    ):
         super().__init__(message)
         self.message = message
         self.code = code
         self.status = status
+        # Interpolation parameters for localized messages in the UI. ``detail``
+        # is server-supplied text and is shown verbatim (never translated).
+        self.params: dict[str, Any] = {k: v for k, v in {"name": name, "status": status, "detail": detail}.items() if v}
 
     def to_dict(self) -> dict[str, Any]:
-        return {"message": self.message, "code": self.code, "status": self.status}
+        return {"message": self.message, "code": self.code, "status": self.status, "params": self.params}
 
 
 @dataclass
@@ -82,6 +93,7 @@ class HealthReport:
     latency_ms: float | None = None
     error: str | None = None
     error_code: str | None = None
+    error_params: dict[str, Any] = field(default_factory=dict)
     models: list[ModelInfo] = field(default_factory=list)
     models_ok: bool = False
     capabilities: dict[str, Any] = field(default_factory=dict)
@@ -176,28 +188,24 @@ class Provider(abc.ABC):
 
 def translate_http_error(exc: Exception, provider_name: str) -> ProviderError:
     """Map transport exceptions to friendly, actionable messages."""
+    n = provider_name
     if isinstance(exc, ProviderError):
         return exc
     if isinstance(exc, httpx.ConnectError):
         return ProviderError(
-            f"Could not connect to {provider_name}. Is the server running and is the URL correct?",
-            code="connection",
+            f"Could not connect to {n}. Is the server running and is the URL correct?", code="connection", name=n
         )
     if isinstance(exc, (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout)):
-        return ProviderError(
-            f"{provider_name} did not respond within the configured timeout.", code="timeout"
-        )
+        return ProviderError(f"{n} did not respond within the configured timeout.", code="timeout", name=n)
     if isinstance(exc, httpx.ConnectTimeout):
-        return ProviderError(f"Timed out connecting to {provider_name}.", code="timeout")
+        return ProviderError(f"Timed out connecting to {n}.", code="connect_timeout", name=n)
     if isinstance(exc, httpx.RemoteProtocolError):
-        return ProviderError(
-            f"{provider_name} closed the connection unexpectedly.", code="connection"
-        )
+        return ProviderError(f"{n} closed the connection unexpectedly.", code="connection_closed", name=n)
     if isinstance(exc, httpx.UnsupportedProtocol | httpx.InvalidURL):
-        return ProviderError(f"Invalid server URL for {provider_name}.", code="config")
+        return ProviderError(f"Invalid server URL for {n}.", code="config", name=n)
     if isinstance(exc, httpx.HTTPError):
-        return ProviderError(f"Request to {provider_name} failed: {exc}", code="connection")
-    return ProviderError(f"Unexpected error from {provider_name}: {exc}", code="internal")
+        return ProviderError(f"Request to {n} failed: {exc}", code="request_failed", name=n, detail=str(exc))
+    return ProviderError(f"Unexpected error from {n}: {exc}", code="internal", name=n, detail=str(exc))
 
 
 def error_from_response(status: int, body: bytes | str, provider_name: str) -> ProviderError:
@@ -225,4 +233,6 @@ def error_from_response(status: int, body: bytes | str, provider_name: str) -> P
         code = "unavailable"
         message = message or "The server is not ready (it may still be loading the model)."
     prefix = f"{provider_name} returned HTTP {status}"
-    return ProviderError(f"{prefix}: {message}" if message else prefix, code=code, status=status)
+    return ProviderError(
+        f"{prefix}: {message}" if message else prefix, code=code, status=status, name=provider_name, detail=message or None
+    )

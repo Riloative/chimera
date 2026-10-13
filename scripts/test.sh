@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run every automated test. Needs no model, GPU or internet access:
-# integration tests use the mock llama-server in backend/tests.
+# integration tests use the mock llama-server and the mock web (pages and
+# search engines) in backend/tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

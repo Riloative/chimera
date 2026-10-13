@@ -327,6 +327,10 @@ class WebService:
                     except WebError as exc:
                         last_error = exc
                         continue
+                    except Exception:  # noqa: BLE001 - a broken page must not break the answer
+                        log.exception("web read failed unexpectedly host=%s", display_domain(candidate) or "?")
+                        last_error = WebError("web.read_failed", "The page could not be processed.")
+                        continue
                     data = SourceData(
                         url=url, status="ok", final_url=result.final_url if candidate == url else url,
                         title=page.title, site_name=page.site_name, description=page.description,

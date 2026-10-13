@@ -422,3 +422,16 @@ def test_tool_executor_validates_and_uses_the_same_guards(client, web):
     assert found.ok and "news.example.org" in found.content
     assert call("web_search", "not json").error_code == "web.tool_invalid"
     assert call("web_search", '{"query": "again"}').error_code == "web.tool_limit"
+
+
+def test_unexpected_extraction_failure_is_contained(client, conversation, web, monkeypatch):
+    from chimera.web import service
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("parser crashed")
+
+    monkeypatch.setattr(service, "extract_page", boom)
+    msg = final(send(client, conversation["id"], f"Read {ARTICLE}"))
+    assert msg["status"] == "complete" and msg["content"] == "Source [1] could not be read."
+    [source] = detail(client, conversation["id"])["web_sources"]
+    assert source["error_code"] == "web.read_failed"

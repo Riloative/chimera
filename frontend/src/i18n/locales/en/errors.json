@@ -125,6 +125,7 @@
     "http_error": "The site answered with HTTP {{http_status}}.",
     "needs_javascript": "This page needs JavaScript to show its content, so it can't be read.",
     "extraction_empty": "No readable text was found on this page.",
+    "read_failed": "The page could not be processed.",
     "pdf_encrypted": "The PDF is password protected.",
     "pdf_no_text": "The PDF has no extractable text (it may be scanned images).",
     "pdf_unreadable": "Could not read text from this PDF.",

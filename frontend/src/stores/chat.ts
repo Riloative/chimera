@@ -3,11 +3,12 @@
  * response keeps streaming while the user navigates elsewhere in the app.
  */
 import { create } from "zustand";
-import { api, stream, type SendBody } from "@/lib/api";
+import { api, ApiError, stream, type SendBody } from "@/lib/api";
 import { errorText } from "@/lib/errors";
 import type { Attachment, ConversationDetail, Message, WebSource } from "@/lib/types";
 import { useConversations } from "./conversations";
 import { useModels } from "./models";
+import { useWeb } from "./web";
 
 export interface ConvChat {
   messages: Message[];
@@ -174,6 +175,8 @@ export const useChat = create<ChatState>((set, get) => {
 
   const failBeforeStart = (convId: string, err: unknown) => {
     const message = errorText(err);
+    // e.g. an administrator turned web access off meanwhile: refresh what the composer offers.
+    if (err instanceof ApiError && err.code.startsWith("web.")) void useWeb.getState().load();
     patchConv(convId, (c) => ({
       messages: c.messages.filter((m) => !m.id.startsWith("temp-")),
       streaming: false,

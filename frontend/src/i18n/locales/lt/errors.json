@@ -125,6 +125,7 @@
     "http_error": "Svetainė atsakė HTTP {{http_status}}.",
     "needs_javascript": "Šiam puslapiui turiniui parodyti reikia JavaScript, todėl jo perskaityti negalima.",
     "extraction_empty": "Šiame puslapyje nerasta skaitomo teksto.",
+    "read_failed": "Puslapio apdoroti nepavyko.",
     "pdf_encrypted": "PDF apsaugotas slaptažodžiu.",
     "pdf_no_text": "PDF nėra išgaunamo teksto (gali būti nuskenuoti vaizdai).",
     "pdf_unreadable": "Nepavyko perskaityti šio PDF teksto.",

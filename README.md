@@ -1,2 +1,232 @@
-# chimera
-A minimalist, self-hosted AI chat platform inspired by Claude and powered by your own local LLMs. Built for privacy, offline use, and seamless integration with llama.cpp, llama-server, and OpenAI-compatible APIs.
+# Chimera
+
+A minimalist, self-hosted AI chat workspace for **your own local language models**.
+Chimera pairs a calm, editorial interface with first-class support for
+[llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`, plus Ollama
+and any OpenAI-compatible server. Everything (conversations, documents,
+settings) stays on your machine.
+
+![Chimera conversation view](docs/screenshots/chat-light.png)
+
+- **Local-first** – built around `llama-server`; no cloud account, API key or internet connection required.
+- **Private** – no telemetry, no analytics, no CDN. The UI ships its own fonts and assets.
+- **Offline-capable** – after installation, nothing is fetched from the internet.
+- **Calm** – a warm, restrained design that stays readable during long technical sessions.
+
+> Chimera is the **interface**, not the inference engine. It does not load model
+> weights. You run `llama-server` (or Ollama, LM Studio, vLLM…) and Chimera talks
+> to it over HTTP.
+
+---
+
+## Contents
+
+- [Quick start](#quick-start)
+- [Connect to llama-server](#connect-to-llama-server)
+- [Features](#features)
+- [Configuration](#configuration)
+- [Security model](#security-model)
+- [Testing](#testing)
+- [Project layout](#project-layout)
+- [Status and limitations](#status-and-limitations)
+- Further docs: [llama-server guide](docs/LLAMA_SERVER.md) ·
+  [Deployment, backups & upgrades](docs/DEPLOYMENT.md) ·
+  [Security & privacy](docs/SECURITY.md) ·
+  [Architecture](docs/ARCHITECTURE.md) ·
+  [Troubleshooting](docs/TROUBLESHOOTING.md)
+
+## Quick start
+
+### Option A: Docker (recommended)
+
+```bash
+git clone https://github.com/riloative/chimera.git && cd chimera
+cp .env.example .env          # optional, every value has a default
+docker compose up -d --build
+```
+
+Open <http://localhost:8700>. On first start Chimera creates a connection to
+`llama-server` on your host at `http://host.docker.internal:8080` and checks it.
+
+The port is published on `127.0.0.1` only. To use Chimera from other devices, set
+`CHIMERA_PASSWORD` first (see [Security model](#security-model)).
+
+On Linux, `host.docker.internal` is the Docker bridge address, so `llama-server`
+must listen on it (e.g. `--host 0.0.0.0`, firewalled) rather than only on
+`127.0.0.1`. Alternatively run llama-server inside Compose too:
+`docker compose --profile llama up -d` (see [Deployment](docs/DEPLOYMENT.md)).
+
+### Option B: Native install (Linux / macOS / WSL)
+
+Requirements: Python 3.11+, Node.js 20+ (only to build the UI once).
+
+```bash
+git clone https://github.com/riloative/chimera.git && cd chimera
+./scripts/install.sh     # builds the UI, creates backend/.venv
+./scripts/start.sh       # serves on http://127.0.0.1:8700
+```
+
+<details>
+<summary>Manual steps (e.g. Windows without WSL)</summary>
+
+```bash
+cd frontend && npm ci && npm run build && cd ..
+python -m venv backend/.venv
+backend/.venv/Scripts/pip install -e backend        # bin/ on Linux/macOS
+set CHIMERA_STATIC_DIR=%CD%\frontend\dist             # export … on Linux/macOS
+backend/.venv/Scripts/chimera
+```
+</details>
+
+### Try it without a model
+
+A mock `llama-server` is included for development and demos:
+
+```bash
+backend/.venv/bin/python backend/tests/mock_llama_server.py --port 8080
+```
+
+## Connect to llama-server
+
+1. **Start llama-server** with any GGUF model:
+
+   ```bash
+   llama-server -m ~/models/qwen2.5-7b-instruct-q4_k_m.gguf \
+     --host 127.0.0.1 --port 8080 -c 8192 --jinja
+   ```
+
+   Useful extras: `--api-key <key>` (then enter the key in Chimera),
+   `--mmproj <file>` for vision models, `--embeddings` to use it for the
+   knowledge base, `-ngl 99` to offload layers to the GPU.
+
+2. **Add the connection** – open **Models → Add connection**, keep the type
+   *llama.cpp server*, set the URL (`http://127.0.0.1:8080`, or
+   `http://host.docker.internal:8080` from Docker), and click **Test connection**.
+   You'll see health, model list, context size, slot count, vision support and the
+   server build.
+
+3. **Chat** – pick the model in the composer and start typing.
+
+Run several servers (general, coding, reasoning, vision) and add each as its own
+connection; the model picker groups models by connection and shows which are
+reachable. See the [llama-server guide](docs/LLAMA_SERVER.md) for the exact API
+surface used, multi-server setups, embeddings and vision.
+
+## Features
+
+| Area | What works today |
+| --- | --- |
+| **Chat** | Token streaming, stop, regenerate, edit & resubmit, retry failed responses, delete messages, copy message / code, reasoning ("thinking") display, per-message tokens/s, smart autoscroll with *jump to latest* |
+| **Rendering** | GitHub-flavored Markdown, tables, task lists, syntax highlighting, KaTeX math (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`), safe links; raw HTML and remote images are never rendered |
+| **Models** | Multiple connections (llama-server, OpenAI-compatible, Ollama), live discovery, cached last-known list, manual model IDs, per-connection timeout / API key / custom auth header / API path, honest status (*Not tested / Connected / Unreachable*), diagnostics view |
+| **Resilience** | Generations run server-side: closing or reloading the tab doesn't lose an answer, the UI re-attaches to the live stream. Interrupted generations are marked as such after a restart; nothing stays stuck "loading" |
+| **Conversations** | SQLite persistence, Today / Yesterday / 7 / 30 days / Older grouping, pin, rename, delete, full-text search of titles and content, model-generated titles with fallback, Markdown export |
+| **Parameters** | Temperature, top-p, top-k, min-p, max tokens, stop sequences, repeat / presence / frequency penalty, seed: as global defaults and per conversation. Only parameters the connection supports are sent |
+| **Attachments** | Text, Markdown, source code, JSON/CSV, PDF (text extraction). Images for vision-capable models only. Size limits, type sniffing, truncation notice, preview of what the model receives |
+| **Knowledge (RAG)** | Local collections, chunking, SQLite FTS5 keyword search out of the box, optional local embeddings for hybrid semantic search, retrieval test bench, sources shown under answers |
+| **Prompts** | Library with categories, insert into composer, use as a conversation's system prompt |
+| **Settings** | Light / dark / system theme, font size, conversation width, reduced motion, sidebar, Enter-to-send, streaming, auto titles, default system prompt & parameters, attachment limits, embedding model |
+| **Data** | JSON export / import, one-click SQLite backup / restore, delete all conversations or all data |
+| **Access** | Loopback-only by default, optional password for LAN/remote use, CSRF and DNS-rebinding protection, strict CSP |
+| **Keyboard** | `Ctrl/⌘ K` search, `Ctrl/⌘ ⇧ O` new chat, `Ctrl/⌘ B` sidebar, `Esc` stop, `Enter` / `Shift+Enter` |
+
+<p align="center">
+  <img src="docs/screenshots/chat-dark.png" width="49%" alt="Dark theme" />
+  <img src="docs/screenshots/models.png" width="49%" alt="Connection diagnostics" />
+</p>
+
+## Configuration
+
+All configuration that affects security or storage is done through environment
+variables (or a `.env` file in the working directory); everything else lives in
+**Settings** in the UI. See [`.env.example`](.env.example) for the full list.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CHIMERA_HOST` | `127.0.0.1` | Bind address |
+| `CHIMERA_PORT` | `8700` | Port |
+| `CHIMERA_DATA_DIR` | `./data` | SQLite database, uploads, session key |
+| `CHIMERA_PASSWORD` | *(unset)* | Enables login; required for access from other devices |
+| `CHIMERA_ALLOWED_HOSTS` | loopback names | Host header allow-list (`*` with a password) |
+| `CHIMERA_SEED_PROVIDER_URL` | `http://127.0.0.1:8080` | Connection created on first start |
+| `CHIMERA_SECURE_COOKIES` | `false` | Set behind HTTPS |
+| `CHIMERA_HTTP_TRUST_ENV` | `false` | Use `HTTP(S)_PROXY` for provider requests |
+
+## Security model
+
+- **Same machine (default):** binds to `127.0.0.1` and serves only loopback
+  clients. Websites you visit cannot drive it: the Host header must be a loopback
+  name (DNS rebinding) and state-changing calls need a custom header browsers
+  won't send cross-origin (CSRF).
+- **Trusted LAN:** set `CHIMERA_PASSWORD`, bind `0.0.0.0`, and preferably list
+  your hostname in `CHIMERA_ALLOWED_HOSTS`. Sessions use signed HttpOnly,
+  SameSite=Strict cookies; login attempts are rate-limited.
+- **Remote / internet:** put Chimera behind an HTTPS reverse proxy, set a
+  password and `CHIMERA_SECURE_COOKIES=true`. Never expose `llama-server`
+  itself; Chimera is the only thing that needs to reach it.
+
+API keys are stored server-side and never returned to the browser or included in
+exports. Model output is rendered without raw HTML. Details: [docs/SECURITY.md](docs/SECURITY.md).
+
+## Testing
+
+No model, GPU or internet access is needed: integration tests use the mock
+OpenAI-compatible/llama-server in `backend/tests/mock_llama_server.py`.
+
+```bash
+./scripts/test.sh                 # everything
+backend/.venv/bin/python -m pytest backend/tests          # backend: 81 tests
+cd frontend && npx vitest run     # frontend unit tests: 16 tests
+cd frontend && npx playwright test   # end-to-end in Chromium: 12 tests
+```
+
+The suites cover startup, provider configuration and diagnostics, connection
+failure and recovery, model discovery and caching, streaming (including split
+chunks, malformed events, truncated streams and mid-stream errors),
+cancellation (verifying the upstream connection is closed), re-attaching after a
+disconnect, persistence across restarts, edit/regenerate, Markdown/code
+rendering and sanitization, settings persistence, attachment validation, RAG,
+export/import/backup/restore, offline operation (all external requests blocked)
+and security-sensitive endpoints (CSRF, DNS rebinding, remote access, login,
+secret handling).
+
+## Project layout
+
+```
+backend/
+  chimera/
+    providers/     provider abstraction + llama.cpp, OpenAI-compatible, Ollama adapters, SSE parser
+    services/      chat engine (streaming, cancel, reattach), conversations, files, knowledge, settings
+    api/           HTTP routes and request schemas
+    security.py    access control, CSRF / rebinding protection, sessions, CSP
+    db.py          SQLite + migrations
+  tests/           pytest suite and the mock llama-server
+frontend/
+  src/components/  composer, messages, markdown, model picker, sidebar, primitives
+  src/pages/       chat, models, knowledge, prompts, settings
+  src/stores/      zustand stores (chat streaming lives outside components)
+  e2e/             Playwright tests
+docs/              guides
+```
+
+## Status and limitations
+
+Implemented and tested: everything in the [feature table](#features).
+
+Known limitations and planned work:
+
+- **Linear history.** Editing a message or regenerating replaces the later turns;
+  alternative branches are not kept.
+- **No automatic context management.** The full conversation is sent each turn. If
+  it exceeds the server's context window, llama-server's error is shown; start a
+  new chat or raise `-c`. Token counting/truncation is planned.
+- **PDF extraction is text-only.** Scanned PDFs (images) are rejected with a clear
+  message; there's no OCR.
+- **Knowledge ingestion is synchronous.** Very large documents block the upload
+  request while they're chunked and embedded.
+- **Vector search is brute-force** (NumPy over SQLite blobs). Fine for tens of
+  thousands of chunks; an ANN index would be needed beyond that.
+- **Single user.** One password, no per-user accounts or workspaces/projects.
+- **No tool calling / web search / image generation.**
+- Remote (cloud) providers can be added as *OpenAI-compatible* connections, but
+  none is configured by default.

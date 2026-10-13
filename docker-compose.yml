@@ -1,0 +1,54 @@
+# Chimera with Docker Compose.
+#
+#   docker compose up -d                 # Chimera only (llama-server runs on your host)
+#   docker compose --profile llama up -d # also run llama-server in a container
+#
+# Open http://localhost:8700
+services:
+  chimera:
+    build: .
+    image: chimera:latest
+    container_name: chimera
+    restart: unless-stopped
+    ports:
+      # Published on the host's loopback interface only. To use Chimera from
+      # other devices, set CHIMERA_PASSWORD in .env and change this to "8700:8700".
+      - "127.0.0.1:8700:8700"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Container paths; these override anything in .env.
+      CHIMERA_HOST: 0.0.0.0
+      CHIMERA_PORT: "8700"
+      CHIMERA_DATA_DIR: /data
+      CHIMERA_STATIC_DIR: /app/static
+      # Requests reach the container from the Docker bridge, not loopback, so
+      # unauthenticated access must be allowed explicitly. The loopback-only
+      # port binding above is what keeps it private. Ignored once a password is set.
+      CHIMERA_ALLOW_UNAUTHENTICATED_REMOTE: ${CHIMERA_ALLOW_UNAUTHENTICATED_REMOTE:-true}
+      # First-run connection: llama-server on the Docker host.
+      CHIMERA_SEED_PROVIDER_URL: ${CHIMERA_SEED_PROVIDER_URL:-http://host.docker.internal:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - chimera-data:/data
+
+  # Optional: llama.cpp's server in a container (CPU build). Put a GGUF file in
+  # ./models and set LLAMA_MODEL to its file name. In Chimera, add a connection
+  # to http://llama-server:8080. For GPUs, use the matching llama.cpp image tag
+  # (e.g. server-cuda) and the corresponding device options.
+  llama-server:
+    profiles: ["llama"]
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: llama-server
+    restart: unless-stopped
+    command: ["-m", "/models/${LLAMA_MODEL:-model.gguf}", "--host", "0.0.0.0", "--port", "8080", "-c", "${LLAMA_CTX:-8192}"]
+    volumes:
+      - ./models:/models:ro
+    # Not published to the host: only Chimera talks to it on the compose network.
+    expose:
+      - "8080"
+
+volumes:
+  chimera-data:

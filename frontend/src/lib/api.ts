@@ -18,6 +18,12 @@ import type {
   User,
   SessionInfo,
   AdminSettings,
+  WebAdminView,
+  WebAdminSettings,
+  WebEngineKind,
+  WebEngineTest,
+  WebSource,
+  WebStatus,
 } from "./types";
 
 /** An API failure with a stable, translatable code (see lib/errors.ts). */
@@ -165,6 +171,18 @@ export const api = {
   adminSettings: () => request<AdminSettings>("/api/admin/settings"),
   adminUpdateSettings: (data: Partial<AdminSettings>) => request<AdminSettings>("/api/admin/settings", { method: "PATCH", json: data }),
 
+  webStatus: () => request<WebStatus>("/api/web/status"),
+  webSource: (id: string) => request<WebSource & { content: string }>(`/api/web/sources/${id}`),
+  refetchWebSource: (id: string) =>
+    request<{ ok: boolean; source: WebSource; error_code?: string | null; error_params?: Record<string, unknown> }>(`/api/web/sources/${id}/refetch`, {
+      method: "POST",
+    }),
+  adminWeb: () => request<WebAdminView>("/api/admin/web"),
+  adminUpdateWeb: (data: { settings?: Partial<WebAdminSettings>; engine_keys?: Partial<Record<WebEngineKind, string | null>> }) =>
+    request<WebAdminView>("/api/admin/web", { method: "PATCH", json: data }),
+  adminTestWeb: (data: { kind: WebEngineKind; searxng_url?: string; searxng_auth_header?: string; api_key?: string; query?: string }) =>
+    request<WebEngineTest>("/api/admin/web/test", { method: "POST", json: data }),
+
   settings: () => request<AppSettings>("/api/settings"),
   updateSettings: (patch: Partial<AppSettings> | Record<string, unknown>) =>
     request<AppSettings>("/api/settings", { method: "PATCH", json: patch }),
@@ -241,4 +259,8 @@ export interface SendBody {
   provider_id?: string | null;
   model?: string | null;
   params?: GenerationParams | null;
+  /** Links in the message to read (null: the user's default). */
+  urls?: string[] | null;
+  web_search?: boolean | null;
+  timezone?: string | null;
 }

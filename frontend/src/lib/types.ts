@@ -162,13 +162,140 @@ export interface Message {
   attachments: Attachment[];
   sources: Source[];
   metrics: MessageMetrics;
+  web?: WebState;
   created_at: string;
   updated_at: string;
 }
 
 export interface ConversationDetail extends Conversation {
   messages: Message[];
+  web_sources: WebSource[];
   generation_id: string | null;
+}
+
+/* ------------------------------------------------------------------ web */
+export type WebStepKind = "read_links" | "queries" | "search" | "read_results" | "budget" | "older_omitted";
+export type WebStepStatus = "running" | "done" | "error" | "cancelled";
+
+export interface WebStep {
+  id: number;
+  kind: WebStepKind;
+  status: WebStepStatus;
+  code: string | null;
+  params: {
+    total?: number;
+    done?: number;
+    failed?: number;
+    domains?: string[];
+    queries?: string[];
+    fallback?: boolean;
+    count?: number;
+    used?: number;
+  };
+}
+
+export interface WebRef {
+  n: number;
+  source_id: string;
+  included: boolean;
+}
+
+/** The web part of an answer: progress steps, queries and the citation map. */
+export interface WebState {
+  search?: boolean;
+  links?: boolean;
+  steps?: WebStep[];
+  queries?: string[];
+  refs?: WebRef[];
+  citations?: { used: number[]; invalid: number[] };
+  context_tokens?: number;
+}
+
+export interface WebSource {
+  id: string;
+  message_id: string;
+  origin: "pasted" | "search";
+  position: number;
+  url: string;
+  final_url: string | null;
+  domain: string;
+  title: string | null;
+  site_name: string | null;
+  description: string | null;
+  published: string | null;
+  kind: string | null;
+  status: "ok" | "snippet" | "error";
+  error_code: string | null;
+  error_params: Record<string, unknown>;
+  chars: number;
+  truncated: boolean;
+  notes: string[];
+  query: string | null;
+  snippet: string | null;
+  rank: number | null;
+  fetched_at: string | null;
+}
+
+export interface WebStatus {
+  enabled: boolean;
+  search_available: boolean;
+  engine: WebEngineKind | null;
+  max_urls_per_message: number;
+  max_results: number;
+  is_admin: boolean;
+}
+
+export type WebEngineKind = "searxng" | "brave" | "tavily";
+
+export interface WebUserSettings {
+  auto_read_links: boolean;
+  search_by_default: boolean;
+  keep_search_on: boolean;
+  results: number;
+  expand_steps: boolean;
+  context_tokens: number;
+  task_provider_id: string | null;
+  task_model: string | null;
+  privacy_acknowledged: boolean;
+}
+
+export interface WebAdminSettings {
+  enabled: boolean;
+  engine: WebEngineKind | null;
+  searxng_url: string;
+  searxng_auth_header: string;
+  query_generation: boolean;
+  query_prompt: string;
+  grounding_prompt: string;
+  fetch_allowlist: string[];
+  domain_allowlist: string[];
+  domain_denylist: string[];
+  allowed_ports: number[];
+  robots_for_search: boolean;
+  user_agent: string;
+  max_page_kb: number;
+  timeout_seconds: number;
+  max_urls_per_message: number;
+  max_results: number;
+  per_source_chars: number;
+  total_chars: number;
+  fetches_per_hour: number;
+  searches_per_hour: number;
+}
+
+export interface WebEngineTest {
+  ok: boolean;
+  latency_ms: number | null;
+  result_count: number;
+  error_code: string | null;
+  error_params: Record<string, unknown>;
+  checked_at?: string;
+}
+
+export interface WebAdminView {
+  settings: WebAdminSettings;
+  engines: { kind: WebEngineKind; configured: boolean; has_key: boolean; status: WebEngineTest | null }[];
+  defaults: { query_prompt: string; grounding_prompt: string };
 }
 
 export interface KnowledgeSettings {
@@ -196,6 +323,7 @@ export interface AppSettings {
   max_attachment_mb: number;
   max_attachment_chars: number;
   knowledge: KnowledgeSettings;
+  web: WebUserSettings;
 }
 
 export interface Prompt {

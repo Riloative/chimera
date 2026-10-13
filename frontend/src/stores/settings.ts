@@ -57,6 +57,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
       const optimistic = { ...prev, ...patch } as AppSettings;
       if (patch.params) optimistic.params = { ...prev.params, ...patch.params };
       if (patch.knowledge) optimistic.knowledge = { ...prev.knowledge, ...patch.knowledge };
+      if (patch.web) optimistic.web = { ...prev.web, ...patch.web };
       set({ settings: optimistic });
       applyAppearance(optimistic);
     }

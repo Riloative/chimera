@@ -9,6 +9,7 @@ import enModels from "./locales/en/models.json";
 import enPrompts from "./locales/en/prompts.json";
 import enSettings from "./locales/en/settings.json";
 import enSidebar from "./locales/en/sidebar.json";
+import enWeb from "./locales/en/web.json";
 import ltAccount from "./locales/lt/account.json";
 import ltAdmin from "./locales/lt/admin.json";
 import ltAuth from "./locales/lt/auth.json";
@@ -20,6 +21,7 @@ import ltModels from "./locales/lt/models.json";
 import ltPrompts from "./locales/lt/prompts.json";
 import ltSettings from "./locales/lt/settings.json";
 import ltSidebar from "./locales/lt/sidebar.json";
+import ltWeb from "./locales/lt/web.json";
 
 export const LANGUAGES = ["en", "lt"] as const;
 export type Language = (typeof LANGUAGES)[number];
@@ -38,6 +40,7 @@ const en = {
   settings: enSettings,
   account: enAccount,
   admin: enAdmin,
+  web: enWeb,
   errors: enErrors,
 };
 
@@ -54,6 +57,7 @@ export const resources = {
     settings: ltSettings,
     account: ltAccount,
     admin: ltAdmin,
+    web: ltWeb,
     errors: ltErrors,
   },
 } as const;

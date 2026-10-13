@@ -1,16 +1,18 @@
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowUp, BookOpen, FileText, Image as ImageIcon, Library, Loader2, Paperclip, SlidersHorizontal, Square, X } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
+import { ArrowUp, BookOpen, FileText, Globe, Image as ImageIcon, Library, Link2, Loader2, Paperclip, SlidersHorizontal, Square, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { errorText } from "@/lib/errors";
 import { api } from "@/lib/api";
 import type { Attachment, ModelRef, Prompt } from "@/lib/types";
+import { dedupeKey, findUrls, shortUrl } from "@/lib/urls";
 import { cn, formatBytes, modKey } from "@/lib/utils";
 import { useSettings } from "@/stores/settings";
 import { useUI } from "@/stores/ui";
+import { useWeb } from "@/stores/web";
 import { ModelPicker } from "./ModelPicker";
-import { IconButton, Tooltip } from "./ui";
+import { Button, Dialog, IconButton, Tooltip } from "./ui";
 
 interface PendingFile {
   key: string;
@@ -25,8 +27,14 @@ interface PendingFile {
 const ACCEPT =
   ".txt,.md,.markdown,.rst,.log,.csv,.tsv,.json,.jsonl,.yaml,.yml,.toml,.ini,.cfg,.conf,.xml,.html,.htm,.css,.scss,.sql,.tex,.py,.js,.mjs,.ts,.tsx,.jsx,.vue,.svelte,.c,.h,.cc,.cpp,.hpp,.cs,.java,.kt,.scala,.go,.rs,.rb,.php,.swift,.lua,.r,.jl,.sh,.bash,.zsh,.ps1,.dart,.ex,.exs,.hs,.zig,.proto,.graphql,.diff,.patch,.pdf,.png,.jpg,.jpeg,.webp,.gif,Dockerfile,Makefile";
 
+/** What the composer asks the server to do on the web for this message. */
+export interface WebChoice {
+  urls: string[] | null;
+  web_search: boolean;
+}
+
 export interface ComposerProps {
-  onSend: (content: string, attachments: Attachment[]) => Promise<void>;
+  onSend: (content: string, attachments: Attachment[], web: WebChoice) => Promise<void>;
   onStop?: () => void;
   streaming?: boolean;
   model: ModelRef | null;
@@ -54,7 +62,7 @@ export function Composer({
   placeholder,
   conversationKey,
 }: ComposerProps) {
-  const { t } = useTranslation("chat");
+  const { t } = useTranslation(["chat", "web"]);
   const [text, setText] = useState("");
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -64,6 +72,21 @@ export function Composer({
   const enterToSend = useSettings((s) => s.settings?.enter_to_send ?? true);
   const insert = useUI((s) => s.composerInsert);
   const clearInsert = useUI((s) => s.insertIntoComposer);
+  const webStatus = useWeb((s) => s.status);
+  const webPrefs = useSettings((s) => s.settings?.web);
+  const key = conversationKey ?? "new";
+  const searchState = useWeb((s) => s.search[key]);
+  const setSearch = useWeb((s) => s.setSearch);
+  const searchOn = !!webStatus?.search_available && (searchState ?? webPrefs?.search_by_default ?? false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  // Links the user chose to (not) read, by normalized URL.
+  const [linkChoice, setLinkChoice] = useState<Record<string, boolean>>({});
+  const detected = useMemo(() => findUrls(text, 20), [text]);
+  const webEnabled = !!webStatus?.enabled;
+  const maxLinks = webStatus?.max_urls_per_message ?? 5;
+  const autoRead = webPrefs?.auto_read_links ?? true;
+  const shownLinks = webEnabled ? detected.urls.slice(0, maxLinks) : [];
+  const linkSelected = (url: string) => linkChoice[dedupeKey(url)] ?? autoRead;
 
   // Auto-grow the textarea up to a comfortable maximum.
   useLayoutEffect(() => {
@@ -111,20 +134,38 @@ export function Composer({
   const hasErrors = files.some((f) => f.status === "error");
   const canSend = !streaming && !submitting && !uploading && !hasBlockedImage && !hasErrors && !!model && (text.trim().length > 0 || ready.length > 0);
 
+  const toggleSearch = () => {
+    if (!webStatus?.search_available) return;
+    if (!searchOn && !webPrefs?.privacy_acknowledged) {
+      setPrivacyOpen(true);
+      return;
+    }
+    setSearch(key, !searchOn);
+  };
+
   const submit = async () => {
     if (!canSend) return;
     const content = text;
     const snapshot = files;
+    const web: WebChoice = {
+      urls: webEnabled ? shownLinks.filter(linkSelected) : null,
+      web_search: searchOn,
+    };
     setSubmitting(true);
     setText("");
     setFiles([]);
+    // Search is per message unless the user keeps it on for the conversation.
+    // Reset now (before a new conversation takes over this state), restore on failure.
+    if (!webPrefs?.keep_search_on) setSearch(key, webPrefs?.search_by_default ?? false);
     try {
-      await onSend(content, ready);
+      await onSend(content, ready, web);
       snapshot.forEach((f) => f.previewUrl && URL.revokeObjectURL(f.previewUrl));
+      setLinkChoice({});
     } catch {
       // Restore what the user typed so nothing is lost.
       setText((t) => (t ? t : content));
       setFiles((f) => (f.length ? f : snapshot));
+      setSearch(key, web.web_search);
     } finally {
       setSubmitting(false);
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -164,6 +205,8 @@ export function Composer({
   if (!model) hint = t("composer.selectModel");
   else if (hasBlockedImage) hint = t("composer.noVision");
   else if (hasErrors) hint = t("composer.removeFailed");
+  else if (webStatus && !webEnabled && detected.urls.length) hint = t("web:composer.linksOff");
+  else if (webEnabled && detected.total > maxLinks) hint = t("web:composer.overLimit", { count: maxLinks });
 
   return (
     <div className="w-full">
@@ -182,6 +225,18 @@ export function Composer({
           dragging && "border-accent ring-4 ring-accent-soft",
         )}
       >
+        {shownLinks.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 px-3 pt-3" aria-label={t("web:composer.linksLabel")}>
+            {shownLinks.map((url) => (
+              <LinkChip
+                key={dedupeKey(url)}
+                url={url}
+                selected={linkSelected(url)}
+                onToggle={() => setLinkChoice((c) => ({ ...c, [dedupeKey(url)]: !linkSelected(url) }))}
+              />
+            ))}
+          </ul>
+        )}
         {files.length > 0 && (
           <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label={t("composer.attachments")}>
             {files.map((f) => (
@@ -220,6 +275,7 @@ export function Composer({
             <Paperclip className="size-[18px]" />
           </IconButton>
           <PromptInsert onInsert={(p) => setText((t) => (t.trim() ? `${t}\n\n${p.content}` : p.content))} />
+          {webEnabled && <SearchToggle on={searchOn} available={!!webStatus?.search_available} isAdmin={!!webStatus?.is_admin} sticky={!!webPrefs?.keep_search_on} onToggle={toggleSearch} />}
           {onOpenSettings && (
             <IconButton label={t("settings.title")} onClick={onOpenSettings} active={settingsActive}>
               <SlidersHorizontal className="size-[18px]" />
@@ -266,7 +322,121 @@ export function Composer({
       <p id="composer-hint" className={cn("min-h-5 px-2 pt-1.5 text-center text-[0.72rem]", hint ? "text-muted" : "text-faint")} aria-live="polite">
         {hint ?? (enterToSend ? t("composer.hintEnter") : t("composer.hintMod", { key: modKey }))}
       </p>
+      <PrivacyNotice
+        open={privacyOpen}
+        onOpenChange={setPrivacyOpen}
+        engine={webStatus?.engine ?? null}
+        onAccept={() => {
+          setPrivacyOpen(false);
+          setSearch(key, true);
+          void useSettings
+            .getState()
+            .update({ web: { ...(webPrefs ?? ({} as NonNullable<typeof webPrefs>)), privacy_acknowledged: true } })
+            .catch(() => undefined);
+        }}
+      />
     </div>
+  );
+}
+
+function LinkChip({ url, selected, onToggle }: { url: string; selected: boolean; onToggle: () => void }) {
+  const { t } = useTranslation("web");
+  const short = shortUrl(url, 40);
+  return (
+    <li>
+      <Tooltip label={selected ? t("composer.willRead", { url }) : t("composer.skipped", { url })}>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-pressed={selected}
+          aria-label={selected ? t("composer.skipLink", { url }) : t("composer.readLink", { url })}
+          className={cn(
+            "flex h-7 max-w-[min(18rem,calc(100vw-5rem))] items-center gap-1.5 rounded-lg border pr-1.5 pl-2 text-[0.75rem] transition-colors",
+            selected ? "border-line bg-bg text-fg hover:bg-hover" : "border-dashed border-line text-faint hover:text-muted",
+          )}
+        >
+          <Link2 className={cn("size-3.5 shrink-0", selected ? "text-accent" : "")} aria-hidden />
+          <span className={cn("truncate", !selected && "line-through")}>{short}</span>
+          <span className="ml-0.5 shrink-0 rounded px-1 text-[0.68rem] text-muted">{selected ? <X className="size-3" aria-hidden /> : t("composer.read")}</span>
+        </button>
+      </Tooltip>
+    </li>
+  );
+}
+
+function SearchToggle({ on, available, isAdmin, sticky, onToggle }: { on: boolean; available: boolean; isAdmin: boolean; sticky: boolean; onToggle: () => void }) {
+  const { t } = useTranslation("web");
+  const navigate = useNavigate();
+  const label = !available
+    ? isAdmin
+      ? t("composer.searchUnavailableAdmin")
+      : t("composer.searchUnavailableUser")
+    : on
+      ? sticky
+        ? t("composer.searchStickyTooltip")
+        : t("composer.searchOnTooltip")
+      : t("composer.searchTooltip");
+  return (
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-pressed={available ? on : undefined}
+        aria-disabled={!available || undefined}
+        aria-label={t("composer.searchTooltip")}
+        onClick={() => (available ? onToggle() : isAdmin && navigate("/settings/web"))}
+        data-testid="search-toggle"
+        className={cn(
+          "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[0.8125rem] transition-colors",
+          !available
+            ? "cursor-not-allowed text-faint opacity-60"
+            : on
+              ? "bg-accent-soft font-medium text-accent-text"
+              : "text-muted hover:bg-hover hover:text-fg",
+        )}
+      >
+        <Globe className="size-[18px] shrink-0" />
+        <span className={cn(on ? "inline" : "hidden sm:inline")}>{t("composer.search")}</span>
+      </button>
+    </Tooltip>
+  );
+}
+
+function PrivacyNotice({
+  open,
+  onOpenChange,
+  engine,
+  onAccept,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  engine: "searxng" | "brave" | "tavily" | null;
+  onAccept: () => void;
+}) {
+  const { t } = useTranslation("web");
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("privacy.title")}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("privacy.cancel")}
+          </Button>
+          <Button variant="primary" onClick={onAccept}>
+            {t("privacy.accept")}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-2.5 pb-3 text-[0.875rem] leading-relaxed text-muted">
+        <p className="text-fg">{t("privacy.intro")}</p>
+        {engine && <p>{t(`privacy.engine.${engine}`)}</p>}
+        <p>{t("privacy.sites")}</p>
+        <p>{t("privacy.links")}</p>
+      </div>
+    </Dialog>
   );
 }
 

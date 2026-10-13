@@ -12,13 +12,14 @@ import type { AppSettings, GenerationParams } from "@/lib/types";
 import { cn, downloadUrl, formatBytes } from "@/lib/utils";
 import { AccountSettings } from "@/pages/settings/AccountSettings";
 import { AdminUsers } from "@/pages/settings/AdminUsers";
+import { WebSettings } from "@/pages/settings/WebSettings";
 import { useAuth } from "@/stores/auth";
 import { useConversations } from "@/stores/conversations";
 import { findProvider, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { toast } from "@/stores/ui";
 
-const SECTIONS = ["account", "appearance", "chat", "documents", "data", "users", "about"] as const;
+const SECTIONS = ["account", "appearance", "chat", "web", "documents", "data", "users", "about"] as const;
 type SectionId = (typeof SECTIONS)[number];
 
 export function SettingsPage() {
@@ -71,6 +72,8 @@ export function SettingsPage() {
             <Appearance settings={settings} />
           ) : current === "chat" ? (
             <ChatSettings settings={settings} />
+          ) : current === "web" ? (
+            <WebSettings settings={settings} />
           ) : (
             <DocumentSettings settings={settings} />
           )}

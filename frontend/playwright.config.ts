@@ -4,6 +4,8 @@ import { defineConfig, devices } from "@playwright/test";
 // No model download or network access is needed.
 const PY = process.env.CHIMERA_PYTHON ?? "../backend/.venv/bin/python";
 const MOCK_PORT = 18080;
+// Mock web pages + SearXNG-compatible search; results link back to itself.
+const WEB_PORT = 18090;
 const APP_PORT = 18700;
 const DATA = "test-results/e2e-data";
 
@@ -28,6 +30,11 @@ export default defineConfig({
     {
       command: `${PY} ../backend/tests/mock_llama_server.py --port ${MOCK_PORT} --model qwen2.5-7b-instruct-q4_k_m.gguf --model llama-3.2-3b-instruct-q8_0.gguf`,
       url: `http://127.0.0.1:${MOCK_PORT}/health`,
+      reuseExistingServer: false,
+    },
+    {
+      command: `${PY} ../backend/tests/mock_web.py --port ${WEB_PORT} --self-links`,
+      url: `http://127.0.0.1:${WEB_PORT}/plain.txt`,
       reuseExistingServer: false,
     },
     {

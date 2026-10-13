@@ -119,9 +119,7 @@
     "copy": "Kopijuoti kodą",
     "copied": "Kodas nukopijuotas",
     "copyShort": "Kopijuoti",
-    "copiedShort": "Nukopijuota",
-    "imageAlt": "paveikslėlis: {{alt}}",
-    "imageBlocked": "išorinis paveikslėlis užblokuotas"
+    "copiedShort": "Nukopijuota"
   },
   "settings": {
     "title": "Pokalbio nustatymai",

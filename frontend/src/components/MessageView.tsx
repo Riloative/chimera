@@ -8,7 +8,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { errorText, providerErrorText, serverDetail } from "@/lib/errors";
 import { api } from "@/lib/api";
@@ -18,6 +18,7 @@ import { cn, copyText, formatBytes, formatNumber, modelLabel } from "@/lib/utils
 import { LogoMark } from "./Logo";
 import { Markdown } from "./Markdown";
 import { Button, ConfirmDialog, Dialog, IconButton, Spinner } from "./ui";
+import { citationTargets, LinkStatus, WebSourceList, WebSteps, type WebSources } from "./WebParts";
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const { t } = useTranslation(["chat", "common"]);
@@ -44,12 +45,18 @@ export function UserMessage({
   disabled,
   onEdit,
   onDelete,
+  webSources = {},
 }: {
   message: Message;
   disabled: boolean;
   onEdit: (content: string) => Promise<void>;
   onDelete: () => void;
+  webSources?: WebSources;
 }) {
+  const links = useMemo(
+    () => Object.values(webSources).filter((s) => s.message_id === message.id && s.origin === "pasted").sort((a, b) => a.position - b.position),
+    [webSources, message.id],
+  );
   const { t } = useTranslation(["chat", "common"]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
@@ -115,6 +122,7 @@ export function UserMessage({
           </div>
         )
       )}
+      {!editing && <LinkStatus sources={links} conversationId={message.conversation_id} />}
       {!editing && (
         <div className="mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
           <time className="mr-1.5 text-[0.72rem] text-faint" dateTime={message.created_at}>
@@ -210,18 +218,26 @@ export function AssistantMessage({
   showReasoning,
   onRegenerate,
   onDelete,
+  webSources = {},
+  expandSteps = false,
 }: {
   message: Message;
   isLast: boolean;
   busy: boolean;
   showReasoning: boolean;
-  onRegenerate: () => void;
+  /** ``webSearch`` overrides whether the new answer searches the web. */
+  onRegenerate: (webSearch?: boolean) => void;
   onDelete: () => void;
+  webSources?: WebSources;
+  expandSteps?: boolean;
 }) {
-  const { t } = useTranslation(["chat", "common"]);
+  const { t } = useTranslation(["chat", "common", "web"]);
   const [confirm, setConfirm] = useState(false);
   const streaming = message.status === "streaming";
-  const waiting = streaming && !message.content && !message.reasoning;
+  const webRunning = !!message.web?.steps?.some((s) => s.status === "running");
+  const waiting = streaming && !message.content && !message.reasoning && !webRunning;
+  const citations = useMemo(() => citationTargets(message, webSources), [message, webSources]);
+  const webError = message.status === "error" && !!message.error_code?.startsWith("web.");
   const m = message.metrics;
 
   return (
@@ -231,6 +247,8 @@ export function AssistantMessage({
         <span className="truncate font-medium text-fg" title={message.model ?? undefined}>{modelLabel(message.model) || t("message.unknownModel")}</span>
       </div>
 
+      <WebSteps message={message} sources={webSources} defaultOpen={expandSteps} />
+
       {showReasoning && message.reasoning && <Reasoning text={message.reasoning} live={streaming && !message.content} />}
 
       {waiting ? (
@@ -239,10 +257,11 @@ export function AssistantMessage({
           <span className="text-[0.8125rem] text-faint">{t("message.thinking")}</span>
         </div>
       ) : (
-        message.content && <Markdown content={message.content} streaming={streaming} />
+        message.content && <Markdown content={message.content} streaming={streaming} citations={citations} />
       )}
 
       {message.sources.length > 0 && <Sources sources={message.sources} />}
+      {!!message.web?.refs?.length && <WebSourceList refs={message.web.refs} sources={webSources} conversationId={message.conversation_id} />}
 
       {message.status === "error" && (
         <div role="alert" className="mt-3 flex items-start gap-3 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-3">
@@ -256,11 +275,20 @@ export function AssistantMessage({
               <p className="mt-1 font-mono text-[0.75rem] break-words text-faint">{serverDetail(message.error_params)}</p>
             )}
           </div>
-          {isLast && (
-            <Button size="sm" variant="outline" icon={<RotateCcw className="size-3.5" />} onClick={onRegenerate} disabled={busy}>
+          {isLast && webError ? (
+            <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row">
+              <Button size="sm" variant="outline" icon={<RotateCcw className="size-3.5" />} onClick={() => onRegenerate(true)} disabled={busy}>
+                {t("web:actions.retrySearch")}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => onRegenerate(false)} disabled={busy}>
+                {t("web:actions.withoutSearch")}
+              </Button>
+            </div>
+          ) : isLast ? (
+            <Button size="sm" variant="outline" icon={<RotateCcw className="size-3.5" />} onClick={() => onRegenerate()} disabled={busy}>
               {t("message.retry")}
             </Button>
-          )}
+          ) : null}
         </div>
       )}
       {(message.status === "cancelled" || message.status === "interrupted") && (
@@ -268,7 +296,7 @@ export function AssistantMessage({
           <span className="inline-block size-1.5 rounded-full bg-faint" aria-hidden />
           {message.status === "cancelled" ? t("message.stopped") : message.error_code === "interrupted" || !message.error_code ? t("message.interrupted") : providerErrorText(message.error_code, message.error_params, message.error)}
           {isLast && (
-            <button type="button" className="text-accent-text hover:underline disabled:opacity-50" onClick={onRegenerate} disabled={busy}>
+            <button type="button" className="text-accent-text hover:underline disabled:opacity-50" onClick={() => onRegenerate()} disabled={busy}>
               {t("message.regenerate")}
             </button>
           )}
@@ -278,7 +306,7 @@ export function AssistantMessage({
       {!streaming && (
         <div className="mt-2 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100 data-[last=true]:opacity-100" data-last={isLast}>
           {message.content && <CopyButton text={message.content} label={t("message.copyResponse")} />}
-          <IconButton label={t("message.regenerate")} size="sm" onClick={onRegenerate} disabled={busy}>
+          <IconButton label={t("message.regenerate")} size="sm" onClick={() => onRegenerate()} disabled={busy}>
             <RotateCcw className="size-3.5" />
           </IconButton>
           <IconButton label={t("message.deleteResponse")} size="sm" onClick={() => setConfirm(true)} disabled={busy}>

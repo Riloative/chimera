@@ -218,3 +218,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Chimera ---
+!frontend/src/lib/
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+/data/
+backend/data/
+backend/chimera/static/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

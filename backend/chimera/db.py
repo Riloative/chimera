@@ -1,0 +1,297 @@
+"""SQLite persistence with forward-only, numbered migrations.
+
+A single connection guarded by a lock is plenty for a single-user, self-hosted
+app: queries are tiny and SQLite in WAL mode handles them in microseconds.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+import threading
+import uuid
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterator
+
+MIGRATIONS: list[str] = [
+    # 1 — initial schema
+    """
+    CREATE TABLE providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        api_path TEXT NOT NULL DEFAULT '/v1',
+        api_key TEXT,
+        auth_header TEXT,
+        timeout REAL NOT NULL DEFAULT 300,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        vision TEXT NOT NULL DEFAULT 'auto',
+        manual_models TEXT NOT NULL DEFAULT '[]',
+        cached_models TEXT NOT NULL DEFAULT '[]',
+        models_fetched_at TEXT,
+        status TEXT NOT NULL DEFAULT 'unknown',
+        last_error TEXT,
+        latency_ms REAL,
+        checked_at TEXT,
+        capabilities TEXT NOT NULL DEFAULT '{}',
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE conversations (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT 'New conversation',
+        title_source TEXT NOT NULL DEFAULT 'default',
+        provider_id TEXT,
+        model TEXT,
+        system_prompt TEXT,
+        params TEXT NOT NULL DEFAULT '{}',
+        collection_ids TEXT NOT NULL DEFAULT '[]',
+        pinned INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX idx_conversations_updated ON conversations(updated_at DESC);
+
+    CREATE TABLE messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        reasoning TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'complete',
+        error TEXT,
+        provider_id TEXT,
+        model TEXT,
+        attachments TEXT NOT NULL DEFAULT '[]',
+        sources TEXT NOT NULL DEFAULT '[]',
+        metrics TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX idx_messages_conversation ON messages(conversation_id, position);
+
+    CREATE TABLE files (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        mime TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        text TEXT,
+        truncated INTEGER NOT NULL DEFAULT 0,
+        storage_name TEXT,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE prompts (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT '',
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+
+    CREATE TABLE collections (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE documents (
+        id TEXT PRIMARY KEY,
+        collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+        filename TEXT NOT NULL,
+        mime TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ready',
+        error TEXT,
+        warning TEXT,
+        chunk_count INTEGER NOT NULL DEFAULT 0,
+        char_count INTEGER NOT NULL DEFAULT 0,
+        embedding_model TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE chunks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        collection_id TEXT NOT NULL,
+        idx INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        embedding BLOB
+    );
+    CREATE INDEX idx_chunks_collection ON chunks(collection_id);
+    CREATE INDEX idx_chunks_document ON chunks(document_id);
+
+    CREATE VIRTUAL TABLE chunks_fts USING fts5(
+        text, content='chunks', content_rowid='id', tokenize='porter unicode61'
+    );
+    CREATE TRIGGER chunks_ai AFTER INSERT ON chunks BEGIN
+        INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
+    END;
+    CREATE TRIGGER chunks_ad AFTER DELETE ON chunks BEGIN
+        INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES ('delete', old.id, old.text);
+    END;
+    CREATE TRIGGER chunks_au AFTER UPDATE OF text ON chunks BEGIN
+        INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES ('delete', old.id, old.text);
+        INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
+    END;
+    """,
+]
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def new_id() -> str:
+    return uuid.uuid4().hex
+
+
+def dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def loads(value: str | None, default: Any = None) -> Any:
+    if value is None or value == "":
+        return default
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return default
+
+
+class Database:
+    def __init__(self, path: Path | str):
+        self.path = Path(path) if str(path) != ":memory:" else path
+        self._lock = threading.RLock()
+        self._conn = self._open()
+        self.migrate()
+
+    def _open(self) -> sqlite3.Connection:
+        if isinstance(self.path, Path):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
+        return conn
+
+    # -- schema -----------------------------------------------------------
+    def schema_version(self) -> int:
+        with self._lock:
+            self._conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+            row = self._conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
+            return int(row["v"] or 0)
+
+    def migrate(self) -> None:
+        with self._lock:
+            current = self.schema_version()
+            for index, script in enumerate(MIGRATIONS, start=1):
+                if index <= current:
+                    continue
+                self._conn.execute("BEGIN")
+                try:
+                    for statement in _split_sql(script):
+                        self._conn.execute(statement)
+                    self._conn.execute("INSERT INTO schema_version(version) VALUES (?)", (index,))
+                    self._conn.execute("COMMIT")
+                except Exception:
+                    self._conn.execute("ROLLBACK")
+                    raise
+
+    # -- queries ----------------------------------------------------------
+    def execute(self, sql: str, params: tuple | dict = ()) -> sqlite3.Cursor:
+        with self._lock:
+            return self._conn.execute(sql, params)
+
+    def one(self, sql: str, params: tuple | dict = ()) -> dict | None:
+        with self._lock:
+            row = self._conn.execute(sql, params).fetchone()
+            return dict(row) if row else None
+
+    def all(self, sql: str, params: tuple | dict = ()) -> list[dict]:
+        with self._lock:
+            return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        with self._lock:
+            self._conn.execute("BEGIN")
+            try:
+                yield self._conn
+            except BaseException:
+                self._conn.execute("ROLLBACK")
+                raise
+            else:
+                self._conn.execute("COMMIT")
+
+    # -- maintenance ------------------------------------------------------
+    def backup_to(self, target: Path) -> None:
+        with self._lock:
+            dest = sqlite3.connect(str(target))
+            try:
+                self._conn.backup(dest)
+            finally:
+                dest.close()
+
+    def replace_with(self, source: Path) -> None:
+        """Swap the live database for ``source`` (already validated)."""
+        if not isinstance(self.path, Path):
+            raise RuntimeError("cannot restore an in-memory database")
+        with self._lock:
+            src = sqlite3.connect(str(source))
+            try:
+                src.backup(self._conn)
+            finally:
+                src.close()
+            self.migrate()
+
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+
+def _split_sql(script: str) -> list[str]:
+    """Split a migration script into statements, keeping trigger bodies intact."""
+    statements: list[str] = []
+    buf: list[str] = []
+    for line in script.splitlines():
+        buf.append(line)
+        candidate = "\n".join(buf).strip()
+        if candidate and sqlite3.complete_statement(candidate):
+            statements.append(candidate)
+            buf = []
+    tail = "\n".join(buf).strip()
+    if tail:
+        statements.append(tail)
+    return statements
+
+
+def is_chimera_database(path: Path) -> bool:
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            return {"schema_version", "conversations", "messages", "providers"} <= names
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError:
+        return False

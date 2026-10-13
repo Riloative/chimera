@@ -117,3 +117,12 @@ def test_clear_requires_confirmation(client, conversation):
     assert client.post("/api/data/clear", json={"scope": "all"}).status_code == 422
     assert client.post("/api/data/clear", json={"scope": "all", "confirm": "DELETE"}).status_code == 200
     assert client.get("/api/providers").json() == [] and client.get("/api/conversations").json() == []
+
+
+def test_unsaved_test_can_reuse_stored_key(client, mock):
+    mock.app.state.api_key = "k1"
+    p = client.post("/api/providers", json={"name": "K", "kind": "llamacpp", "base_url": mock.url, "api_key": "k1"}).json()
+    without = client.post("/api/providers/test", json={"kind": "llamacpp", "base_url": mock.url}).json()
+    assert not without["ok"]
+    reused = client.post("/api/providers/test", json={"kind": "llamacpp", "base_url": mock.url, "provider_id": p["id"]}).json()
+    assert reused["ok"]

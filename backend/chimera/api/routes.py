@@ -147,7 +147,12 @@ async def delete_provider(provider_id: str, state: AppState = Depends(get_state)
 
 @router.post("/providers/test")
 async def test_unsaved_provider(body: schemas.ProviderTest, state: AppState = Depends(get_state)):
-    return await state.registry.test_unsaved(body.model_dump())
+    data = body.model_dump()
+    if body.provider_id and body.api_key is None:
+        stored = state.registry.row(body.provider_id)
+        if stored:
+            data["api_key"] = stored.get("api_key")
+    return await state.registry.test_unsaved(data)
 
 
 @router.post("/providers/{provider_id}/test")

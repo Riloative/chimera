@@ -56,6 +56,8 @@ class ProviderUpdate(Strict):
 
 class ProviderTest(ProviderCreate):
     name: str = Field("server", max_length=80)
+    # When editing a saved connection, reuse its stored key if none is typed.
+    provider_id: str | None = None
 
 
 class ConversationCreate(Strict):

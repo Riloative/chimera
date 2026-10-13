@@ -1,0 +1,338 @@
+import {
+  AlertTriangle,
+  Check,
+  ChevronRight,
+  Copy,
+  FileText,
+  Pencil,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
+import { formatTime } from "@/lib/time";
+import type { Attachment, Message, Source } from "@/lib/types";
+import { cn, copyText, formatBytes, modelLabel } from "@/lib/utils";
+import { LogoMark } from "./Logo";
+import { Markdown } from "./Markdown";
+import { Button, ConfirmDialog, Dialog, IconButton, Spinner } from "./ui";
+
+function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <IconButton
+      label={copied ? "Copied" : label}
+      size="sm"
+      onClick={async () => {
+        if (await copyText(text)) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }
+      }}
+    >
+      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+    </IconButton>
+  );
+}
+
+/* --------------------------------------------------------------- user turn */
+export function UserMessage({
+  message,
+  disabled,
+  onEdit,
+  onDelete,
+}: {
+  message: Message;
+  disabled: boolean;
+  onEdit: (content: string) => Promise<void>;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
+  const [confirm, setConfirm] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing && ref.current) {
+      const ta = ref.current;
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 400)}px`;
+    }
+  }, [editing]);
+
+  const save = async () => {
+    if (!draft.trim() && !message.attachments.length) return;
+    setEditing(false);
+    await onEdit(draft);
+  };
+
+  return (
+    <div className="group flex flex-col items-end">
+      {message.attachments.length > 0 && (
+        <div className="mb-1.5 flex max-w-[85%] flex-wrap justify-end gap-1.5">
+          {message.attachments.map((a) => (
+            <AttachmentPreview key={a.id} attachment={a} />
+          ))}
+        </div>
+      )}
+      {editing ? (
+        <div className="w-full rounded-2xl border border-line-strong bg-elevated p-3">
+          <textarea
+            ref={ref}
+            value={draft}
+            aria-label="Edit message"
+            onChange={(e) => {
+              setDraft(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 400)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setEditing(false);
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
+            }}
+            className="block w-full resize-none bg-transparent text-[0.95rem] leading-relaxed text-fg focus:outline-none"
+          />
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <span className="mr-auto text-[0.72rem] text-faint">Later messages will be replaced.</span>
+            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" variant="primary" onClick={save} disabled={!draft.trim() && !message.attachments.length}>
+              Save & submit
+            </Button>
+          </div>
+        </div>
+      ) : (
+        message.content && (
+          <div className="max-w-[85%] rounded-2xl bg-subtle px-4 py-2.5 text-[0.95rem] leading-relaxed break-words whitespace-pre-wrap text-fg">
+            {message.content}
+          </div>
+        )
+      )}
+      {!editing && (
+        <div className="mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
+          <time className="mr-1.5 text-[0.72rem] text-faint" dateTime={message.created_at}>
+            {formatTime(message.created_at)}
+          </time>
+          <CopyButton text={message.content} />
+          {!message.id.startsWith("temp-") && (
+            <>
+              <IconButton label="Edit" size="sm" disabled={disabled} onClick={() => { setDraft(message.content); setEditing(true); }}>
+                <Pencil className="size-3.5" />
+              </IconButton>
+              <IconButton label="Delete message" size="sm" disabled={disabled} onClick={() => setConfirm(true)}>
+                <Trash2 className="size-3.5" />
+              </IconButton>
+            </>
+          )}
+        </div>
+      )}
+      <ConfirmDialog
+        open={confirm}
+        onOpenChange={setConfirm}
+        title="Delete this message?"
+        description="Only this message is removed; the rest of the conversation stays."
+        onConfirm={onDelete}
+      />
+    </div>
+  );
+}
+
+function AttachmentPreview({ attachment }: { attachment: Attachment }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const isImage = attachment.kind === "image";
+
+  useEffect(() => {
+    if (!open || isImage || text !== null) return;
+    api
+      .file(attachment.id)
+      .then((f) => setText(f.text ?? ""))
+      .catch((e) => setError((e as Error).message));
+  }, [open, isImage, attachment.id, text]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-11 max-w-[14rem] items-center gap-2 rounded-xl border border-line bg-elevated pr-3 pl-1.5 text-left transition-colors hover:bg-hover"
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-subtle text-muted">
+          {isImage ? (
+            <img src={`/api/files/${attachment.id}/content`} alt="" className="size-full object-cover" onError={(e) => (e.currentTarget.style.display = "none")} />
+          ) : (
+            <FileText className="size-4" />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[0.8125rem] text-fg">{attachment.filename}</span>
+          <span className="block text-[0.7rem] text-faint">
+            {formatBytes(attachment.size)}
+            {attachment.truncated && " · truncated"}
+          </span>
+        </span>
+      </button>
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+        title={attachment.filename}
+        description={isImage ? "Image attachment" : "Text extracted from this file and sent to the model."}
+        size="lg"
+      >
+        {isImage ? (
+          <img src={`/api/files/${attachment.id}/content`} alt={attachment.filename} className="mx-auto max-h-[60vh] rounded-lg" />
+        ) : error ? (
+          <p className="text-sm text-danger">{error}</p>
+        ) : text === null ? (
+          <Spinner />
+        ) : (
+          <pre className="mb-4 max-h-[60vh] overflow-auto rounded-lg bg-code p-4 font-mono text-[0.78rem] leading-relaxed whitespace-pre-wrap">{text}</pre>
+        )}
+      </Dialog>
+    </>
+  );
+}
+
+/* ---------------------------------------------------------- assistant turn */
+export function AssistantMessage({
+  message,
+  isLast,
+  busy,
+  showReasoning,
+  onRegenerate,
+  onDelete,
+}: {
+  message: Message;
+  isLast: boolean;
+  busy: boolean;
+  showReasoning: boolean;
+  onRegenerate: () => void;
+  onDelete: () => void;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  const streaming = message.status === "streaming";
+  const waiting = streaming && !message.content && !message.reasoning;
+  const m = message.metrics;
+
+  return (
+    <div className="group">
+      <div className="mb-2 flex items-center gap-2 text-[0.8125rem] text-muted">
+        <LogoMark className={cn("size-[18px] text-accent")} spinning={streaming} />
+        <span className="font-medium text-fg">{modelLabel(message.model)}</span>
+      </div>
+
+      {showReasoning && message.reasoning && <Reasoning text={message.reasoning} live={streaming && !message.content} />}
+
+      {waiting ? (
+        <div className="flex h-7 items-center gap-1.5" role="status" aria-label="Waiting for the model">
+          <span className="animate-breathe size-2 rounded-full bg-accent" />
+          <span className="text-[0.8125rem] text-faint">Thinking…</span>
+        </div>
+      ) : (
+        message.content && <Markdown content={message.content} streaming={streaming} />
+      )}
+
+      {message.sources.length > 0 && <Sources sources={message.sources} />}
+
+      {message.status === "error" && (
+        <div role="alert" className="mt-3 flex items-start gap-3 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-fg">The response failed</p>
+            <p className="mt-0.5 text-[0.8125rem] leading-relaxed break-words text-muted">{message.error}</p>
+          </div>
+          {isLast && (
+            <Button size="sm" variant="outline" icon={<RotateCcw className="size-3.5" />} onClick={onRegenerate} disabled={busy}>
+              Retry
+            </Button>
+          )}
+        </div>
+      )}
+      {(message.status === "cancelled" || message.status === "interrupted") && (
+        <p className="mt-2 flex items-center gap-2 text-[0.8125rem] text-faint">
+          <span className="inline-block size-1.5 rounded-full bg-faint" aria-hidden />
+          {message.status === "cancelled" ? "Stopped" : message.error || "Interrupted"}
+          {isLast && (
+            <button type="button" className="text-accent-text hover:underline disabled:opacity-50" onClick={onRegenerate} disabled={busy}>
+              Regenerate
+            </button>
+          )}
+        </p>
+      )}
+
+      {!streaming && (
+        <div className="mt-2 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100 data-[last=true]:opacity-100" data-last={isLast}>
+          {message.content && <CopyButton text={message.content} label="Copy response" />}
+          <IconButton label="Regenerate" size="sm" onClick={onRegenerate} disabled={busy}>
+            <RotateCcw className="size-3.5" />
+          </IconButton>
+          <IconButton label="Delete response" size="sm" onClick={() => setConfirm(true)} disabled={busy}>
+            <Trash2 className="size-3.5" />
+          </IconButton>
+          <span className="ml-2 flex min-w-0 items-center gap-2 truncate font-mono text-[0.7rem] text-faint">
+            <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
+            {m.tokens_per_second ? <span>· {m.tokens_per_second.toFixed(1)} tok/s</span> : null}
+            {m.completion_tokens ? <span>· {m.completion_tokens} tokens</span> : null}
+            {m.finish_reason === "length" && <span className="text-warning">· hit max tokens</span>}
+          </span>
+        </div>
+      )}
+      <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Delete this response?" onConfirm={onDelete} />
+    </div>
+  );
+}
+
+function Reasoning({ text, live }: { text: string; live: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex items-center gap-1 rounded-md py-0.5 text-[0.8125rem] text-muted transition-colors hover:text-fg"
+      >
+        <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+        {live ? "Thinking…" : "Thought process"}
+      </button>
+      {open && (
+        <div className="mt-1.5 ml-1.5 border-l-2 border-line pl-4 text-[0.875rem] leading-relaxed whitespace-pre-wrap text-muted">{text}</div>
+      )}
+    </div>
+  );
+}
+
+function Sources({ sources }: { sources: Source[] }) {
+  const [active, setActive] = useState<Source | null>(null);
+  return (
+    <div className="mt-3">
+      <p className="mb-1.5 text-[0.72rem] font-medium text-faint">Sources</p>
+      <div className="flex flex-wrap gap-1.5">
+        {sources.map((s) => (
+          <button
+            key={s.n}
+            type="button"
+            onClick={() => setActive(s)}
+            className="flex h-7 max-w-[16rem] items-center gap-1.5 rounded-lg border border-line px-2 text-[0.75rem] text-muted transition-colors hover:bg-hover hover:text-fg"
+          >
+            <span className="font-mono text-accent-text">{s.n}</span>
+            <span className="truncate">{s.filename}</span>
+          </button>
+        ))}
+      </div>
+      <Dialog
+        open={!!active}
+        onOpenChange={(o) => !o && setActive(null)}
+        title={active ? `[${active.n}] ${active.filename}` : ""}
+        description={active ? `Excerpt ${active.chunk_index + 1} · ${active.method} match` : undefined}
+      >
+        <p className="mb-4 text-sm leading-relaxed whitespace-pre-wrap text-fg">{active?.text}</p>
+      </Dialog>
+    </div>
+  );
+}
+

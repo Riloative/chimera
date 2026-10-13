@@ -1,0 +1,32 @@
+{
+  "_comment": "Shared by backend/tests/test_web_urls.py and frontend/src/lib/urls.test.ts: the composer must show exactly the links the server reads.",
+  "cases": [
+    {"name": "plain", "text": "Summarize https://example.com/article please", "urls": ["https://example.com/article"]},
+    {"name": "trailing period", "text": "Read https://example.com/a.", "urls": ["https://example.com/a"]},
+    {"name": "trailing punctuation", "text": "Is https://example.com/a?! or https://example.org/b, or https://example.net/c;", "urls": ["https://example.com/a", "https://example.org/b", "https://example.net/c"]},
+    {"name": "parentheses around", "text": "(see https://example.com/page)", "urls": ["https://example.com/page"]},
+    {"name": "balanced parentheses kept", "text": "Wiki https://en.wikipedia.org/wiki/Mercury_(planet) is good", "urls": ["https://en.wikipedia.org/wiki/Mercury_(planet)"]},
+    {"name": "markdown link", "text": "Look at [the docs](https://docs.example.com/install) now", "urls": ["https://docs.example.com/install"]},
+    {"name": "markdown link with title", "text": "[x](https://example.com/t \"Title\")", "urls": ["https://example.com/t"]},
+    {"name": "markdown link with parens", "text": "[Mercury](https://en.wikipedia.org/wiki/Mercury_(planet))", "urls": ["https://en.wikipedia.org/wiki/Mercury_(planet)"]},
+    {"name": "angle autolink", "text": "<https://example.com/auto>", "urls": ["https://example.com/auto"]},
+    {"name": "fenced code ignored", "text": "Read https://a.example.com\n```\ncurl https://b.example.com/api\n```\nand https://c.example.com", "urls": ["https://a.example.com", "https://c.example.com"]},
+    {"name": "tilde fence ignored", "text": "~~~bash\nwget http://x.example.com/f\n~~~\nok", "urls": []},
+    {"name": "inline code ignored", "text": "Run `curl https://api.example.com/v1` against https://docs.example.com", "urls": ["https://docs.example.com"]},
+    {"name": "unclosed fence ignores rest", "text": "```\nhttps://a.example.com\nhttps://b.example.com", "urls": []},
+    {"name": "duplicates", "text": "https://Example.com/a https://example.com/a https://example.com/a#section", "urls": ["https://Example.com/a"]},
+    {"name": "fragment removed", "text": "https://example.com/doc#part-2", "urls": ["https://example.com/doc"]},
+    {"name": "query kept", "text": "https://example.com/search?q=llama&page=2.", "urls": ["https://example.com/search?q=llama&page=2"]},
+    {"name": "uppercase scheme", "text": "HTTPS://EXAMPLE.COM/Path", "urls": ["HTTPS://EXAMPLE.COM/Path"]},
+    {"name": "not other schemes", "text": "ftp://example.com/f file:///etc/passwd javascript:alert(1)", "urls": []},
+    {"name": "embedded in word not matched", "text": "xhttps://example.com and foo/https://example.org", "urls": []},
+    {"name": "quotes", "text": "\"https://example.com/q\" and 'https://example.org/s'", "urls": ["https://example.com/q", "https://example.org/s"]},
+    {"name": "emphasis", "text": "**https://example.com/bold** _https://example.org/it_", "urls": ["https://example.com/bold", "https://example.org/it"]},
+    {"name": "no host", "text": "http:// and https://. and https://", "urls": []},
+    {"name": "ipv6 literal", "text": "http://[2001:db8::1]:8080/x", "urls": ["http://[2001:db8::1]:8080/x"]},
+    {"name": "trailing slash dedupe", "text": "https://example.com https://example.com/", "urls": ["https://example.com"]},
+    {"name": "limit", "limit": 2, "text": "https://a.example.com https://b.example.com https://c.example.com", "urls": ["https://a.example.com", "https://b.example.com"], "total": 3},
+    {"name": "unicode path", "text": "https://lt.wikipedia.org/wiki/Šiauliai.", "urls": ["https://lt.wikipedia.org/wiki/Šiauliai"]},
+    {"name": "nbsp separated", "text": "https://example.com/a and more", "urls": ["https://example.com/a"]}
+  ]
+}

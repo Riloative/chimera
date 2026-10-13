@@ -17,6 +17,8 @@ from .services.files import FileStore
 from .services.knowledge import KnowledgeBase
 from .services.providers import ProviderRegistry
 from .services.settings import SettingsStore
+from .web.fetcher import SafeFetcher, make_client
+from .web.service import WebService
 
 
 @dataclass
@@ -31,16 +33,21 @@ class AppState:
     knowledge: KnowledgeBase
     chat: ChatEngine
     auth: AuthService
+    web: WebService
 
     @classmethod
-    def build(cls, config: Config, client: httpx.AsyncClient) -> "AppState":
+    def build(cls, config: Config, client: httpx.AsyncClient, web_client: httpx.AsyncClient | None = None) -> "AppState":
         db = Database(config.db_path, backups_dir=config.backups_dir)
-        registry = ProviderRegistry(db, client, SecretBox(config.encryption_key))
+        box = SecretBox(config.encryption_key)
+        registry = ProviderRegistry(db, client, box)
+        fetcher = SafeFetcher(web_client or make_client(config.web_proxy or None), via_proxy=bool(config.web_proxy),
+                              verbose_log=config.web_verbose_log)
+        web = WebService(db, config, box, fetcher)
         settings = SettingsStore(db)
         conversations = ConversationStore(db)
         files = FileStore(db, config.uploads_dir)
         knowledge = KnowledgeBase(db, registry)
-        chat = ChatEngine(db, conversations, registry, settings, files, knowledge)
+        chat = ChatEngine(db, conversations, registry, settings, files, knowledge, web)
         return cls(
             config=config,
             db=db,
@@ -52,6 +59,7 @@ class AppState:
             knowledge=knowledge,
             chat=chat,
             auth=AuthService(db, config),
+            web=web,
         )
 
 

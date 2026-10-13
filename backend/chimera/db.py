@@ -224,6 +224,43 @@ MIGRATIONS: list[str] = [
     CREATE INDEX idx_collections_user ON collections(user_id);
     CREATE INDEX idx_providers_user ON providers(user_id);
     """,
+    # 3 — web reading and search: fetched pages / search results per message,
+    # and the step log, queries and citation map of an answer (messages.web).
+    # Additive only: an older Chimera can still open a v3 database.
+    """
+    CREATE TABLE web_sources (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        origin TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        url TEXT NOT NULL,
+        final_url TEXT,
+        title TEXT,
+        site_name TEXT,
+        description TEXT,
+        published TEXT,
+        kind TEXT,
+        content_type TEXT,
+        status TEXT NOT NULL,
+        error_code TEXT,
+        error_params TEXT NOT NULL DEFAULT '{}',
+        content TEXT NOT NULL DEFAULT '',
+        truncated INTEGER NOT NULL DEFAULT 0,
+        notes TEXT NOT NULL DEFAULT '[]',
+        query TEXT,
+        snippet TEXT,
+        rank INTEGER,
+        engine TEXT,
+        fetched_at TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX idx_web_sources_conversation ON web_sources(conversation_id, created_at);
+    CREATE INDEX idx_web_sources_message ON web_sources(message_id);
+    CREATE INDEX idx_web_sources_user ON web_sources(user_id);
+    ALTER TABLE messages ADD COLUMN web TEXT NOT NULL DEFAULT '{}';
+    """,
 ]
 
 

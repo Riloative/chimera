@@ -87,16 +87,27 @@ class Target(Strict):
     params: GenerationParams | None = None
 
 
-class SendMessage(Target):
+class WebOptions(Target):
+    # Links (found in the message) to read; null = apply the user's default.
+    urls: list[str] | None = Field(None, max_length=20)
+    web_search: bool | None = None
+    # IANA time zone of the browser, used for dates in web-grounded answers.
+    timezone: str | None = Field(None, max_length=64)
+
+
+class SendMessage(WebOptions):
     content: str = Field("", max_length=1_000_000)
     attachments: list[str] = Field(default_factory=list, max_length=20)
 
 
 class Regenerate(Target):
     message_id: str | None = None
+    # null = search again only if the replaced answer used search.
+    web_search: bool | None = None
+    timezone: str | None = Field(None, max_length=64)
 
 
-class EditMessage(Target):
+class EditMessage(WebOptions):
     content: str = Field(max_length=1_000_000)
 
 

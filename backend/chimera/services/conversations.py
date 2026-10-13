@@ -52,6 +52,7 @@ def message_out(row: dict) -> dict[str, Any]:
         "attachments": loads(row["attachments"], []),
         "sources": loads(row["sources"], []),
         "metrics": loads(row["metrics"], {}),
+        "web": loads(row.get("web"), {}),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

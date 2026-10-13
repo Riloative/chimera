@@ -1,6 +1,6 @@
 [project]
 name = "chimera"
-version = "0.2.0"
+version = "0.3.0"
 description = "A minimalist, privacy-first, self-hosted AI chat workspace for local LLMs (llama.cpp / llama-server, Ollama, OpenAI-compatible servers)."
 requires-python = ">=3.11"
 dependencies = [
@@ -12,6 +12,11 @@ dependencies = [
   "numpy>=1.26",
   "argon2-cffi>=23.1",
   "cryptography>=42",
+  # Web reading: main-content extraction to Markdown (pulls in lxml and
+  # charset-normalizer, which are also used directly).
+  "trafilatura>=2.0,<3",
+  "lxml>=5.0",
+  "charset-normalizer>=3.3",
 ]
 
 [project.optional-dependencies]

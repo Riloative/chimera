@@ -76,6 +76,15 @@ class Config:
     # Shared connection created for the first admin (empty string disables it).
     seed_provider_url: str = "http://127.0.0.1:8080"
     log_level: str = "info"
+    # --- web reading & search (initial values; administrators change them in the UI)
+    web_enabled: bool = False
+    web_searxng_url: str = ""
+    web_fetch_allowlist: list[str] = field(default_factory=list)
+    web_user_agent: str = ""
+    # Outbound proxy for web traffic only (disables DNS pinning; see docs/WEB.md).
+    web_proxy: str = ""
+    # Log full URLs (may contain secrets in query strings) instead of domains.
+    web_verbose_log: bool = False
 
     @property
     def db_path(self) -> Path:
@@ -155,6 +164,12 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         http_trust_env=_bool(env.get("CHIMERA_HTTP_TRUST_ENV")),
         seed_provider_url=env.get("CHIMERA_SEED_PROVIDER_URL", "http://127.0.0.1:8080"),
         log_level=env.get("CHIMERA_LOG_LEVEL", "info").lower(),
+        web_enabled=_bool(env.get("CHIMERA_WEB_ENABLED")),
+        web_searxng_url=(env.get("CHIMERA_WEB_SEARXNG_URL") or "").strip().rstrip("/"),
+        web_fetch_allowlist=_list(env.get("CHIMERA_WEB_FETCH_ALLOWLIST")),
+        web_user_agent=(env.get("CHIMERA_WEB_USER_AGENT") or "").strip(),
+        web_proxy=(env.get("CHIMERA_WEB_PROXY") or "").strip(),
+        web_verbose_log=_bool(env.get("CHIMERA_WEB_VERBOSE_LOG")),
     )
     return cfg
 

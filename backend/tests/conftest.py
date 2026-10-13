@@ -217,3 +217,106 @@ def live_app(config: Config) -> Iterator[LiveServer]:
     server.start()
     yield server
     server.stop()
+
+
+# ------------------------------------------------------------------ mock web
+import ipaddress  # noqa: E402
+
+import httpx  # noqa: E402
+
+from chimera.web.fetcher import SafeFetcher, make_client  # noqa: E402
+from tests.mock_web import create_web_app  # noqa: E402
+
+# Test host names resolve to this public address; MapTransport then delivers
+# the (pinned) connection to the local mock web server instead.
+FAKE_PUBLIC_IP = "93.184.215.14"
+FAKE_HOSTS = {
+    "news.example.org", "www.news.example.org", "docs.example.org", "blocked.example.net", "example.org",
+    "raw.githubusercontent.com", "github.com", "www.youtube.com", "youtu.be", "api.search.brave.com", "api.tavily.com",
+}
+
+
+class FakeResolver:
+    """Deterministic DNS: FAKE_HOSTS -> public IP; ``overrides`` for special
+    cases (e.g. a name that resolves to a private address); counts calls."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+        self.overrides: dict[str, list] = {}
+
+    async def __call__(self, host: str, port: int):
+        self.calls.append(host)
+        if host in self.overrides:
+            answer = self.overrides[host]
+            value = answer(len([h for h in self.calls if h == host])) if callable(answer) else answer
+            return [ipaddress.ip_address(a) for a in value]
+        if host in FAKE_HOSTS:
+            return [ipaddress.ip_address(FAKE_PUBLIC_IP)]
+        return []
+
+
+class MapTransport(httpx.AsyncBaseTransport):
+    """Delivers requests for mapped IPs to local ports; records what was asked."""
+
+    def __init__(self, mapping: dict[str, int]):
+        self.inner = httpx.AsyncHTTPTransport()
+        self.mapping = mapping
+        self.requests: list[httpx.Request] = []
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        host = request.url.host
+        if host in self.mapping:
+            request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=self.mapping[host])
+            request.extensions.pop("sni_hostname", None)
+        return await self.inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self.inner.aclose()
+
+
+class WebServer(LiveServer):
+    def __init__(self):
+        super().__init__(create_web_app())
+
+    def reset(self) -> None:
+        self.app.state.hits.clear()
+        self.app.state.json_disabled = False
+        self.app.state.searches.clear()
+
+
+@pytest.fixture(scope="session")
+def web_server() -> Iterator[WebServer]:
+    server = WebServer()
+    server.start()
+    yield server
+    server.stop()
+
+
+def make_fetcher(web_server: "WebServer") -> tuple[SafeFetcher, MapTransport, FakeResolver]:
+    transport = MapTransport({FAKE_PUBLIC_IP: web_server.port})
+    resolver = FakeResolver()
+    return SafeFetcher(make_client(transport=transport), resolver=resolver), transport, resolver
+
+
+class WebEnv:
+    def __init__(self, server, transport, resolver, state):
+        self.server, self.transport, self.resolver, self.state = server, transport, resolver, state
+
+    @property
+    def hits(self):
+        return self.server.app.state.hits
+
+
+@pytest.fixture()
+def web(client: CsrfClient, web_server: WebServer) -> Iterator[WebEnv]:
+    """Web access enabled (as the admin 'alice') with SearXNG = the mock web
+    server; page fetches go through the real SafeFetcher to the mock."""
+    web_server.reset()
+    state = client.app.state.chimera
+    fetcher, transport, resolver = make_fetcher(web_server)
+    state.web.fetcher = fetcher
+    resp = client.patch("/api/admin/web", json={"settings": {"enabled": True, "engine": "searxng", "searxng_url": web_server.url}})
+    assert resp.status_code == 200, resp.text
+    yield WebEnv(web_server, transport, resolver, state)
+    client.portal.call(fetcher.client.aclose)

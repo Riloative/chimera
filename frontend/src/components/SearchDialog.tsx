@@ -1,6 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { MessageSquare, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { formatTime } from "@/lib/time";
@@ -11,6 +12,7 @@ import { useUI } from "@/stores/ui";
 import { Kbd, Spinner } from "./ui";
 
 export function SearchDialog() {
+  const { t } = useTranslation("sidebar");
   const open = useUI((s) => s.searchOpen);
   const setOpen = useUI((s) => s.setSearchOpen);
   const recent = useConversations((s) => s.items);
@@ -68,7 +70,7 @@ export function SearchDialog() {
           className="animate-pop-in fixed top-[12vh] left-1/2 z-50 w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-elevated shadow-pop focus:outline-none"
           aria-describedby={undefined}
         >
-          <DialogPrimitive.Title className="sr-only">Search conversations</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="sr-only">{t("searchDialog.title")}</DialogPrimitive.Title>
           <div className="flex items-center gap-3 border-b border-line px-4">
             <Search className="size-4 shrink-0 text-faint" />
             <input
@@ -87,8 +89,8 @@ export function SearchDialog() {
                   go(items[active]);
                 }
               }}
-              placeholder="Search conversations…"
-              aria-label="Search conversations"
+              placeholder={t("searchDialog.placeholder")}
+              aria-label={t("searchDialog.title")}
               role="combobox"
               aria-expanded="true"
               aria-controls="search-results"
@@ -98,9 +100,9 @@ export function SearchDialog() {
             {loading && <Spinner />}
           </div>
           <ul id="search-results" ref={listRef} role="listbox" className="max-h-[55vh] overflow-y-auto p-1.5">
-            {!results && items.length > 0 && <li className="px-3 pt-1.5 pb-1 text-[0.72rem] font-medium text-faint">Recent</li>}
+            {!results && items.length > 0 && <li className="px-3 pt-1.5 pb-1 text-[0.72rem] font-medium text-faint">{t("searchDialog.recent")}</li>}
             {items.length === 0 && (
-              <li className="px-3 py-8 text-center text-sm text-muted">{query.trim() ? "No conversations found." : "No conversations yet."}</li>
+              <li className="px-3 py-8 text-center text-sm text-muted">{query.trim() ? t("searchDialog.noResults") : t("empty")}</li>
             )}
             {items.map((c, i) => (
               <li key={c.id} id={`search-item-${c.id}`} role="option" aria-selected={i === active} data-index={i}>
@@ -122,13 +124,13 @@ export function SearchDialog() {
           </ul>
           <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-[0.72rem] text-faint">
             <span>
-              <Kbd>↑</Kbd> <Kbd>↓</Kbd> navigate
+              <Kbd>↑</Kbd> <Kbd>↓</Kbd> {t("searchDialog.navigate")}
             </span>
             <span>
-              <Kbd>↵</Kbd> open
+              <Kbd>↵</Kbd> {t("searchDialog.open")}
             </span>
             <span>
-              <Kbd>esc</Kbd> close
+              <Kbd>esc</Kbd> {t("searchDialog.close")}
             </span>
           </div>
         </DialogPrimitive.Content>

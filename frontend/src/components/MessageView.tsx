@@ -9,19 +9,22 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { errorText, providerErrorText, serverDetail } from "@/lib/errors";
 import { api } from "@/lib/api";
 import { formatTime } from "@/lib/time";
 import type { Attachment, Message, Source } from "@/lib/types";
-import { cn, copyText, formatBytes, modelLabel } from "@/lib/utils";
+import { cn, copyText, formatBytes, formatNumber, modelLabel } from "@/lib/utils";
 import { LogoMark } from "./Logo";
 import { Markdown } from "./Markdown";
 import { Button, ConfirmDialog, Dialog, IconButton, Spinner } from "./ui";
 
-function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const { t } = useTranslation(["chat", "common"]);
   const [copied, setCopied] = useState(false);
   return (
     <IconButton
-      label={copied ? "Copied" : label}
+      label={copied ? t("message.copied") : label ?? t("message.copy")}
       size="sm"
       onClick={async () => {
         if (await copyText(text)) {
@@ -47,6 +50,7 @@ export function UserMessage({
   onEdit: (content: string) => Promise<void>;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation(["chat", "common"]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const [confirm, setConfirm] = useState(false);
@@ -82,7 +86,7 @@ export function UserMessage({
           <textarea
             ref={ref}
             value={draft}
-            aria-label="Edit message"
+            aria-label={t("message.editLabel")}
             onChange={(e) => {
               setDraft(e.target.value);
               e.target.style.height = "auto";
@@ -95,12 +99,12 @@ export function UserMessage({
             className="block w-full resize-none bg-transparent text-[0.95rem] leading-relaxed text-fg focus:outline-none"
           />
           <div className="mt-2 flex items-center justify-end gap-2">
-            <span className="mr-auto text-[0.72rem] text-faint">Later messages will be replaced.</span>
+            <span className="mr-auto text-[0.72rem] text-faint">{t("message.editWarning")}</span>
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-              Cancel
+              {t("common:cancel")}
             </Button>
             <Button size="sm" variant="primary" onClick={save} disabled={!draft.trim() && !message.attachments.length}>
-              Save & submit
+              {t("message.saveSubmit")}
             </Button>
           </div>
         </div>
@@ -119,10 +123,10 @@ export function UserMessage({
           <CopyButton text={message.content} />
           {!message.id.startsWith("temp-") && (
             <>
-              <IconButton label="Edit" size="sm" disabled={disabled} onClick={() => { setDraft(message.content); setEditing(true); }}>
+              <IconButton label={t("message.edit")} size="sm" disabled={disabled} onClick={() => { setDraft(message.content); setEditing(true); }}>
                 <Pencil className="size-3.5" />
               </IconButton>
-              <IconButton label="Delete message" size="sm" disabled={disabled} onClick={() => setConfirm(true)}>
+              <IconButton label={t("message.deleteMessage")} size="sm" disabled={disabled} onClick={() => setConfirm(true)}>
                 <Trash2 className="size-3.5" />
               </IconButton>
             </>
@@ -132,8 +136,8 @@ export function UserMessage({
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
-        title="Delete this message?"
-        description="Only this message is removed; the rest of the conversation stays."
+        title={t("message.deleteMessageTitle")}
+        description={t("message.deleteMessageBody")}
         onConfirm={onDelete}
       />
     </div>
@@ -141,6 +145,7 @@ export function UserMessage({
 }
 
 function AttachmentPreview({ attachment }: { attachment: Attachment }) {
+  const { t } = useTranslation(["chat", "common"]);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +156,7 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
     api
       .file(attachment.id)
       .then((f) => setText(f.text ?? ""))
-      .catch((e) => setError((e as Error).message));
+      .catch((e) => setError(errorText(e)));
   }, [open, isImage, attachment.id, text]);
 
   return (
@@ -172,7 +177,7 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
           <span className="block truncate text-[0.8125rem] text-fg">{attachment.filename}</span>
           <span className="block text-[0.7rem] text-faint">
             {formatBytes(attachment.size)}
-            {attachment.truncated && " · truncated"}
+            {attachment.truncated && ` · ${t("message.truncated")}`}
           </span>
         </span>
       </button>
@@ -180,7 +185,7 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
         open={open}
         onOpenChange={setOpen}
         title={attachment.filename}
-        description={isImage ? "Image attachment" : "Text extracted from this file and sent to the model."}
+        description={isImage ? t("message.imageAttachment") : t("message.extractedText")}
         size="lg"
       >
         {isImage ? (
@@ -213,6 +218,7 @@ export function AssistantMessage({
   onRegenerate: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation(["chat", "common"]);
   const [confirm, setConfirm] = useState(false);
   const streaming = message.status === "streaming";
   const waiting = streaming && !message.content && !message.reasoning;
@@ -222,15 +228,15 @@ export function AssistantMessage({
     <div className="group">
       <div className="mb-2 flex items-center gap-2 text-[0.8125rem] text-muted">
         <LogoMark className={cn("size-[18px] text-accent")} spinning={streaming} />
-        <span className="font-medium text-fg">{modelLabel(message.model)}</span>
+        <span className="truncate font-medium text-fg" title={message.model ?? undefined}>{modelLabel(message.model) || t("message.unknownModel")}</span>
       </div>
 
       {showReasoning && message.reasoning && <Reasoning text={message.reasoning} live={streaming && !message.content} />}
 
       {waiting ? (
-        <div className="flex h-7 items-center gap-1.5" role="status" aria-label="Waiting for the model">
+        <div className="flex h-7 items-center gap-1.5" role="status" aria-label={t("message.waiting")}>
           <span className="animate-breathe size-2 rounded-full bg-accent" />
-          <span className="text-[0.8125rem] text-faint">Thinking…</span>
+          <span className="text-[0.8125rem] text-faint">{t("message.thinking")}</span>
         </div>
       ) : (
         message.content && <Markdown content={message.content} streaming={streaming} />
@@ -242,12 +248,17 @@ export function AssistantMessage({
         <div role="alert" className="mt-3 flex items-start gap-3 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-3">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-fg">The response failed</p>
-            <p className="mt-0.5 text-[0.8125rem] leading-relaxed break-words text-muted">{message.error}</p>
+            <p className="text-sm font-medium text-fg">{t("message.failed")}</p>
+            <p className="mt-0.5 text-[0.8125rem] leading-relaxed break-words text-muted">
+              {providerErrorText(message.error_code, message.error_params, message.error)}
+            </p>
+            {serverDetail(message.error_params) && (
+              <p className="mt-1 font-mono text-[0.75rem] break-words text-faint">{serverDetail(message.error_params)}</p>
+            )}
           </div>
           {isLast && (
             <Button size="sm" variant="outline" icon={<RotateCcw className="size-3.5" />} onClick={onRegenerate} disabled={busy}>
-              Retry
+              {t("message.retry")}
             </Button>
           )}
         </div>
@@ -255,10 +266,10 @@ export function AssistantMessage({
       {(message.status === "cancelled" || message.status === "interrupted") && (
         <p className="mt-2 flex items-center gap-2 text-[0.8125rem] text-faint">
           <span className="inline-block size-1.5 rounded-full bg-faint" aria-hidden />
-          {message.status === "cancelled" ? "Stopped" : message.error || "Interrupted"}
+          {message.status === "cancelled" ? t("message.stopped") : message.error_code === "interrupted" || !message.error_code ? t("message.interrupted") : providerErrorText(message.error_code, message.error_params, message.error)}
           {isLast && (
             <button type="button" className="text-accent-text hover:underline disabled:opacity-50" onClick={onRegenerate} disabled={busy}>
-              Regenerate
+              {t("message.regenerate")}
             </button>
           )}
         </p>
@@ -266,27 +277,28 @@ export function AssistantMessage({
 
       {!streaming && (
         <div className="mt-2 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100 data-[last=true]:opacity-100" data-last={isLast}>
-          {message.content && <CopyButton text={message.content} label="Copy response" />}
-          <IconButton label="Regenerate" size="sm" onClick={onRegenerate} disabled={busy}>
+          {message.content && <CopyButton text={message.content} label={t("message.copyResponse")} />}
+          <IconButton label={t("message.regenerate")} size="sm" onClick={onRegenerate} disabled={busy}>
             <RotateCcw className="size-3.5" />
           </IconButton>
-          <IconButton label="Delete response" size="sm" onClick={() => setConfirm(true)} disabled={busy}>
+          <IconButton label={t("message.deleteResponse")} size="sm" onClick={() => setConfirm(true)} disabled={busy}>
             <Trash2 className="size-3.5" />
           </IconButton>
           <span className="ml-2 flex min-w-0 items-center gap-2 truncate font-mono text-[0.7rem] text-faint">
             <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
-            {m.tokens_per_second ? <span>· {m.tokens_per_second.toFixed(1)} tok/s</span> : null}
-            {m.completion_tokens ? <span>· {m.completion_tokens} tokens</span> : null}
-            {m.finish_reason === "length" && <span className="text-warning">· hit max tokens</span>}
+            {m.tokens_per_second ? <span>· {t("message.tokensPerSecond", { value: formatNumber(Number(m.tokens_per_second.toFixed(1))) })}</span> : null}
+            {m.completion_tokens ? <span>· {t("message.tokens", { count: m.completion_tokens })}</span> : null}
+            {m.finish_reason === "length" && <span className="text-warning">· {t("message.hitMaxTokens")}</span>}
           </span>
         </div>
       )}
-      <ConfirmDialog open={confirm} onOpenChange={setConfirm} title="Delete this response?" onConfirm={onDelete} />
+      <ConfirmDialog open={confirm} onOpenChange={setConfirm} title={t("message.deleteResponseTitle")} onConfirm={onDelete} />
     </div>
   );
 }
 
 function Reasoning({ text, live }: { text: string; live: boolean }) {
+  const { t } = useTranslation(["chat", "common"]);
   const [open, setOpen] = useState(false);
   return (
     <div className="mb-3">
@@ -297,7 +309,7 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
         className="flex items-center gap-1 rounded-md py-0.5 text-[0.8125rem] text-muted transition-colors hover:text-fg"
       >
         <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
-        {live ? "Thinking…" : "Thought process"}
+        {live ? t("message.thinking") : t("message.thoughtProcess")}
       </button>
       {open && (
         <div className="mt-1.5 ml-1.5 border-l-2 border-line pl-4 text-[0.875rem] leading-relaxed whitespace-pre-wrap text-muted">{text}</div>
@@ -307,10 +319,11 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
 }
 
 function Sources({ sources }: { sources: Source[] }) {
+  const { t } = useTranslation(["chat", "common"]);
   const [active, setActive] = useState<Source | null>(null);
   return (
     <div className="mt-3">
-      <p className="mb-1.5 text-[0.72rem] font-medium text-faint">Sources</p>
+      <p className="mb-1.5 text-[0.72rem] font-medium text-faint">{t("message.sources")}</p>
       <div className="flex flex-wrap gap-1.5">
         {sources.map((s) => (
           <button
@@ -328,7 +341,7 @@ function Sources({ sources }: { sources: Source[] }) {
         open={!!active}
         onOpenChange={(o) => !o && setActive(null)}
         title={active ? `[${active.n}] ${active.filename}` : ""}
-        description={active ? `Excerpt ${active.chunk_index + 1} · ${active.method} match` : undefined}
+        description={active ? t("message.excerpt", { n: active.chunk_index + 1, method: t(`method.${active.method as "keyword" | "semantic" | "hybrid"}`) }) : undefined}
       >
         <p className="mb-4 text-sm leading-relaxed whitespace-pre-wrap text-fg">{active?.text}</p>
       </Dialog>

@@ -1,0 +1,66 @@
+{
+  "saved": "Išsaugota",
+  "registration": {
+    "title": "Registracija",
+    "help": "Kas gali susikurti paskyrą šioje sistemoje.",
+    "mode": "Registracijos režimas",
+    "first_user_only": "Uždaryta po paruošimo",
+    "closed": "Uždaryta",
+    "open": "Atvira visiems",
+    "first_user_onlyHelp": "Užsiregistruoti galėjo tik pirmoji paskyra. Naujas paskyras kuria administratoriai.",
+    "closedHelp": "Paskyras gali kurti tik administratoriai.",
+    "openHelp": "Užsiregistruoti gali kiekvienas, pasiekiantis šį serverį. Naudokite tik patikimame tinkle."
+  },
+  "users": {
+    "title": "Naudotojai",
+    "help": "Šios sistemos paskyros. Kiekvienas naudotojas mato tik savo duomenis.",
+    "create": "Pridėti naudotoją",
+    "admin": "Administratorius",
+    "disabled": "Išjungta",
+    "mustChange": "Turi pasikeisti slaptažodį",
+    "you": "(jūs)",
+    "lastLogin": "paskutinį kartą prisijungė {{when}}",
+    "neverLoggedIn": "dar neprisijungė",
+    "options": "Naudotojo {{username}} parinktys",
+    "makeAdmin": "Suteikti administratoriaus teises",
+    "makeUser": "Atimti administratoriaus teises",
+    "disable": "Išjungti paskyrą",
+    "enable": "Įjungti paskyrą",
+    "resetPassword": "Atkurti slaptažodį",
+    "delete": "Ištrinti naudotoją",
+    "deleteTitle": "Ištrinti naudotoją {{username}}?",
+    "deleteBody": "Paskyra ir visi jos duomenys – pokalbiai, užklausos, žinios, įkelti failai ir ryšiai – bus ištrinti visam laikui."
+  },
+  "urlPolicy": {
+    "title": "Ryšių adresai",
+    "help": "Ryšiai verčia šį serverį siųsti užklausas naudotojo nurodytu adresu. Apribokite, ką gali naudoti ne administratoriai. Administratoriams apribojimai netaikomi.",
+    "label": "Naudotojams leidžiama",
+    "private": "Vietiniai ir privatūs tinklai",
+    "custom": "Tik nurodyti adresai",
+    "any": "Bet koks adresas",
+    "privateHelp": "Tik vietiniai (loopback), privatūs (pvz., 192.168.x.x) ir „link-local“ adresai.",
+    "customHelp": "Tik žemiau nurodyti serverių vardai ir tinklai.",
+    "anyHelp": "Jokių apribojimų. Naudotojai galėtų priversti šį serverį jungtis prie vidinių paslaugų.",
+    "allowlist": "Leidžiami serveriai ir tinklai",
+    "allowlistHelp": "Po vieną eilutėje: serverio vardas (gpu-box.lan) arba tinklas (10.0.0.0/8)."
+  },
+  "create": {
+    "title": "Pridėti naudotoją",
+    "help": "Palikite slaptažodį tuščią, ir bus sukurtas laikinasis, kurį reikės pakeisti pirmą kartą prisijungus.",
+    "email": "El. paštas",
+    "username": "Prisijungimo vardas",
+    "password": "Slaptažodis",
+    "passwordHint": "Neprivaloma.",
+    "role": "Vaidmuo",
+    "roleUser": "Naudotojas",
+    "roleAdmin": "Administratorius",
+    "submit": "Pridėti naudotoją"
+  },
+  "temporary": {
+    "title": "Laikinasis slaptažodis",
+    "body": "Perduokite šį slaptažodį naudotojui {{username}} saugiu būdu. Jis rodomas tik kartą, o kitą kartą prisijungus jį reikės pakeisti.",
+    "copy": "Kopijuoti",
+    "copied": "Nukopijuota",
+    "done": "Atlikta"
+  }
+}

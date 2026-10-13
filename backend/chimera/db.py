@@ -7,6 +7,7 @@ app: queries are tiny and SQLite in WAL mode handles them in microseconds.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import uuid
@@ -152,6 +153,77 @@ MIGRATIONS: list[str] = [
         INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
     END;
     """,
+    # 2 — user accounts, sessions, ownership, per-user settings, error codes
+    """
+    CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        email_norm TEXT NOT NULL UNIQUE,
+        username TEXT NOT NULL,
+        username_norm TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        language TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        must_change_password INTEGER NOT NULL DEFAULT 0,
+        last_login_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        csrf_hash TEXT NOT NULL,
+        remember INTEGER NOT NULL DEFAULT 0,
+        user_agent TEXT,
+        ip TEXT,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+    );
+    CREATE INDEX idx_sessions_user ON sessions(user_id);
+
+    CREATE TABLE auth_throttle (
+        key TEXT PRIMARY KEY,
+        failures INTEGER NOT NULL DEFAULT 0,
+        window_start REAL NOT NULL,
+        locked_until REAL NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE user_settings (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        PRIMARY KEY (user_id, key)
+    );
+
+    CREATE TABLE app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    INSERT INTO app_settings(key, value) SELECT key, value FROM settings WHERE key LIKE '!_%' ESCAPE '!';
+    DELETE FROM settings WHERE key LIKE '!_%' ESCAPE '!';
+
+    ALTER TABLE conversations ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE prompts ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE files ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE collections ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE providers ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+    ALTER TABLE providers ADD COLUMN shared INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE providers ADD COLUMN last_error_code TEXT;
+    ALTER TABLE providers ADD COLUMN last_error_params TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE messages ADD COLUMN error_code TEXT;
+    ALTER TABLE messages ADD COLUMN error_params TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE documents ADD COLUMN warning_code TEXT;
+
+    CREATE INDEX idx_conversations_user ON conversations(user_id, updated_at DESC);
+    CREATE INDEX idx_prompts_user ON prompts(user_id);
+    CREATE INDEX idx_files_user ON files(user_id);
+    CREATE INDEX idx_collections_user ON collections(user_id);
+    CREATE INDEX idx_providers_user ON providers(user_id);
+    """,
 ]
 
 
@@ -177,8 +249,10 @@ def loads(value: str | None, default: Any = None) -> Any:
 
 
 class Database:
-    def __init__(self, path: Path | str):
+    def __init__(self, path: Path | str, backups_dir: Path | None = None):
         self.path = Path(path) if str(path) != ":memory:" else path
+        self.backups_dir = backups_dir
+        self.last_backup: Path | None = None
         self._lock = threading.RLock()
         self._conn = self._open()
         self.migrate()
@@ -204,6 +278,16 @@ class Database:
     def migrate(self) -> None:
         with self._lock:
             current = self.schema_version()
+            if 0 < current < len(MIGRATIONS) and self.backups_dir is not None:
+                # Never migrate a populated database without a restorable copy.
+                self.backups_dir.mkdir(parents=True, exist_ok=True)
+                stamp = now_iso().replace(":", "").replace("-", "").replace(".", "")
+                target = self.backups_dir / f"pre-migration-v{current}-to-v{len(MIGRATIONS)}-{stamp}.sqlite"
+                self.backup_to(target)
+                self.last_backup = target
+                logging.getLogger("chimera.db").warning(
+                    "Database schema v%d -> v%d: backup written to %s", current, len(MIGRATIONS), target
+                )
             for index, script in enumerate(MIGRATIONS, start=1):
                 if index <= current:
                     continue

@@ -1,0 +1,78 @@
+{
+  "legacy": {
+    "body": "Sveiki! Duomenys, sukurti dar prieš atsirandant paskyroms, dabar priklauso jums: {{items}}. Kiti naudotojai jų nematys.",
+    "conversations_one": "{{count}} pokalbis",
+    "conversations_few": "{{count}} pokalbiai",
+    "conversations_many": "{{count}} pokalbio",
+    "conversations_other": "{{count}} pokalbių",
+    "prompts_one": "{{count}} užklausa",
+    "prompts_few": "{{count}} užklausos",
+    "prompts_many": "{{count}} užklausos",
+    "prompts_other": "{{count}} užklausų",
+    "files_one": "{{count}} priedas",
+    "files_few": "{{count}} priedai",
+    "files_many": "{{count}} priedo",
+    "files_other": "{{count}} priedų",
+    "collections_one": "{{count}} žinių rinkinys",
+    "collections_few": "{{count}} žinių rinkiniai",
+    "collections_many": "{{count}} žinių rinkinio",
+    "collections_other": "{{count}} žinių rinkinių",
+    "providers_one": "{{count}} ryšys",
+    "providers_few": "{{count}} ryšiai",
+    "providers_many": "{{count}} ryšio",
+    "providers_other": "{{count}} ryšių",
+    "settings": "ankstesni jūsų nustatymai",
+    "dismiss": "Paslėpti šį pranešimą"
+  },
+  "profile": {
+    "title": "Profilis",
+    "adminNote": "Esate šios sistemos administratorius.",
+    "username": "Prisijungimo vardas",
+    "email": "El. paštas",
+    "currentPassword": "Dabartinis slaptažodis",
+    "passwordNeeded": "Reikalingas norint pakeisti prisijungimo vardą ar el. paštą.",
+    "save": "Išsaugoti profilį",
+    "saved": "Profilis atnaujintas"
+  },
+  "language": {
+    "title": "Kalba",
+    "help": "Išsaugoma jūsų paskyroje, todėl taikoma ir kituose įrenginiuose."
+  },
+  "password": {
+    "title": "Slaptažodis",
+    "help": "Pakeitus slaptažodį, visi kiti seansai bus atjungti.",
+    "current": "Dabartinis slaptažodis",
+    "new": "Naujas slaptažodis",
+    "confirm": "Pakartokite naują slaptažodį",
+    "submit": "Pakeisti slaptažodį",
+    "changed": "Slaptažodis pakeistas. Kiti seansai atjungti."
+  },
+  "sessions": {
+    "title": "Aktyvūs seansai",
+    "help": "Įrenginiai, kuriuose esate prisijungę. Atjunkite tuos, kurių neatpažįstate.",
+    "current": "Šis įrenginys",
+    "unknownDevice": "Nežinomas įrenginys",
+    "meta": "Prisijungta {{created}} · paskutinį kartą aktyvus {{used}}",
+    "revoke": "Atjungti",
+    "revoked": "Seansas atjungtas",
+    "revokeOthers": "Atjungti visus kitus seansus",
+    "revokedOthers_one": "Atjungtas {{count}} kitas seansas",
+    "revokedOthers_few": "Atjungti {{count}} kiti seansai",
+    "revokedOthers_many": "Atjungta {{count}} kito seanso",
+    "revokedOthers_other": "Atjungta {{count}} kitų seansų"
+  },
+  "export": {
+    "title": "Mano duomenų eksportas",
+    "help": "Atsisiųskite savo pokalbius, užklausas ir nustatymus JSON formatu.",
+    "button": "Eksportuoti mano duomenis"
+  },
+  "delete": {
+    "title": "Paskyros ištrynimas",
+    "help": "Visam laikui ištrinama jūsų paskyra ir viskas, kas joje yra: pokalbiai, užklausos, žinios, įkelti failai ir asmeniniai ryšiai.",
+    "button": "Ištrinti mano paskyrą",
+    "confirmTitle": "Ištrinti jūsų paskyrą?",
+    "confirmBody": "Šio veiksmo atšaukti negalima. Patvirtinkite įvesdami slaptažodį.",
+    "password": "Slaptažodis",
+    "confirm": "Ištrinti paskyrą"
+  }
+}

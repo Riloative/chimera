@@ -15,6 +15,11 @@ export interface Provider {
   manual_models: string[];
   status: ProviderStatus;
   last_error: string | null;
+  last_error_code: string | null;
+  last_error_params: Record<string, unknown>;
+  shared: boolean;
+  owned: boolean;
+  editable: boolean;
   latency_ms: number | null;
   checked_at: string | null;
   models_fetched_at: string | null;
@@ -54,11 +59,15 @@ export interface ProviderModels {
   models: ModelInfo[];
   stale: boolean;
   error: string | null;
+  error_code?: string | null;
+  error_params?: Record<string, unknown>;
 }
 
 export interface HealthCheck {
   name: string;
   ok: boolean | null;
+  code?: string;
+  params?: Record<string, unknown>;
   detail: string;
   latency_ms?: number;
 }
@@ -68,6 +77,7 @@ export interface TestResult {
   latency_ms: number | null;
   error: string | null;
   error_code: string | null;
+  error_params: Record<string, unknown>;
   models: ModelInfo[];
   models_ok: boolean;
   capabilities: Capabilities;
@@ -145,6 +155,8 @@ export interface Message {
   reasoning: string;
   status: MessageStatus;
   error: string | null;
+  error_code?: string | null;
+  error_params?: Record<string, unknown>;
   provider_id: string | null;
   model: string | null;
   attachments: Attachment[];
@@ -215,6 +227,7 @@ export interface KnowledgeDocument {
   status: string;
   error: string | null;
   warning: string | null;
+  warning_code?: string | null;
   chunk_count: number;
   char_count: number;
   embedding_model: string | null;
@@ -234,4 +247,42 @@ export interface SearchHit {
 export interface ModelRef {
   providerId: string;
   model: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  role: "admin" | "user";
+  language: "en" | "lt" | null;
+  active: boolean;
+  must_change_password: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  legacy_notice?: Record<string, number> | null;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  user: User | null;
+  registration_open: boolean;
+  needs_setup: boolean;
+  setup_token_required: boolean;
+}
+
+export interface SessionInfo {
+  id: string;
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
+  user_agent: string | null;
+  ip: string | null;
+  remember: boolean;
+  current: boolean;
+}
+
+export interface AdminSettings {
+  registration_mode: "open" | "closed" | "first_user_only";
+  provider_url_policy: "any" | "private" | "custom";
+  provider_url_allowlist: string[];
 }

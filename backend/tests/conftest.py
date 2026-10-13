@@ -74,11 +74,62 @@ def mock(mock_server: MockServer) -> MockServer:
     return mock_server
 
 
+PASSWORD = "correct horse battery"
+
+
 def make_config(tmp_path: Path, **overrides) -> Config:
-    cfg = Config(data_dir=tmp_path / "data", static_dir=None, seed_provider_url="", allowed_hosts=["localhost", "127.0.0.1", "testserver"])
+    cfg = Config(
+        data_dir=tmp_path / "data",
+        static_dir=None,
+        seed_provider_url="",
+        allowed_hosts=["localhost", "127.0.0.1", "testserver"],
+        # Cheap hashing keeps the suite fast; production uses RFC 9106 settings.
+        argon2_time_cost=1,
+        argon2_memory_kib=1024,
+        argon2_parallelism=1,
+    )
     for key, value in overrides.items():
         setattr(cfg, key, value)
     return cfg
+
+
+class CsrfClient(TestClient):
+    """TestClient that sends the double-submit CSRF header like the web UI."""
+
+    send_csrf = True
+
+    def build_request(self, method, url, **kwargs):  # type: ignore[override]
+        token = self.cookies.get("chimera_csrf")
+        if token and self.send_csrf:
+            headers = dict(kwargs.pop("headers", None) or {})
+            headers.setdefault("X-CSRF-Token", token)
+            kwargs["headers"] = headers
+        return super().build_request(method, url, **kwargs)
+
+
+_PORTALS: dict[int, object] = {}
+
+
+def new_client(app, **kwargs) -> CsrfClient:
+    """A second browser on the same running app (shares its event loop so
+    background generations started by this client keep running)."""
+    c = CsrfClient(app, base_url="http://localhost", **kwargs)
+    c.portal = _PORTALS.get(id(app))  # type: ignore[assignment]
+    c.get("/api/auth/status")  # obtains the anonymous CSRF cookie
+    return c
+
+
+def register(c: TestClient, username: str, email: str | None = None, password: str = PASSWORD, headers=None, **extra):
+    return c.post(
+        "/api/auth/register",
+        json={"email": email or f"{username}@example.com", "username": username, "password": password,
+              "password_confirm": password, **extra},
+        headers=headers,
+    )
+
+
+def login(c: TestClient, identifier: str, password: str = PASSWORD, headers=None, **extra):
+    return c.post("/api/auth/login", json={"identifier": identifier, "password": password, **extra}, headers=headers)
 
 
 @pytest.fixture()
@@ -87,10 +138,43 @@ def config(tmp_path: Path) -> Config:
 
 
 @pytest.fixture()
-def client(config: Config) -> Iterator[TestClient]:
-    app = create_app(config)
-    with TestClient(app, base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
+def app(config: Config):
+    return create_app(config)
+
+
+@pytest.fixture()
+def anon(app) -> Iterator[CsrfClient]:
+    """Runs the app lifespan; not logged in."""
+    with CsrfClient(app, base_url="http://localhost") as c:
+        _PORTALS[id(app)] = c.portal
+        c.get("/api/auth/status")
         yield c
+    _PORTALS.pop(id(app), None)
+
+
+@pytest.fixture()
+def client(anon: CsrfClient) -> CsrfClient:
+    """Logged in as 'alice', the first account (administrator)."""
+    resp = register(anon, "alice")
+    assert resp.status_code == 201, resp.text
+    return anon
+
+
+@pytest.fixture()
+def make_user(app, client):
+    """Create another (non-admin) user and return a client logged in as them."""
+
+    def _make(username: str = "bob") -> CsrfClient:
+        resp = client.post(
+            "/api/admin/users",
+            json={"email": f"{username}@example.com", "username": username, "password": PASSWORD},
+        )
+        assert resp.status_code == 201, resp.text
+        other = new_client(app)
+        assert login(other, username).status_code == 200
+        return other
+
+    return _make
 
 
 def read_sse(response) -> list[tuple[str, dict]]:
@@ -128,6 +212,7 @@ def conversation(client: TestClient, provider: dict, mock: MockServer) -> dict:
 
 @pytest.fixture()
 def live_app(config: Config) -> Iterator[LiveServer]:
+    config.registration_mode = "open"
     server = LiveServer(create_app(config), lifespan="on")
     server.start()
     yield server

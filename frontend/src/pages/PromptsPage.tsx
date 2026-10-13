@@ -1,6 +1,8 @@
 import { BookOpen, Copy, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { errorText } from "@/lib/errors";
 import { PageHeader, PageShell } from "@/components/Page";
 import { Button, ConfirmDialog, Dialog, Field, Input, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, Spinner, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -9,6 +11,7 @@ import { copyText } from "@/lib/utils";
 import { toast, useUI } from "@/stores/ui";
 
 export function PromptsPage() {
+  const { t } = useTranslation(["prompts", "common"]);
   const [items, setItems] = useState<Prompt[] | null>(null);
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState<Prompt | "new" | null>(null);
@@ -17,7 +20,7 @@ export function PromptsPage() {
   const insert = useUI((s) => s.insertIntoComposer);
   const setDraft = useUI((s) => s.setDraft);
 
-  const load = () => api.prompts().then(setItems).catch((e) => toast(e.message, "error"));
+  const load = () => api.prompts().then(setItems).catch((e) => toast(errorText(e), "error"));
   useEffect(() => {
     void load();
   }, []);
@@ -27,10 +30,10 @@ export function PromptsPage() {
     const list = (items ?? []).filter((p) => !q || [p.title, p.description, p.category, p.content].some((s) => s.toLowerCase().includes(q)));
     const map = new Map<string, Prompt[]>();
     for (const p of list) {
-      const key = p.category || "Uncategorized";
+      const key = p.category || "";
       map.set(key, [...(map.get(key) ?? []), p]);
     }
-    return [...map.entries()].sort(([a], [b]) => (a === "Uncategorized" ? 1 : b === "Uncategorized" ? -1 : a.localeCompare(b)));
+    return [...map.entries()].sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)));
   }, [items, filter]);
 
   const categories = useMemo(() => [...new Set((items ?? []).map((p) => p.category).filter(Boolean))], [items]);
@@ -38,29 +41,29 @@ export function PromptsPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Prompts"
-        description="Reusable instructions and templates. Insert them into a message, or use one as a conversation's system prompt."
+        title={t("title")}
+        description={t("description")}
         actions={
           <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing("new")}>
-            New prompt
+            {t("new")}
           </Button>
         }
       />
       {items && items.length > 0 && (
-        <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter prompts" aria-label="Filter prompts" className="mb-6 max-w-sm" />
+        <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("filter")} aria-label={t("filter")} className="mb-6 max-w-sm" />
       )}
       {items === null ? (
         <Spinner />
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line-strong px-6 py-12 text-center">
           <BookOpen className="mx-auto mb-3 size-6 text-faint" />
-          <p className="font-medium text-fg">Your prompt library is empty</p>
-          <p className="mt-1 text-sm text-muted">Save instructions you use often — a code reviewer, a translator, a writing style.</p>
+          <p className="font-medium text-fg">{t("empty.title")}</p>
+          <p className="mt-1 text-sm text-muted">{t("empty.body")}</p>
         </div>
       ) : (
         groups.map(([category, prompts]) => (
           <section key={category} className="mb-8">
-            <h2 className="mb-2 text-[0.75rem] font-medium text-faint">{category}</h2>
+            <h2 className="mb-2 text-[0.75rem] font-medium text-faint">{category || t("uncategorized")}</h2>
             <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-elevated">
               {prompts.map((p) => (
                 <li key={p.id} className="group flex items-start gap-3 px-4 py-3.5">
@@ -77,11 +80,11 @@ export function PromptsPage() {
                       navigate("/");
                     }}
                   >
-                    Use
+                    {t("use")}
                   </Button>
                   <MenuRoot>
                     <MenuTrigger asChild>
-                      <button type="button" aria-label={`Options for ${p.title}`} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-hover hover:text-fg">
+                      <button type="button" aria-label={t("options", { title: p.title })} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-hover hover:text-fg">
                         <MoreHorizontal className="size-4" />
                       </button>
                     </MenuTrigger>
@@ -91,20 +94,20 @@ export function PromptsPage() {
                         onSelect={() => {
                           setDraft({ systemPrompt: p.content });
                           navigate("/");
-                          toast(`New chat will use “${p.title}” as its system prompt`);
+                          toast(t("useAsSystemToast", { title: p.title }));
                         }}
                       >
-                        New chat with this as system prompt
+                        {t("useAsSystem")}
                       </MenuItem>
-                      <MenuItem icon={<Copy />} onSelect={async () => (await copyText(p.content)) && toast("Copied")}>
-                        Copy
+                      <MenuItem icon={<Copy />} onSelect={async () => (await copyText(p.content)) && toast(t("copied"))}>
+                        {t("copy")}
                       </MenuItem>
                       <MenuItem icon={<Pencil />} onSelect={() => setEditing(p)}>
-                        Edit
+                        {t("common:edit")}
                       </MenuItem>
                       <MenuSeparator />
                       <MenuItem icon={<Trash2 />} destructive onSelect={() => setDeleting(p)}>
-                        Delete
+                        {t("common:delete")}
                       </MenuItem>
                     </MenuContent>
                   </MenuRoot>
@@ -124,7 +127,7 @@ export function PromptsPage() {
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
-        title={`Delete “${deleting?.title}”?`}
+        title={t("deleteTitle", { title: deleting?.title ?? "" })}
         onConfirm={async () => {
           if (deleting) await api.deletePrompt(deleting.id);
           await load();
@@ -135,6 +138,7 @@ export function PromptsPage() {
 }
 
 function PromptDialog({ prompt, open, categories, onClose, onSaved }: { prompt: Prompt | null; open: boolean; categories: string[]; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation(["prompts", "common"]);
   const [form, setForm] = useState({ title: "", description: "", category: "", content: "" });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -148,7 +152,7 @@ function PromptDialog({ prompt, open, categories, onClose, onSaved }: { prompt: 
       onSaved();
       onClose();
     } catch (err) {
-      toast((err as Error).message, "error");
+      toast(errorText(err), "error");
     } finally {
       setSaving(false);
     }
@@ -157,26 +161,26 @@ function PromptDialog({ prompt, open, categories, onClose, onSaved }: { prompt: 
     <Dialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title={prompt ? "Edit prompt" : "New prompt"}
+      title={prompt ? t("edit") : t("new")}
       size="lg"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            {t("common:cancel")}
           </Button>
           <Button variant="primary" onClick={save} loading={saving} disabled={!form.title.trim() || !form.content.trim()}>
-            Save
+            {t("common:save")}
           </Button>
         </>
       }
     >
       <div className="space-y-4 pb-3">
         <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
-          <Field label="Title" htmlFor="pr-title">
+          <Field label={t("fields.title")} htmlFor="pr-title">
             <Input id="pr-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={200} autoFocus />
           </Field>
-          <Field label="Category" htmlFor="pr-cat">
-            <Input id="pr-cat" list="prompt-categories" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} maxLength={80} placeholder="e.g. Code" />
+          <Field label={t("fields.category")} htmlFor="pr-cat">
+            <Input id="pr-cat" list="prompt-categories" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} maxLength={80} placeholder={t("fields.categoryPlaceholder")} />
             <datalist id="prompt-categories">
               {categories.map((c) => (
                 <option key={c} value={c} />
@@ -184,10 +188,10 @@ function PromptDialog({ prompt, open, categories, onClose, onSaved }: { prompt: 
             </datalist>
           </Field>
         </div>
-        <Field label="Description" htmlFor="pr-desc">
-          <Input id="pr-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} maxLength={1000} placeholder="Optional" />
+        <Field label={t("fields.description")} htmlFor="pr-desc">
+          <Input id="pr-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} maxLength={1000} placeholder={t("fields.optional")} />
         </Field>
-        <Field label="Prompt" htmlFor="pr-content">
+        <Field label={t("fields.content")} htmlFor="pr-content">
           <Textarea id="pr-content" rows={10} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="font-mono text-[0.8125rem]" />
         </Field>
       </div>

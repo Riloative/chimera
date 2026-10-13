@@ -1,0 +1,26 @@
+{
+  "loading": "Loading",
+  "close": "Close",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "save": "Save",
+  "create": "Create",
+  "edit": "Edit",
+  "dismiss": "Dismiss",
+  "retry": "Retry",
+  "error": "Error",
+  "success": "Success",
+  "dialog": "Dialog",
+  "language": "Language",
+  "skipToContent": "Skip to content",
+  "status": {
+    "connected": "Connected",
+    "error": "Unreachable",
+    "unknown": "Not tested",
+    "disabled": "Disabled"
+  },
+  "offline": {
+    "title": "Cannot reach the Chimera server.",
+    "body": "Make sure it is running, then try again."
+  }
+}

@@ -35,6 +35,7 @@ class ProviderCreate(Strict):
     enabled: bool = True
     vision: Literal["auto", "on", "off"] = "auto"
     manual_models: list[str] = Field(default_factory=list, max_length=200)
+    shared: bool = False
 
     _url = field_validator("base_url")(_validate_url)
 
@@ -50,6 +51,7 @@ class ProviderUpdate(Strict):
     enabled: bool | None = None
     vision: Literal["auto", "on", "off"] | None = None
     manual_models: list[str] | None = Field(None, max_length=200)
+    shared: bool | None = None
 
     _url = field_validator("base_url")(_validate_url)
 
@@ -120,8 +122,58 @@ class SearchBody(Strict):
     top_k: int | None = Field(None, ge=1, le=50)
 
 
+Language = Literal["en", "lt"]
+
+
 class LoginBody(Strict):
+    identifier: str = Field(max_length=254)
     password: str = Field(max_length=1000)
+    remember: bool = False
+
+
+class RegisterBody(Strict):
+    email: str = Field(max_length=254)
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=1000)
+    password_confirm: str = Field(max_length=1000)
+    language: Language | None = None
+    setup_token: str | None = Field(None, max_length=500)
+    remember: bool = False
+
+
+class ProfileUpdate(Strict):
+    email: str | None = Field(None, max_length=254)
+    username: str | None = Field(None, max_length=64)
+    language: Language | None = None
+    current_password: str | None = Field(None, max_length=1000)
+
+
+class PasswordChange(Strict):
+    current_password: str = Field(max_length=1000)
+    new_password: str = Field(max_length=1000)
+    new_password_confirm: str = Field(max_length=1000)
+
+
+class AccountDelete(Strict):
+    password: str = Field(max_length=1000)
+
+
+class AdminUserCreate(Strict):
+    email: str = Field(max_length=254)
+    username: str = Field(max_length=64)
+    password: str | None = Field(None, max_length=1000)
+    role: Literal["admin", "user"] = "user"
+
+
+class AdminUserUpdate(Strict):
+    role: Literal["admin", "user"] | None = None
+    active: bool | None = None
+
+
+class AdminSettings(Strict):
+    registration_mode: Literal["open", "closed", "first_user_only"] | None = None
+    provider_url_policy: Literal["any", "private", "custom"] | None = None
+    provider_url_allowlist: list[str] | None = Field(None, max_length=100)
 
 
 class ClearData(Strict):

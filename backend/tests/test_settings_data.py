@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from chimera.main import create_app
 
-from .conftest import read_sse
+from .conftest import CsrfClient, login, read_sse, register
 
 
 def test_settings_defaults_and_validation(client):
@@ -23,7 +23,9 @@ def test_settings_defaults_and_validation(client):
 
 def test_settings_persist_across_restart(config):
     for attempt in range(2):
-        with TestClient(create_app(config), base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
+        with CsrfClient(create_app(config), base_url="http://localhost") as c:
+            c.get("/api/auth/status")
+            (register if attempt == 0 else login)(c, "alice")
             if attempt == 0:
                 c.patch("/api/settings", json={"theme": "light", "font_size": "lg", "sidebar_collapsed": True})
             else:
@@ -35,12 +37,17 @@ def test_default_provider_seeded_once(tmp_path):
     from .conftest import make_config
 
     cfg = make_config(tmp_path, seed_provider_url="http://127.0.0.1:8080")
-    with TestClient(create_app(cfg), base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
+    with CsrfClient(create_app(cfg), base_url="http://localhost") as c:
+        c.get("/api/auth/status")
+        register(c, "alice")
         providers = c.get("/api/providers").json()
         assert len(providers) == 1 and providers[0]["kind"] == "llamacpp"
+        assert providers[0]["shared"] is True  # created for the first admin, usable by everyone
         assert providers[0]["status"] == "unknown"  # never claim "connected" before testing
         c.delete(f"/api/providers/{providers[0]['id']}")
-    with TestClient(create_app(cfg), base_url="http://localhost", headers={"X-Chimera-Request": "1"}) as c:
+    with CsrfClient(create_app(cfg), base_url="http://localhost") as c:
+        c.get("/api/auth/status")
+        login(c, "alice")
         assert c.get("/api/providers").json() == []  # deleting it is respected
 
 
@@ -132,9 +139,9 @@ def test_dotenv_parsing_and_precedence(tmp_path, monkeypatch):
     from chimera.config import load_config, read_dotenv
 
     env_file = tmp_path / ".env"
-    env_file.write_text('# comment\nCHIMERA_PORT=9999\nexport CHIMERA_PASSWORD="s3cret pw"\nCHIMERA_LOG_LEVEL=debug # trailing\n')
-    assert read_dotenv(env_file) == {"CHIMERA_PORT": "9999", "CHIMERA_PASSWORD": "s3cret pw", "CHIMERA_LOG_LEVEL": "debug"}
+    env_file.write_text('# comment\nCHIMERA_PORT=9999\nexport CHIMERA_SETUP_TOKEN="s3cret pw"\nCHIMERA_LOG_LEVEL=debug # trailing\n')
+    assert read_dotenv(env_file) == {"CHIMERA_PORT": "9999", "CHIMERA_SETUP_TOKEN": "s3cret pw", "CHIMERA_LOG_LEVEL": "debug"}
     monkeypatch.setenv("CHIMERA_ENV_FILE", str(env_file))
     monkeypatch.setenv("CHIMERA_PORT", "8123")
     cfg = load_config()
-    assert cfg.port == 8123 and cfg.password == "s3cret pw" and cfg.allowed_hosts == ["*"]
+    assert cfg.port == 8123 and cfg.setup_token == "s3cret pw" and cfg.registration_mode == "first_user_only"

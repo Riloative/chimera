@@ -61,12 +61,16 @@ class AppSettings(BaseModel):
 
 
 class SettingsStore:
+    """Per-user preferences (``user_settings``)."""
+
     def __init__(self, db: Database):
         self.db = db
 
-    def get(self) -> AppSettings:
+    def get(self, user_id: str) -> AppSettings:
         stored: dict = {}
-        for row in self.db.all("SELECT key, value FROM settings WHERE key NOT LIKE '\\_%' ESCAPE '\\'"):
+        for row in self.db.all(
+            "SELECT key, value FROM user_settings WHERE user_id = ? AND key NOT LIKE '!_%' ESCAPE '!'", (user_id,)
+        ):
             stored[row["key"]] = loads(row["value"])
         known = {k: v for k, v in stored.items() if k in AppSettings.model_fields}
         try:
@@ -80,8 +84,8 @@ class SettingsStore:
                     continue
             return settings
 
-    def update(self, patch: dict) -> AppSettings:
-        current = self.get().model_dump()
+    def update(self, user_id: str, patch: dict) -> AppSettings:
+        current = self.get(user_id).model_dump()
         for key, value in patch.items():
             if isinstance(value, dict) and isinstance(current.get(key), dict):
                 current[key] = {**current[key], **value}
@@ -92,7 +96,15 @@ class SettingsStore:
         with self.db.transaction() as conn:
             for key in patch:
                 conn.execute(
-                    "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    (key, dumps(dumped[key])),
+                    """INSERT INTO user_settings(user_id, key, value) VALUES (?, ?, ?)
+                       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value""",
+                    (user_id, key, dumps(dumped[key])),
                 )
         return validated
+
+    def private(self, user_id: str, key: str, default=None):
+        row = self.db.one("SELECT value FROM user_settings WHERE user_id = ? AND key = ?", (user_id, "_" + key))
+        return loads(row["value"], default) if row else default
+
+    def clear_private(self, user_id: str, key: str) -> None:
+        self.db.execute("DELETE FROM user_settings WHERE user_id = ? AND key = ?", (user_id, "_" + key))

@@ -1,7 +1,9 @@
 import * as Popover from "@radix-ui/react-popover";
 import { ArrowUp, BookOpen, FileText, Image as ImageIcon, Library, Loader2, Paperclip, SlidersHorizontal, Square, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { errorText } from "@/lib/errors";
 import { api } from "@/lib/api";
 import type { Attachment, ModelRef, Prompt } from "@/lib/types";
 import { cn, formatBytes, modKey } from "@/lib/utils";
@@ -49,9 +51,10 @@ export function Composer({
   settingsActive,
   knowledgeCount = 0,
   autoFocus,
-  placeholder = "Message Chimera…",
+  placeholder,
   conversationKey,
 }: ComposerProps) {
+  const { t } = useTranslation("chat");
   const [text, setText] = useState("");
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -89,7 +92,7 @@ export function Composer({
       api
         .uploadFile(file)
         .then((attachment) => setFiles((f) => f.map((p) => (p.key === key ? { ...p, status: "ready", attachment } : p))))
-        .catch((err) => setFiles((f) => f.map((p) => (p.key === key ? { ...p, status: "error", error: (err as Error).message } : p))));
+        .catch((err) => setFiles((f) => f.map((p) => (p.key === key ? { ...p, status: "error", error: errorText(err) } : p))));
     }
   }, []);
 
@@ -158,9 +161,9 @@ export function Composer({
   };
 
   let hint: string | null = null;
-  if (!model) hint = "Select a model to start chatting.";
-  else if (hasBlockedImage) hint = "This model doesn't accept images. Choose a vision model or remove the image.";
-  else if (hasErrors) hint = "Remove the attachments that failed to upload.";
+  if (!model) hint = t("composer.selectModel");
+  else if (hasBlockedImage) hint = t("composer.noVision");
+  else if (hasErrors) hint = t("composer.removeFailed");
 
   return (
     <div className="w-full">
@@ -180,14 +183,14 @@ export function Composer({
         )}
       >
         {files.length > 0 && (
-          <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label="Attachments">
+          <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label={t("composer.attachments")}>
             {files.map((f) => (
               <AttachmentChip key={f.key} file={f} visionSupported={visionSupported} onRemove={() => removeFile(f.key)} />
             ))}
           </ul>
         )}
         <label htmlFor="composer-input" className="sr-only">
-          Message
+          {t("composer.label")}
         </label>
         <textarea
           id="composer-input"
@@ -197,7 +200,7 @@ export function Composer({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           rows={1}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t("composer.placeholder")}
           className="block max-h-[40vh] min-h-[3.25rem] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[0.95rem] leading-relaxed text-fg placeholder:text-faint focus:outline-none focus-visible:outline-none"
           aria-describedby="composer-hint"
         />
@@ -213,17 +216,17 @@ export function Composer({
               e.target.value = "";
             }}
           />
-          <IconButton label="Attach files" onClick={() => fileRef.current?.click()}>
+          <IconButton label={t("composer.attach")} onClick={() => fileRef.current?.click()}>
             <Paperclip className="size-[18px]" />
           </IconButton>
           <PromptInsert onInsert={(p) => setText((t) => (t.trim() ? `${t}\n\n${p.content}` : p.content))} />
           {onOpenSettings && (
-            <IconButton label="Conversation settings" onClick={onOpenSettings} active={settingsActive}>
+            <IconButton label={t("settings.title")} onClick={onOpenSettings} active={settingsActive}>
               <SlidersHorizontal className="size-[18px]" />
             </IconButton>
           )}
           {knowledgeCount > 0 && (
-            <Tooltip label={`Searching ${knowledgeCount} knowledge collection${knowledgeCount > 1 ? "s" : ""}`}>
+            <Tooltip label={t("composer.knowledgeActive", { count: knowledgeCount })}>
               <button
                 type="button"
                 onClick={onOpenSettings}
@@ -237,7 +240,7 @@ export function Composer({
           <ModelPicker value={model} onChange={onModelChange} compact />
           {streaming ? (
             <IconButton
-              label="Stop generating"
+              label={t("composer.stop")}
               shortcut="Esc"
               onClick={onStop}
               className="ml-1 size-8 rounded-lg bg-fg text-bg hover:bg-fg hover:text-bg hover:opacity-85"
@@ -246,7 +249,7 @@ export function Composer({
             </IconButton>
           ) : (
             <IconButton
-              label={enterToSend ? "Send message" : `Send message (${modKey}+Enter)`}
+              label={t("composer.send")}
               shortcut={enterToSend ? "Enter" : `${modKey} ↵`}
               onClick={submit}
               disabled={!canSend}
@@ -261,13 +264,14 @@ export function Composer({
         </div>
       </div>
       <p id="composer-hint" className={cn("min-h-5 px-2 pt-1.5 text-center text-[0.72rem]", hint ? "text-muted" : "text-faint")} aria-live="polite">
-        {hint ?? (enterToSend ? "Enter to send · Shift+Enter for a new line" : `${modKey}+Enter to send`)}
+        {hint ?? (enterToSend ? t("composer.hintEnter") : t("composer.hintMod", { key: modKey }))}
       </p>
     </div>
   );
 }
 
 function AttachmentChip({ file, visionSupported, onRemove }: { file: PendingFile; visionSupported: boolean; onRemove: () => void }) {
+  const { t } = useTranslation("chat");
   const isImage = file.attachment?.kind === "image" || !!file.previewUrl;
   const blocked = isImage && file.status === "ready" && !visionSupported;
   return (
@@ -295,18 +299,18 @@ function AttachmentChip({ file, visionSupported, onRemove }: { file: PendingFile
           {file.status === "error"
             ? file.error
             : blocked
-              ? "Model can't read images"
+              ? t("composer.cantReadImages")
               : file.status === "uploading"
-                ? "Reading…"
+                ? t("composer.reading")
                 : file.attachment?.truncated
-                  ? `${formatBytes(file.size)} · truncated`
+                  ? t("composer.truncated", { size: formatBytes(file.size) })
                   : formatBytes(file.size)}
         </span>
       </span>
       <button
         type="button"
         onClick={onRemove}
-        aria-label={`Remove ${file.name}`}
+        aria-label={t("composer.remove", { name: file.name })}
         className="absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-faint hover:bg-hover hover:text-fg"
       >
         <X className="size-3.5" />
@@ -316,6 +320,7 @@ function AttachmentChip({ file, visionSupported, onRemove }: { file: PendingFile
 }
 
 function PromptInsert({ onInsert }: { onInsert: (p: Prompt) => void }) {
+  const { t } = useTranslation("chat");
   const [open, setOpen] = useState(false);
   const [prompts, setPrompts] = useState<Prompt[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -329,16 +334,16 @@ function PromptInsert({ onInsert }: { onInsert: (p: Prompt) => void }) {
         setPrompts(p);
         setError(null);
       })
-      .catch((e) => setError((e as Error).message));
+      .catch((e) => setError(errorText(e)));
   }, [open]);
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <Tooltip label="Insert a saved prompt">
+      <Tooltip label={t("composer.insertPrompt")}>
         <Popover.Trigger asChild>
           <button
             type="button"
-            aria-label="Insert a saved prompt"
+            aria-label={t("composer.insertPrompt")}
             className="inline-flex size-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-hover hover:text-fg data-[state=open]:bg-hover"
           >
             <BookOpen className="size-[18px]" />
@@ -354,7 +359,7 @@ function PromptInsert({ onInsert }: { onInsert: (p: Prompt) => void }) {
         >
           <div className="max-h-72 overflow-y-auto">
             {error && <p className="px-3 py-3 text-sm text-danger">{error}</p>}
-            {prompts && prompts.length === 0 && <p className="px-3 py-4 text-center text-sm text-muted">No saved prompts yet.</p>}
+            {prompts && prompts.length === 0 && <p className="px-3 py-4 text-center text-sm text-muted">{t("composer.noPrompts")}</p>}
             {prompts?.map((p) => (
               <button
                 key={p.id}
@@ -379,7 +384,7 @@ function PromptInsert({ onInsert }: { onInsert: (p: Prompt) => void }) {
               }}
               className="flex h-8 w-full items-center rounded-lg px-3 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg"
             >
-              Manage prompt library
+              {t("composer.managePrompts")}
             </button>
           </div>
         </Popover.Content>

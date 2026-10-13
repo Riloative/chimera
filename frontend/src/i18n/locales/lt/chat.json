@@ -1,0 +1,159 @@
+{
+  "messages": "Žinutės",
+  "latest": "Naujausia",
+  "jumpLatest": "Pereiti prie naujausios žinutės",
+  "loadFailed": "Nepavyko įkelti šio pokalbio.",
+  "maybeDeleted": "Galbūt jis buvo ištrintas.",
+  "startNew": "Pradėti naują pokalbį",
+  "renameTitle": "Pervadinti pokalbį",
+  "greeting": {
+    "night": "Dirbate vėlai",
+    "morning": "Labas rytas",
+    "afternoon": "Laba diena",
+    "evening": "Labas vakaras"
+  },
+  "examples": {
+    "explain": {
+      "label": "Paaiškinti sąvoką",
+      "text": "Paaiškinkite, kaip transformeriai naudoja dėmesio mechanizmą, pateikdami nedidelį pavyzdį."
+    },
+    "review": {
+      "label": "Peržiūrėti kodą",
+      "text": "Peržiūrėkite šią funkciją: ar joje nėra klaidų ir ar ji lengvai skaitoma?\n\n```python\n\n```"
+    },
+    "write": {
+      "label": "Parašyti",
+      "text": "Parašykite trumpą, draugišką laišką su prašymu perkelti susitikimą į kitą savaitę."
+    },
+    "plan": {
+      "label": "Suplanuoti",
+      "text": "Padėkite suplanuoti trijų dienų mokymosi grafiką, kad galėčiau drąsiai naudotis Rust."
+    }
+  },
+  "setup": {
+    "connectTitle": "Prijunkite vietinį modelį",
+    "connectBefore": "Paleiskite",
+    "connectAfter": ", tada pridėkite jį kaip ryšį.",
+    "noModelsTitle": "Modelių kol kas nėra",
+    "noModelsBody": "Jūsų ryšiai nepranešė apie jokius modelius. Patikrinkite, ar serveris veikia, ir išbandykite ryšį.",
+    "add": "Pridėti ryšį",
+    "open": "Atverti ryšius"
+  },
+  "banner": {
+    "unreachable": "{{name}} nepasiekiamas",
+    "reachable": "{{name}} vėl pasiekiamas",
+    "still": "Vis dar nepasiekiamas",
+    "retry": "Bandyti prisijungti",
+    "settings": "Nustatymai"
+  },
+  "export": {
+    "markdown": "Eksportuoti kaip Markdown",
+    "you": "Jūs"
+  },
+  "composer": {
+    "label": "Žinutė",
+    "placeholder": "Rašykite žinutę…",
+    "attachments": "Priedai",
+    "attach": "Pridėti failų",
+    "insertPrompt": "Įterpti išsaugotą užklausą",
+    "noPrompts": "Išsaugotų užklausų dar nėra.",
+    "managePrompts": "Tvarkyti užklausų biblioteką",
+    "knowledgeActive_one": "Ieškoma {{count}} žinių rinkinyje",
+    "knowledgeActive_few": "Ieškoma {{count}} žinių rinkiniuose",
+    "knowledgeActive_many": "Ieškoma {{count}} žinių rinkinio",
+    "knowledgeActive_other": "Ieškoma {{count}} žinių rinkinių",
+    "stop": "Sustabdyti generavimą",
+    "send": "Siųsti žinutę",
+    "hintEnter": "Enter – siųsti · Shift+Enter – nauja eilutė",
+    "hintMod": "{{key}}+Enter – siųsti",
+    "selectModel": "Pasirinkite modelį, kad galėtumėte pradėti pokalbį.",
+    "noVision": "Šis modelis nepriima paveikslėlių. Pasirinkite vaizdus atpažįstantį modelį arba pašalinkite paveikslėlį.",
+    "removeFailed": "Pašalinkite priedus, kurių nepavyko įkelti.",
+    "cantReadImages": "Šis modelis neskaito paveikslėlių",
+    "reading": "Skaitoma…",
+    "truncated": "{{size}} · sutrumpinta",
+    "remove": "Pašalinti {{name}}"
+  },
+  "message": {
+    "copy": "Kopijuoti",
+    "copied": "Nukopijuota",
+    "copyResponse": "Kopijuoti atsakymą",
+    "edit": "Redaguoti",
+    "editLabel": "Redaguoti žinutę",
+    "editWarning": "Vėlesnės žinutės bus pakeistos.",
+    "saveSubmit": "Išsaugoti ir siųsti iš naujo",
+    "deleteMessage": "Ištrinti žinutę",
+    "deleteMessageTitle": "Ištrinti šią žinutę?",
+    "deleteMessageBody": "Bus pašalinta tik ši žinutė, likusi pokalbio dalis išliks.",
+    "deleteResponse": "Ištrinti atsakymą",
+    "deleteResponseTitle": "Ištrinti šį atsakymą?",
+    "regenerate": "Generuoti iš naujo",
+    "retry": "Bandyti dar kartą",
+    "failed": "Atsakymo sugeneruoti nepavyko",
+    "stopped": "Sustabdyta",
+    "interrupted": "Nutraukta nebaigus",
+    "waiting": "Laukiama modelio",
+    "thinking": "Galvojama…",
+    "thoughtProcess": "Samprotavimo eiga",
+    "sources": "Šaltiniai",
+    "excerpt": "Ištrauka {{n}} · {{method}}",
+    "truncated": "sutrumpinta",
+    "imageAttachment": "Paveikslėlio priedas",
+    "extractedText": "Iš šio failo išgautas tekstas, kuris buvo perduotas modeliui.",
+    "unknownModel": "Asistentas",
+    "tokensPerSecond": "{{value}} žet./s",
+    "tokens_one": "{{count}} žetonas",
+    "tokens_few": "{{count}} žetonai",
+    "tokens_many": "{{count}} žetono",
+    "tokens_other": "{{count}} žetonų",
+    "hitMaxTokens": "sustabdyta pasiekus žetonų ribą"
+  },
+  "method": {
+    "keyword": "atitiktis pagal raktažodžius",
+    "semantic": "semantinė atitiktis",
+    "hybrid": "mišri atitiktis"
+  },
+  "code": {
+    "plainText": "tekstas",
+    "wrap": "Perjungti eilučių laužymą",
+    "copy": "Kopijuoti kodą",
+    "copied": "Kodas nukopijuotas",
+    "copyShort": "Kopijuoti",
+    "copiedShort": "Nukopijuota",
+    "imageAlt": "paveikslėlis: {{alt}}",
+    "imageBlocked": "išorinis paveikslėlis užblokuotas"
+  },
+  "settings": {
+    "title": "Pokalbio nustatymai",
+    "description": "Jie taikomi tik šiam pokalbiui. Tušti laukai naudoja jūsų numatytąsias reikšmes iš nustatymų.",
+    "section": "Skiltis",
+    "systemPrompt": "Sistemos užklausa",
+    "parameters": "Parametrai",
+    "knowledge": "Žinios",
+    "knowledgeCount": "Žinios ({{count}})",
+    "useDefault": "Naudoti numatytąją sistemos užklausą",
+    "noDefault": "Numatytoji sistemos užklausa nenustatyta.",
+    "promptPlaceholder": "Jūs esate paslaugus asistentas…",
+    "fromLibrary": "Iš bibliotekos:",
+    "knowledgeHelp": "Kiekvienai žinutei iš pasirinktų rinkinių vietoje atrenkamos susijusios ištraukos ir perduodamos modeliui, o po atsakymu nurodomi šaltiniai.",
+    "noCollections": "Rinkinių dar nėra.",
+    "createCollection": "Sukurkite",
+    "saved": "Pokalbio nustatymai išsaugoti"
+  },
+  "params": {
+    "unsupported": "Šis ryšys šio parametro nepalaiko.",
+    "default": "numatytasis",
+    "useDefault": "Naudoti numatytąjį",
+    "reset": "Atstatyti: {{name}}",
+    "temperature": { "label": "Temperatūra", "hint": "Atsitiktinumas. Kuo mažesnė, tuo tikslesni atsakymai." },
+    "top_p": { "label": "Top-p", "hint": "Branduolio atrankos tikimybių suma." },
+    "top_k": { "label": "Top-k", "hint": "Rinktis iš k labiausiai tikėtinų žetonų." },
+    "min_p": { "label": "Min-p", "hint": "Atmesti žetonus, kurių santykinė tikimybė mažesnė." },
+    "max_tokens": { "label": "Didžiausias išvesties ilgis", "hint": "Didžiausias atsakymo žetonų skaičius." },
+    "repeat_penalty": { "label": "Bauda už kartojimą", "hint": "Mažina pasikartojančių žetonų tikimybę (1 – išjungta)." },
+    "presence_penalty": { "label": "Bauda už buvimą", "hint": "Skatina naujas temas." },
+    "frequency_penalty": { "label": "Bauda už dažnumą", "hint": "Mažina dažnai pasitaikančių žetonų tikimybę." },
+    "seed": { "label": "Sėkla", "hint": "Fiksuota sėkla atkartojamiems rezultatams (-1 – atsitiktinė)." },
+    "stop": { "label": "Stabdymo sekos", "hint": "Po vieną eilutėje (iki 8). Generavimas sustoja, kai pasirodo bet kuri iš jų." }
+  }
+}

@@ -1,6 +1,8 @@
 import { AlertTriangle, ArrowLeft, FileText, Library, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { errorText } from "@/lib/errors";
 import { PageHeader, PageShell, Section } from "@/components/Page";
 import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, MenuContent, MenuItem, MenuRoot, MenuTrigger, Spinner, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -16,6 +18,7 @@ export function KnowledgePage() {
 }
 
 function CollectionDialog({ open, onOpenChange, collection, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; collection?: Collection; onSaved: (c: Collection) => void }) {
+  const { t } = useTranslation(["knowledge", "chat", "common"]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -32,7 +35,7 @@ function CollectionDialog({ open, onOpenChange, collection, onSaved }: { open: b
       onSaved(c);
       onOpenChange(false);
     } catch (err) {
-      toast((err as Error).message, "error");
+      toast(errorText(err), "error");
     } finally {
       setSaving(false);
     }
@@ -41,15 +44,15 @@ function CollectionDialog({ open, onOpenChange, collection, onSaved }: { open: b
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={collection ? "Edit collection" : "New collection"}
+      title={collection ? t("editCollection") : t("newCollection")}
       size="sm"
       footer={
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common:cancel")}
           </Button>
           <Button variant="primary" onClick={save} loading={saving} disabled={!name.trim()}>
-            {collection ? "Save" : "Create"}
+            {collection ? t("common:save") : t("common:create")}
           </Button>
         </>
       }
@@ -61,10 +64,10 @@ function CollectionDialog({ open, onOpenChange, collection, onSaved }: { open: b
           if (name.trim()) void save();
         }}
       >
-        <Field label="Name" htmlFor="col-name">
-          <Input id="col-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={120} placeholder="Project documentation" />
+        <Field label={t("name")} htmlFor="col-name">
+          <Input id="col-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus maxLength={120} placeholder={t("namePlaceholder")} />
         </Field>
-        <Field label="Description" htmlFor="col-desc">
+        <Field label={t("descriptionLabel")} htmlFor="col-desc">
           <Textarea id="col-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} />
         </Field>
       </form>
@@ -73,41 +76,41 @@ function CollectionDialog({ open, onOpenChange, collection, onSaved }: { open: b
 }
 
 function CollectionList() {
+  const { t } = useTranslation(["knowledge", "chat", "common"]);
   const [items, setItems] = useState<Collection[] | null>(null);
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const knowledge = useSettings((s) => s.settings?.knowledge);
 
   useEffect(() => {
-    api.collections().then(setItems).catch((e) => toast(e.message, "error"));
+    api.collections().then(setItems).catch((e) => toast(errorText(e), "error"));
   }, []);
 
   return (
     <PageShell>
       <PageHeader
-        title="Knowledge"
-        description="Collections of your documents, indexed locally. Attach a collection to a conversation and relevant passages are retrieved for every message."
+        title={t("title")}
+        description={t("description")}
         actions={
           <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
-            New collection
+            {t("newCollection")}
           </Button>
         }
       />
       <p className="mb-6 rounded-xl bg-subtle px-4 py-3 text-[0.8125rem] leading-relaxed text-muted">
-        Retrieval mode:{" "}
         {knowledge?.embedding_model ? (
-          <>
-            <span className="font-medium text-fg">hybrid</span> — keyword (SQLite FTS5) plus semantic search with{" "}
-            <span className="font-mono text-fg">{modelLabel(knowledge.embedding_model)}</span>.
-          </>
+          <Trans
+            t={t}
+            i18nKey="modeHybrid"
+            values={{ model: modelLabel(knowledge.embedding_model) }}
+            components={{ strong: <span className="font-medium text-fg" />, code: <span className="font-mono text-fg" /> }}
+          />
         ) : (
-          <>
-            <span className="font-medium text-fg">keyword</span> (SQLite FTS5, fully offline). Configure an embedding model in{" "}
-            <Link to="/settings/documents" className="text-accent-text hover:underline">
-              Settings → Documents
-            </Link>{" "}
-            for semantic search.
-          </>
+          <Trans
+            t={t}
+            i18nKey="modeKeyword"
+            components={{ strong: <span className="font-medium text-fg" />, settingsLink: <Link to="/settings/documents" className="text-accent-text hover:underline" /> }}
+          />
         )}
       </p>
       {items === null ? (
@@ -115,8 +118,8 @@ function CollectionList() {
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line-strong px-6 py-12 text-center">
           <Library className="mx-auto mb-3 size-6 text-faint" />
-          <p className="font-medium text-fg">No collections yet</p>
-          <p className="mt-1 text-sm text-muted">Create a collection, then add text files, Markdown, code or PDFs.</p>
+          <p className="font-medium text-fg">{t("empty.title")}</p>
+          <p className="mt-1 text-sm text-muted">{t("empty.body")}</p>
         </div>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2">
@@ -126,7 +129,7 @@ function CollectionList() {
                 <span className="block truncate text-sm font-medium text-fg">{c.name}</span>
                 {c.description && <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">{c.description}</span>}
                 <span className="mt-2 block text-[0.75rem] text-faint">
-                  {c.document_count} document{c.document_count === 1 ? "" : "s"} · {formatNumber(c.chunk_count)} chunks · updated {relativeTime(c.updated_at)}
+                  {t("documents", { count: c.document_count })} · {t("chunks", { count: c.chunk_count, formatted: formatNumber(c.chunk_count) })} · {t("updated", { when: relativeTime(c.updated_at) })}
                 </span>
               </Link>
             </li>
@@ -145,6 +148,7 @@ interface UploadState {
 }
 
 function CollectionDetail({ id }: { id: string }) {
+  const { t } = useTranslation(["knowledge", "chat", "common"]);
   const [data, setData] = useState<(Collection & { documents: KnowledgeDocument[] }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploads, setUploads] = useState<UploadState[]>([]);
@@ -157,7 +161,7 @@ function CollectionDetail({ id }: { id: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  const refresh = useCallback(() => api.collection(id).then(setData).catch((e) => setError(e.message)), [id]);
+  const refresh = useCallback(() => api.collection(id).then(setData).catch((e) => setError(errorText(e))), [id]);
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -168,10 +172,10 @@ function CollectionDetail({ id }: { id: string }) {
       try {
         const doc = await api.addDocument(id, file);
         setUploads((u) => u.filter((x) => x.name !== file.name));
-        if (doc.warning) toast(`${file.name}: ${doc.warning}`, "error");
+        if (doc.warning) toast(t("embeddingWarning", { name: file.name }), "error");
         await refresh();
       } catch (err) {
-        setUploads((u) => u.map((x) => (x.name === file.name ? { ...x, status: "error", error: (err as Error).message } : x)));
+        setUploads((u) => u.map((x) => (x.name === file.name ? { ...x, status: "error", error: errorText(err) } : x)));
       }
     }
   };
@@ -182,7 +186,7 @@ function CollectionDetail({ id }: { id: string }) {
     try {
       setHits(await api.searchCollection(id, query));
     } catch (err) {
-      toast((err as Error).message, "error");
+      toast(errorText(err), "error");
     } finally {
       setSearching(false);
     }
@@ -193,7 +197,7 @@ function CollectionDetail({ id }: { id: string }) {
       <PageShell>
         <p className="text-muted">{error}</p>
         <Link to="/knowledge" className="mt-3 inline-block text-accent-text hover:underline">
-          Back to collections
+          {t("back")}
         </Link>
       </PageShell>
     );
@@ -207,30 +211,30 @@ function CollectionDetail({ id }: { id: string }) {
   return (
     <PageShell>
       <Link to="/knowledge" className="mb-4 inline-flex items-center gap-1.5 text-[0.8125rem] text-muted hover:text-fg">
-        <ArrowLeft className="size-3.5" /> Knowledge
+        <ArrowLeft className="size-3.5" /> {t("title")}
       </Link>
       <PageHeader
         title={data.name}
-        description={data.description || `${data.document_count} documents · ${formatNumber(data.chunk_count)} chunks`}
+        description={data.description || `${t("documents", { count: data.document_count })} · ${t("chunks", { count: data.chunk_count, formatted: formatNumber(data.chunk_count) })}`}
         actions={
           <>
             <MenuRoot>
               <MenuTrigger asChild>
-                <IconButton label="Collection options">
+                <IconButton label={t("options")}>
                   <MoreHorizontal className="size-4" />
                 </IconButton>
               </MenuTrigger>
               <MenuContent align="end">
                 <MenuItem icon={<Pencil />} onSelect={() => setEditing(true)}>
-                  Edit
+                  {t("common:edit")}
                 </MenuItem>
                 <MenuItem icon={<Trash2 />} destructive onSelect={() => setConfirmDelete(true)}>
-                  Delete collection
+                  {t("deleteCollection")}
                 </MenuItem>
               </MenuContent>
             </MenuRoot>
             <Button variant="primary" icon={<Upload className="size-4" />} onClick={() => fileRef.current?.click()}>
-              Add documents
+              {t("addDocuments")}
             </Button>
           </>
         }
@@ -263,8 +267,8 @@ function CollectionDetail({ id }: { id: string }) {
         {data.documents.length === 0 && uploads.length === 0 ? (
           <button type="button" onClick={() => fileRef.current?.click()} className="w-full px-6 py-12 text-center">
             <Upload className="mx-auto mb-3 size-5 text-faint" />
-            <span className="block text-sm font-medium text-fg">Drop files here or click to browse</span>
-            <span className="mt-1 block text-[0.8125rem] text-muted">Text, Markdown, source code, CSV/JSON and PDF. Everything is processed locally.</span>
+            <span className="block text-sm font-medium text-fg">{t("drop")}</span>
+            <span className="mt-1 block text-[0.8125rem] text-muted">{t("dropHint")}</span>
           </button>
         ) : (
           <ul className="divide-y divide-line">
@@ -273,11 +277,11 @@ function CollectionDetail({ id }: { id: string }) {
                 {u.status === "uploading" ? <Spinner /> : <AlertTriangle className="size-4 text-danger" />}
                 <span className="truncate text-fg">{u.name}</span>
                 <span className={cn("ml-auto text-[0.8125rem]", u.status === "error" ? "text-danger" : "text-muted")}>
-                  {u.status === "uploading" ? "Indexing…" : u.error}
+                  {u.status === "uploading" ? t("indexing") : u.error}
                 </span>
                 {u.status === "error" && (
                   <button type="button" className="text-[0.8125rem] text-muted hover:text-fg" onClick={() => setUploads((x) => x.filter((y) => y !== u))}>
-                    Dismiss
+                    {t("common:dismiss")}
                   </button>
                 )}
               </li>
@@ -289,7 +293,7 @@ function CollectionDetail({ id }: { id: string }) {
         )}
       </div>
 
-      <Section title="Test retrieval" description="See which passages would be given to the model for a question.">
+      <Section title={t("testTitle")} description={t("testDescription")}>
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -297,21 +301,21 @@ function CollectionDetail({ id }: { id: string }) {
             void search();
           }}
         >
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ask something about these documents…" aria-label="Search query" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("testPlaceholder")} aria-label={t("testQuery")} />
           <Button type="submit" variant="outline" loading={searching} icon={<Search className="size-4" />}>
-            Search
+            {t("search")}
           </Button>
         </form>
         {hits && (
           <ol className="mt-4 space-y-2">
-            {hits.length === 0 && <p className="text-sm text-muted">No matching passages.</p>}
+            {hits.length === 0 && <p className="text-sm text-muted">{t("noMatches")}</p>}
             {hits.map((h, i) => (
               <li key={h.chunk_id} className="rounded-xl border border-line bg-elevated px-4 py-3">
                 <div className="mb-1 flex items-center gap-2 text-[0.75rem] text-faint">
                   <span className="font-mono text-accent-text">{i + 1}</span>
                   <span className="truncate">{h.filename}</span>
-                  <span>· chunk {h.index + 1}</span>
-                  <span className="ml-auto">{h.method}</span>
+                  <span>· {t("chunkN", { n: h.index + 1 })}</span>
+                  <span className="ml-auto">{t(`chat:method.${h.method as "keyword" | "semantic" | "hybrid"}`)}</span>
                 </div>
                 <p className="line-clamp-4 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-fg">{h.text}</p>
               </li>
@@ -324,8 +328,8 @@ function CollectionDetail({ id }: { id: string }) {
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title={`Delete “${data.name}”?`}
-        description="All documents and their index are removed. Conversations using this collection will no longer retrieve from it."
+        title={t("deleteTitle", { name: data.name })}
+        description={t("deleteBody")}
         onConfirm={async () => {
           await api.deleteCollection(id);
           navigate("/knowledge");
@@ -336,6 +340,7 @@ function CollectionDetail({ id }: { id: string }) {
 }
 
 function DocumentRow({ doc, onChanged }: { doc: KnowledgeDocument; onChanged: () => void }) {
+  const { t } = useTranslation(["knowledge", "chat", "common"]);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
@@ -344,22 +349,22 @@ function DocumentRow({ doc, onChanged }: { doc: KnowledgeDocument; onChanged: ()
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-fg">{doc.filename}</p>
         <p className="text-[0.75rem] text-faint">
-          {formatBytes(doc.size)} · {doc.chunk_count} chunks · {doc.embedding_model ? "semantic + keyword" : "keyword"}
+          {formatBytes(doc.size)} · {t("chunks", { count: doc.chunk_count, formatted: formatNumber(doc.chunk_count) })} · {doc.embedding_model ? t("docHybrid") : t("docKeyword")}
         </p>
-        {doc.warning && <p className="mt-0.5 text-[0.75rem] text-warning">{doc.warning}</p>}
+        {doc.warning && <p className="mt-0.5 text-[0.75rem] text-warning">{doc.warning_code ? t("embeddingsUnavailable") : doc.warning}</p>}
       </div>
       <IconButton
-        label="Re-index embeddings"
+        label={t("reindex")}
         size="sm"
         disabled={busy}
         onClick={async () => {
           setBusy(true);
           try {
             const updated = await api.reindexDocument(doc.id);
-            toast(updated.warning ?? "Document re-indexed", updated.warning ? "error" : "success");
+            toast(updated.warning ? t("embeddingsUnavailable") : t("reindexed"), updated.warning ? "error" : "success");
             onChanged();
           } catch (err) {
-            toast((err as Error).message, "error");
+            toast(errorText(err), "error");
           } finally {
             setBusy(false);
           }
@@ -367,13 +372,14 @@ function DocumentRow({ doc, onChanged }: { doc: KnowledgeDocument; onChanged: ()
       >
         <RefreshCw className={cn("size-3.5", busy && "animate-spin")} />
       </IconButton>
-      <IconButton label="Remove document" size="sm" onClick={() => setConfirm(true)}>
+      <IconButton label={t("removeDocument")} size="sm" onClick={() => setConfirm(true)}>
         <Trash2 className="size-3.5" />
       </IconButton>
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
-        title={`Remove “${doc.filename}”?`}
+        title={t("removeTitle", { name: doc.filename })}
+        confirmLabel={t("remove")}
         onConfirm={async () => {
           await api.deleteDocument(doc.id);
           onChanged();

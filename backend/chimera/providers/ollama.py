@@ -69,19 +69,20 @@ class OllamaProvider(Provider):
         try:
             report.models = await self.list_models()
         except ProviderError as exc:
-            report.error, report.error_code = exc.message, exc.code
-            report.checks.append({"name": "models", "ok": False, "detail": exc.message})
+            report.error, report.error_code, report.error_params = exc.message, exc.code, exc.params
+            report.checks.append({"name": "models", "ok": False, "code": exc.code, "params": exc.params, "detail": exc.message})
             return report
         report.latency_ms = round((time.perf_counter() - start) * 1000, 1)
         report.models_ok = True
         report.checks.append(
-            {"name": "models", "ok": True, "detail": f"{len(report.models)} model(s)", "latency_ms": report.latency_ms}
+            {"name": "models", "ok": True, "code": "models_count", "params": {"count": len(report.models)},
+             "detail": f"{len(report.models)} model(s)", "latency_ms": report.latency_ms}
         )
         try:
             resp = await self.client.get(f"{self.root_url}/api/version", timeout=self.timeout(read=10))
             if resp.status_code == 200:
                 version = resp.json().get("version")
-                report.checks.append({"name": "version", "ok": True, "detail": str(version)})
+                report.checks.append({"name": "version", "ok": True, "code": "version", "params": {"version": str(version)}, "detail": str(version)})
                 report.capabilities["build"] = version
         except Exception:  # noqa: BLE001
             pass
@@ -128,7 +129,7 @@ class OllamaProvider(Provider):
                     finished = finished or event.type == "done"
                     yield event
                 if not finished:
-                    raise ProviderError("The response stream ended before the model finished.", code="incomplete")
+                    raise ProviderError("The response stream ended before the model finished.", code="incomplete", name=self.config.name)
         except ProviderError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -145,7 +146,7 @@ class OllamaProvider(Provider):
         if not isinstance(data, dict):
             return []
         if data.get("error"):
-            raise ProviderError(f"{self.config.name}: {data['error']}", code="server")
+            raise ProviderError(f"{self.config.name}: {data['error']}", code="server", name=self.config.name, detail=str(data["error"]))
         events: list[StreamEvent] = []
         msg = data.get("message") if isinstance(data.get("message"), dict) else {}
         if msg.get("thinking"):

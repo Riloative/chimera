@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import type { ModelInfo, ModelRef, Provider, ProviderModels } from "@/lib/types";
 
 interface ModelsState {
@@ -26,7 +27,7 @@ export const useModels = create<ModelsState>((set, get) => ({
       const { providers } = await api.models(refresh);
       set({ entries: providers, loaded: true, error: null });
     } catch (err) {
-      set({ error: (err as Error).message, loaded: true });
+      set({ error: errorText(err), loaded: true });
     } finally {
       set({ loading: false, refreshing: false });
     }

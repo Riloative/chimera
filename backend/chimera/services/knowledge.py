@@ -114,50 +114,75 @@ class KnowledgeBase:
         self.registry = registry
 
     # -- collections ----------------------------------------------------------
-    def collections(self) -> list[dict]:
+    def collections(self, user_id: str) -> list[dict]:
         return self.db.all(
             """SELECT c.*, COUNT(d.id) AS document_count, COALESCE(SUM(d.chunk_count), 0) AS chunk_count
                FROM collections c LEFT JOIN documents d ON d.collection_id = c.id
-               GROUP BY c.id ORDER BY c.updated_at DESC"""
+               WHERE c.user_id = ? GROUP BY c.id ORDER BY c.updated_at DESC""",
+            (user_id,),
         )
 
-    def collection(self, cid: str) -> dict | None:
+    def collection(self, user_id: str, cid: str) -> dict | None:
         return self.db.one(
             """SELECT c.*, COUNT(d.id) AS document_count, COALESCE(SUM(d.chunk_count), 0) AS chunk_count
                FROM collections c LEFT JOIN documents d ON d.collection_id = c.id
-               WHERE c.id = ? GROUP BY c.id""",
-            (cid,),
+               WHERE c.id = ? AND c.user_id = ? GROUP BY c.id""",
+            (cid, user_id),
         )
 
-    def create_collection(self, name: str, description: str = "") -> dict:
+    def owned_ids(self, user_id: str, collection_ids: list[str]) -> list[str]:
+        if not collection_ids:
+            return []
+        marks = ",".join("?" * len(collection_ids))
+        rows = self.db.all(f"SELECT id FROM collections WHERE user_id = ? AND id IN ({marks})", (user_id, *collection_ids))
+        return [r["id"] for r in rows]
+
+    def document(self, user_id: str, doc_id: str) -> dict | None:
+        return self.db.one(
+            "SELECT d.* FROM documents d JOIN collections c ON c.id = d.collection_id WHERE d.id = ? AND c.user_id = ?",
+            (doc_id, user_id),
+        )
+
+    def create_collection(self, user_id: str, name: str, description: str = "") -> dict:
         cid, ts = new_id(), now_iso()
         self.db.execute(
-            "INSERT INTO collections(id, name, description, created_at, updated_at) VALUES (?,?,?,?,?)",
-            (cid, name, description, ts, ts),
+            "INSERT INTO collections(id, user_id, name, description, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+            (cid, user_id, name, description, ts, ts),
         )
-        return self.collection(cid)  # type: ignore[return-value]
+        return self.collection(user_id, cid)  # type: ignore[return-value]
 
-    def update_collection(self, cid: str, data: dict) -> dict | None:
+    def update_collection(self, user_id: str, cid: str, data: dict) -> dict | None:
+        if not self.collection(user_id, cid):
+            return None
         fields = {k: v for k, v in data.items() if k in ("name", "description") and v is not None}
         if fields:
             sets = ", ".join(f"{k} = ?" for k in fields)
             self.db.execute(
                 f"UPDATE collections SET {sets}, updated_at = ? WHERE id = ?", (*fields.values(), now_iso(), cid)
             )
-        return self.collection(cid)
+        return self.collection(user_id, cid)
 
-    def delete_collection(self, cid: str) -> bool:
+    def delete_collection(self, user_id: str, cid: str) -> bool:
+        if not self.collection(user_id, cid):
+            return False
         with self.db.transaction() as conn:
             conn.execute("DELETE FROM chunks WHERE collection_id = ?", (cid,))
-            cur = conn.execute("DELETE FROM collections WHERE id = ?", (cid,))
+            cur = conn.execute("DELETE FROM collections WHERE id = ? AND user_id = ?", (cid, user_id))
         return cur.rowcount > 0
+
+    def delete_user_data(self, user_id: str) -> None:
+        with self.db.transaction() as conn:
+            conn.execute("DELETE FROM chunks WHERE collection_id IN (SELECT id FROM collections WHERE user_id = ?)", (user_id,))
+            conn.execute("DELETE FROM collections WHERE user_id = ?", (user_id,))
 
     def documents(self, cid: str) -> list[dict]:
         return self.db.all(
             "SELECT * FROM documents WHERE collection_id = ? ORDER BY created_at DESC", (cid,)
         )
 
-    def delete_document(self, doc_id: str) -> bool:
+    def delete_document(self, user_id: str, doc_id: str) -> bool:
+        if not self.document(user_id, doc_id):
+            return False
         with self.db.transaction() as conn:
             conn.execute("DELETE FROM chunks WHERE document_id = ?", (doc_id,))
             cur = conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
@@ -165,7 +190,7 @@ class KnowledgeBase:
 
     # -- ingestion ------------------------------------------------------------
     async def add_document(
-        self, cid: str, filename: str, mime: str, size: int, text: str, settings: KnowledgeSettings
+        self, user: dict, cid: str, filename: str, mime: str, size: int, text: str, settings: KnowledgeSettings
     ) -> dict:
         doc_id, ts = new_id(), now_iso()
         chunks = chunk_text(text, settings.chunk_size, settings.chunk_overlap)
@@ -180,19 +205,19 @@ class KnowledgeBase:
                 [(doc_id, cid, i, c) for i, c in enumerate(chunks)],
             )
             conn.execute("UPDATE collections SET updated_at = ? WHERE id = ?", (ts, cid))
-        await self.embed_document(doc_id, settings)
+        await self.embed_document(user, doc_id, settings)
         return self.db.one("SELECT * FROM documents WHERE id = ?", (doc_id,))  # type: ignore[return-value]
 
-    async def embed_document(self, doc_id: str, settings: KnowledgeSettings) -> None:
+    async def embed_document(self, user: dict, doc_id: str, settings: KnowledgeSettings) -> None:
         """Compute embeddings when configured; failures degrade to keyword search."""
         if not (settings.embedding_provider_id and settings.embedding_model):
             self.db.execute(
-                "UPDATE documents SET embedding_model = NULL, warning = NULL WHERE id = ?", (doc_id,)
+                "UPDATE documents SET embedding_model = NULL, warning = NULL, warning_code = NULL WHERE id = ?", (doc_id,)
             )
             return
         rows = self.db.all("SELECT id, text FROM chunks WHERE document_id = ? ORDER BY idx", (doc_id,))
         try:
-            provider = self.registry.provider(settings.embedding_provider_id)
+            provider = self.registry.provider(user, settings.embedding_provider_id)
             for start in range(0, len(rows), EMBED_BATCH):
                 batch = rows[start : start + EMBED_BATCH]
                 vectors = await provider.embed(settings.embedding_model, [r["text"] for r in batch])
@@ -202,14 +227,14 @@ class KnowledgeBase:
                         [(to_blob(v), r["id"]) for v, r in zip(vectors, batch)],
                     )
             self.db.execute(
-                "UPDATE documents SET embedding_model = ?, warning = NULL, updated_at = ? WHERE id = ?",
+                "UPDATE documents SET embedding_model = ?, warning = NULL, warning_code = NULL, updated_at = ? WHERE id = ?",
                 (settings.embedding_model, now_iso(), doc_id),
             )
         except ProviderError as exc:
             log.warning("embedding failed for document %s: %s", doc_id, exc.message)
             self.db.execute("UPDATE chunks SET embedding = NULL WHERE document_id = ?", (doc_id,))
             self.db.execute(
-                "UPDATE documents SET embedding_model = NULL, warning = ?, updated_at = ? WHERE id = ?",
+                "UPDATE documents SET embedding_model = NULL, warning = ?, warning_code = 'embeddings_unavailable', updated_at = ? WHERE id = ?",
                 (f"Embeddings unavailable ({exc.message}). Keyword search only.", now_iso(), doc_id),
             )
 
@@ -233,7 +258,7 @@ class KnowledgeBase:
         ]
 
     async def _semantic(
-        self, collection_ids: list[str], query: str, limit: int, settings: KnowledgeSettings
+        self, user: dict, collection_ids: list[str], query: str, limit: int, settings: KnowledgeSettings
     ) -> list[SearchHit]:
         if not (settings.embedding_provider_id and settings.embedding_model and collection_ids):
             return []
@@ -246,7 +271,7 @@ class KnowledgeBase:
         )
         if not rows:
             return []
-        provider = self.registry.provider(settings.embedding_provider_id)
+        provider = self.registry.provider(user, settings.embedding_provider_id)
         qvec = np.frombuffer(to_blob((await provider.embed(settings.embedding_model, [query]))[0]), dtype=np.float32)
         dims = qvec.shape[0]
         valid = [r for r in rows if len(r["embedding"]) == dims * 4]
@@ -264,13 +289,15 @@ class KnowledgeBase:
         ]
 
     async def search(
-        self, collection_ids: list[str], query: str, settings: KnowledgeSettings, top_k: int | None = None
+        self, user: dict, collection_ids: list[str], query: str, settings: KnowledgeSettings, top_k: int | None = None
     ) -> list[SearchHit]:
+        # Only the caller's own collections are ever searched.
+        collection_ids = self.owned_ids(user["id"], collection_ids)
         top_k = top_k or settings.top_k
         pool = max(top_k * 4, 20)
         keyword = self._keyword(collection_ids, query, pool)
         try:
-            semantic = await self._semantic(collection_ids, query, pool, settings)
+            semantic = await self._semantic(user, collection_ids, query, pool, settings)
         except ProviderError as exc:
             log.warning("semantic search unavailable: %s", exc.message)
             semantic = []

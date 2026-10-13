@@ -60,7 +60,7 @@ def test_blank_pdf_is_a_clear_error(client):
     buf = io.BytesIO()
     writer.write(buf)
     resp = upload(client, "scan.pdf", buf.getvalue())
-    assert resp.status_code == 422 and "No extractable text" in resp.json()["detail"]
+    assert resp.status_code == 422 and resp.json()["detail"]["code"] == "pdf_no_text"
 
 
 def test_rejects_unsupported_and_spoofed_files(client):

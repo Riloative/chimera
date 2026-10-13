@@ -1,5 +1,6 @@
 import { Check, Copy, WrapText } from "lucide-react";
 import { memo, useState, type ComponentProps, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
@@ -22,19 +23,20 @@ function textOf(node: ReactNode): string {
 }
 
 export function CodeBlock({ language, code, children }: { language: string; code: string; children: ReactNode }) {
+  const { t } = useTranslation("chat");
   const [copied, setCopied] = useState(false);
   const [wrap, setWrap] = useState(false);
   return (
     <div className="group/code relative mb-4 overflow-hidden rounded-xl border border-[var(--code-border)] bg-code">
       <div className="flex h-9 items-center justify-between border-b border-[var(--code-border)] pr-1.5 pl-3.5">
-        <span className="font-mono text-[0.72rem] text-faint">{language || "text"}</span>
+        <span className="font-mono text-[0.72rem] text-faint">{language || t("code.plainText")}</span>
         <div className="flex items-center gap-0.5">
           <button
             type="button"
             onClick={() => setWrap((w) => !w)}
             aria-pressed={wrap}
-            aria-label="Toggle line wrap"
-            title="Toggle line wrap"
+            aria-label={t("code.wrap")}
+            title={t("code.wrap")}
             className={cn("flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-hover hover:text-fg", wrap && "text-fg")}
           >
             <WrapText className="size-3.5" />
@@ -47,11 +49,11 @@ export function CodeBlock({ language, code, children }: { language: string; code
                 setTimeout(() => setCopied(false), 1600);
               }
             }}
-            aria-label={copied ? "Copied" : "Copy code"}
+            aria-label={copied ? t("code.copied") : t("code.copy")}
             className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[0.72rem] text-faint transition-colors hover:bg-hover hover:text-fg"
           >
             {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-            {copied ? "Copied" : "Copy"}
+            {copied ? t("code.copiedShort") : t("code.copyShort")}
           </button>
         </div>
       </div>
@@ -60,6 +62,11 @@ export function CodeBlock({ language, code, children }: { language: string; code
       </pre>
     </div>
   );
+}
+
+function BlockedImage({ alt }: { alt?: string }) {
+  const { t } = useTranslation("chat");
+  return <span className="text-muted">[{alt ? t("code.imageAlt", { alt }) : t("code.imageBlocked")}]</span>;
 }
 
 const components: Components = {
@@ -94,7 +101,7 @@ const components: Components = {
     typeof src === "string" && (src.startsWith("data:image/") || src.startsWith("/")) ? (
       <img src={src} alt={alt ?? ""} loading="lazy" />
     ) : (
-      <span className="text-muted">[image: {alt || "external image blocked"}]</span>
+      <BlockedImage alt={alt} />
     ),
 };
 

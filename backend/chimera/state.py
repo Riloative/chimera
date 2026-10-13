@@ -8,8 +8,9 @@ import httpx
 from fastapi import Request
 
 from .config import Config
+from .crypto import SecretBox
 from .db import Database
-from .security import LoginLimiter, SessionSigner
+from .services.auth import AuthService
 from .services.chat import ChatEngine
 from .services.conversations import ConversationStore
 from .services.files import FileStore
@@ -29,13 +30,12 @@ class AppState:
     files: FileStore
     knowledge: KnowledgeBase
     chat: ChatEngine
-    signer: SessionSigner
-    limiter: LoginLimiter
+    auth: AuthService
 
     @classmethod
     def build(cls, config: Config, client: httpx.AsyncClient) -> "AppState":
-        db = Database(config.db_path)
-        registry = ProviderRegistry(db, client)
+        db = Database(config.db_path, backups_dir=config.backups_dir)
+        registry = ProviderRegistry(db, client, SecretBox(config.encryption_key))
         settings = SettingsStore(db)
         conversations = ConversationStore(db)
         files = FileStore(db, config.uploads_dir)
@@ -51,8 +51,7 @@ class AppState:
             files=files,
             knowledge=knowledge,
             chat=chat,
-            signer=SessionSigner(config.secret_key, config.session_days),
-            limiter=LoginLimiter(),
+            auth=AuthService(db, config),
         )
 
 

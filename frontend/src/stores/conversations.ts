@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import type { Conversation } from "@/lib/types";
 
 interface ConversationsState {
@@ -21,7 +22,7 @@ export const useConversations = create<ConversationsState>((set, get) => ({
       const items = await api.conversations();
       set({ items, loaded: true, error: null });
     } catch (err) {
-      set({ error: (err as Error).message, loaded: true });
+      set({ error: errorText(err), loaded: true });
     }
   },
   upsert: (c) =>

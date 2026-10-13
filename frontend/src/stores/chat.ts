@@ -3,7 +3,8 @@
  * response keeps streaming while the user navigates elsewhere in the app.
  */
 import { create } from "zustand";
-import { api, ApiError, stream, type SendBody } from "@/lib/api";
+import { api, stream, type SendBody } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import type { Attachment, ConversationDetail, Message } from "@/lib/types";
 import { useConversations } from "./conversations";
 import { useModels } from "./models";
@@ -155,7 +156,7 @@ export const useChat = create<ChatState>((set, get) => {
   };
 
   const failBeforeStart = (convId: string, err: unknown) => {
-    const message = err instanceof ApiError ? err.message : "Something went wrong.";
+    const message = errorText(err);
     patchConv(convId, (c) => ({
       messages: c.messages.filter((m) => !m.id.startsWith("temp-")),
       streaming: false,
@@ -184,7 +185,7 @@ export const useChat = create<ChatState>((set, get) => {
         }
         return detail;
       } catch (err) {
-        patchConv(id, () => ({ loaded: true, loadError: (err as Error).message }));
+        patchConv(id, () => ({ loaded: true, loadError: errorText(err) }));
         return null;
       }
     },

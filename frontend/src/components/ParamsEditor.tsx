@@ -1,11 +1,10 @@
 import { RotateCcw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { GenerationParams } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface ParamSpec {
-  key: keyof GenerationParams;
-  label: string;
-  hint: string;
+  key: Exclude<keyof GenerationParams, "stop">;
   min: number;
   max: number;
   step: number;
@@ -13,15 +12,15 @@ interface ParamSpec {
 }
 
 export const PARAM_SPECS: ParamSpec[] = [
-  { key: "temperature", label: "Temperature", hint: "Randomness. Lower is more focused.", min: 0, max: 2, step: 0.05 },
-  { key: "top_p", label: "Top-p", hint: "Nucleus sampling probability mass.", min: 0, max: 1, step: 0.01 },
-  { key: "top_k", label: "Top-k", hint: "Sample from the k most likely tokens.", min: 0, max: 200, step: 1, integer: true },
-  { key: "min_p", label: "Min-p", hint: "Drop tokens below this relative probability.", min: 0, max: 1, step: 0.01 },
-  { key: "max_tokens", label: "Max output tokens", hint: "Upper bound on response length.", min: 1, max: 131072, step: 1, integer: true },
-  { key: "repeat_penalty", label: "Repeat penalty", hint: "Penalize repeated tokens (1 = off).", min: 0, max: 2, step: 0.01 },
-  { key: "presence_penalty", label: "Presence penalty", hint: "Encourage new topics.", min: -2, max: 2, step: 0.05 },
-  { key: "frequency_penalty", label: "Frequency penalty", hint: "Discourage frequent tokens.", min: -2, max: 2, step: 0.05 },
-  { key: "seed", label: "Seed", hint: "Fixed seed for reproducible output (-1 = random).", min: -1, max: 2 ** 31, step: 1, integer: true },
+  { key: "temperature", min: 0, max: 2, step: 0.05 },
+  { key: "top_p", min: 0, max: 1, step: 0.01 },
+  { key: "top_k", min: 0, max: 200, step: 1, integer: true },
+  { key: "min_p", min: 0, max: 1, step: 0.01 },
+  { key: "max_tokens", min: 1, max: 131072, step: 1, integer: true },
+  { key: "repeat_penalty", min: 0, max: 2, step: 0.01 },
+  { key: "presence_penalty", min: -2, max: 2, step: 0.05 },
+  { key: "frequency_penalty", min: -2, max: 2, step: 0.05 },
+  { key: "seed", min: -1, max: 2 ** 31, step: 1, integer: true },
 ];
 
 /**
@@ -39,6 +38,7 @@ export function ParamsEditor({
   supported?: string[];
   inherited?: GenerationParams;
 }) {
+  const { t } = useTranslation("chat");
   const set = (key: keyof GenerationParams, v: unknown) => onChange({ ...value, [key]: v });
 
   return (
@@ -52,9 +52,9 @@ export function ParamsEditor({
           <div key={spec.key} className={cn("grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 rounded-lg py-2", !isSupported && "opacity-45")}>
             <div className="min-w-0">
               <label htmlFor={`param-${spec.key}`} className="text-[0.8125rem] font-medium text-fg">
-                {spec.label}
+                {t(`params.${spec.key}.label`)}
               </label>
-              <p className="text-[0.75rem] text-muted">{isSupported ? spec.hint : "Not supported by this connection."}</p>
+              <p className="text-[0.75rem] text-muted">{isSupported ? t(`params.${spec.key}.hint`) : t("params.unsupported")}</p>
             </div>
             <div className="flex items-center gap-1.5">
               <input
@@ -66,7 +66,7 @@ export function ParamsEditor({
                 max={spec.max}
                 step={spec.step}
                 value={current ?? ""}
-                placeholder={fallback != null ? String(fallback) : "default"}
+                placeholder={fallback != null ? String(fallback) : t("params.default")}
                 onChange={(e) => {
                   const raw = e.target.value;
                   if (raw === "") return set(spec.key, null);
@@ -77,8 +77,8 @@ export function ParamsEditor({
               />
               <button
                 type="button"
-                aria-label={`Reset ${spec.label}`}
-                title="Use default"
+                aria-label={t("params.reset", { name: t(`params.${spec.key}.label`) })}
+                title={t("params.useDefault")}
                 disabled={current == null}
                 onClick={() => set(spec.key, null)}
                 className="flex size-7 items-center justify-center rounded-md text-faint hover:bg-hover hover:text-fg disabled:invisible"
@@ -89,7 +89,7 @@ export function ParamsEditor({
             {showSlider && isSupported && (
               <input
                 type="range"
-                aria-label={`${spec.label} slider`}
+                aria-label={t(`params.${spec.key}.label`)}
                 min={spec.min}
                 max={spec.max}
                 step={spec.step}
@@ -103,9 +103,9 @@ export function ParamsEditor({
       })}
       <div className="py-2">
         <label htmlFor="param-stop" className="text-[0.8125rem] font-medium text-fg">
-          Stop sequences
+          {t("params.stop.label")}
         </label>
-        <p className="mb-1.5 text-[0.75rem] text-muted">One per line (up to 8). Generation stops when any appears.</p>
+        <p className="mb-1.5 text-[0.75rem] text-muted">{t("params.stop.hint")}</p>
         <textarea
           id="param-stop"
           rows={2}

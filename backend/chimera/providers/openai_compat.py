@@ -138,12 +138,12 @@ class OpenAICompatibleProvider(Provider):
             m.vision = vision
         return models
 
-    async def _optional_json(self, url: str) -> tuple[int | None, Any, float | None, str | None]:
+    async def _optional_json(self, url: str) -> tuple[int | None, Any, float | None, ProviderError | None]:
         start = time.perf_counter()
         try:
             resp = await self.client.get(url, headers=self.headers(), timeout=self.timeout(read=15))
         except Exception as exc:  # noqa: BLE001
-            return None, None, None, translate_http_error(exc, self.config.name).message
+            return None, None, None, translate_http_error(exc, self.config.name)
         latency = (time.perf_counter() - start) * 1000
         try:
             body = resp.json()
@@ -158,22 +158,26 @@ class OpenAICompatibleProvider(Provider):
         if self.has_health_endpoint:
             status, body, latency, err = await self._optional_json(f"{self.root_url}/health")
             if err:
-                report.error, report.error_code = err, "connection"
-                report.checks.append({"name": "health", "ok": False, "detail": err})
+                report.error, report.error_code, report.error_params = err.message, err.code, err.params
+                report.checks.append({"name": "health", "ok": False, "code": err.code, "params": err.params, "detail": err.message})
                 return report
             if status == 200:
-                report.checks.append({"name": "health", "ok": True, "detail": "ready", "latency_ms": latency})
+                report.checks.append({"name": "health", "ok": True, "code": "health_ready", "detail": "ready", "latency_ms": latency})
                 caps["health_endpoint"] = True
             elif status == 503:
                 msg = "Server is up but not ready (loading model)."
+                server_msg = None
                 if isinstance(body, dict) and isinstance(body.get("error"), dict):
-                    msg = body["error"].get("message") or msg
-                report.checks.append({"name": "health", "ok": False, "detail": msg})
-                report.error, report.error_code = msg, "unavailable"
+                    server_msg = body["error"].get("message")
+                params = {"name": self.config.name, **({"detail": server_msg} if server_msg else {})}
+                report.checks.append({"name": "health", "ok": False, "code": "unavailable", "params": params, "detail": server_msg or msg})
+                report.error, report.error_code, report.error_params = server_msg or msg, "unavailable", params
                 report.capabilities = caps
                 return report
             else:
-                report.checks.append({"name": "health", "ok": None, "detail": f"not available (HTTP {status})"})
+                report.checks.append(
+                    {"name": "health", "ok": None, "code": "endpoint_unavailable", "params": {"status": status}, "detail": f"not available (HTTP {status})"}
+                )
                 caps["health_endpoint"] = False
 
         start = time.perf_counter()
@@ -182,11 +186,12 @@ class OpenAICompatibleProvider(Provider):
             report.models_ok = True
             report.latency_ms = round((time.perf_counter() - start) * 1000, 1)
             report.checks.append(
-                {"name": "models", "ok": True, "detail": f"{len(report.models)} model(s)", "latency_ms": report.latency_ms}
+                {"name": "models", "ok": True, "code": "models_count", "params": {"count": len(report.models)},
+                 "detail": f"{len(report.models)} model(s)", "latency_ms": report.latency_ms}
             )
         except ProviderError as exc:
-            report.error, report.error_code = exc.message, exc.code
-            report.checks.append({"name": "models", "ok": False, "detail": exc.message})
+            report.error, report.error_code, report.error_params = exc.message, exc.code, exc.params
+            report.checks.append({"name": "models", "ok": False, "code": exc.code, "params": exc.params, "detail": exc.message})
             report.capabilities = caps
             return report
 
@@ -194,9 +199,9 @@ class OpenAICompatibleProvider(Provider):
             status, body, _, _ = await self._optional_json(f"{self.root_url}/props")
             if status == 200 and isinstance(body, dict):
                 caps.update(self._parse_props(body))
-                report.checks.append({"name": "props", "ok": True, "detail": "server properties available"})
+                report.checks.append({"name": "props", "ok": True, "code": "props_available", "detail": "server properties available"})
             else:
-                report.checks.append({"name": "props", "ok": None, "detail": "not available"})
+                report.checks.append({"name": "props", "ok": None, "code": "not_available", "detail": "not available"})
 
         override = self.vision_override()
         if override is not None:
@@ -278,7 +283,8 @@ class OpenAICompatibleProvider(Provider):
             raise ProviderError("The server returned an invalid response.", code="protocol") from exc
         if isinstance(data, dict) and data.get("error"):
             err = data["error"]
-            raise ProviderError(str(err.get("message") if isinstance(err, dict) else err), code="server")
+            detail = str(err.get("message") if isinstance(err, dict) else err)
+            raise ProviderError(detail, code="server", name=self.config.name, detail=detail)
         choice = (data.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         events = []
@@ -330,7 +336,7 @@ class OpenAICompatibleProvider(Provider):
                 malformed += 1
                 log.warning("provider=%s malformed SSE event skipped (%d)", self.config.id, malformed)
                 if malformed > MAX_MALFORMED_EVENTS:
-                    raise ProviderError("The server sent too many malformed stream events.", code="protocol")
+                    raise ProviderError("The server sent too many malformed stream events.", code="malformed_stream", name=self.config.name)
                 continue
             if not isinstance(payload, dict):
                 malformed += 1
@@ -338,7 +344,9 @@ class OpenAICompatibleProvider(Provider):
             if sse.event == "error" or payload.get("error"):
                 err = payload.get("error", payload)
                 msg = err.get("message") if isinstance(err, dict) else str(err)
-                raise ProviderError(f"{self.config.name}: {msg or 'stream error'}", code="server")
+                raise ProviderError(
+                    f"{self.config.name}: {msg or 'stream error'}", code="server", name=self.config.name, detail=msg or None
+                )
             usage.update(self._usage(payload))
             for choice in payload.get("choices") or []:
                 if not isinstance(choice, dict):
@@ -357,7 +365,7 @@ class OpenAICompatibleProvider(Provider):
         if usage:
             yield StreamEvent(type="usage", usage=usage)
         if not saw_done and finish_reason is None:
-            raise ProviderError("The response stream ended before the model finished.", code="incomplete")
+            raise ProviderError("The response stream ended before the model finished.", code="incomplete", name=self.config.name)
         yield StreamEvent(type="done", finish_reason=finish_reason or "stop")
 
     # -- embeddings ---------------------------------------------------------

@@ -1,6 +1,6 @@
 [project]
 name = "chimera"
-version = "0.1.0"
+version = "0.2.0"
 description = "A minimalist, privacy-first, self-hosted AI chat workspace for local LLMs (llama.cpp / llama-server, Ollama, OpenAI-compatible servers)."
 requires-python = ">=3.11"
 dependencies = [
@@ -10,6 +10,8 @@ dependencies = [
   "python-multipart>=0.0.9",
   "pypdf>=4.0",
   "numpy>=1.26",
+  "argon2-cffi>=23.1",
+  "cryptography>=42",
 ]
 
 [project.optional-dependencies]
@@ -26,7 +28,7 @@ build-backend = "setuptools.build_meta"
 include = ["chimera*"]
 
 [tool.setuptools.package-data]
-chimera = ["static/**/*"]
+chimera = ["static/**/*", "data/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

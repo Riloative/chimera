@@ -1,0 +1,66 @@
+{
+  "legacy": {
+    "body": "Welcome! Data created before accounts existed now belongs to you: {{items}}. Other users won't see it.",
+    "conversations_one": "{{count}} conversation",
+    "conversations_other": "{{count}} conversations",
+    "prompts_one": "{{count}} prompt",
+    "prompts_other": "{{count}} prompts",
+    "files_one": "{{count}} attachment",
+    "files_other": "{{count}} attachments",
+    "collections_one": "{{count}} knowledge collection",
+    "collections_other": "{{count}} knowledge collections",
+    "providers_one": "{{count}} connection",
+    "providers_other": "{{count}} connections",
+    "settings": "your previous settings",
+    "dismiss": "Dismiss this notice"
+  },
+  "profile": {
+    "title": "Profile",
+    "adminNote": "You are an administrator of this installation.",
+    "username": "Login name",
+    "email": "Email",
+    "currentPassword": "Current password",
+    "passwordNeeded": "Required to change your login name or email.",
+    "save": "Save profile",
+    "saved": "Profile updated"
+  },
+  "language": {
+    "title": "Language",
+    "help": "Saved to your account, so it follows you to other devices."
+  },
+  "password": {
+    "title": "Password",
+    "help": "Changing your password signs you out everywhere else.",
+    "current": "Current password",
+    "new": "New password",
+    "confirm": "Confirm new password",
+    "submit": "Change password",
+    "changed": "Password changed. Other sessions were signed out."
+  },
+  "sessions": {
+    "title": "Active sessions",
+    "help": "Devices where you are signed in. Revoke any you don't recognize.",
+    "current": "This device",
+    "unknownDevice": "Unknown device",
+    "meta": "Signed in {{created}} · last active {{used}}",
+    "revoke": "Sign out",
+    "revoked": "Session signed out",
+    "revokeOthers": "Sign out all other sessions",
+    "revokedOthers_one": "{{count}} other session signed out",
+    "revokedOthers_other": "{{count}} other sessions signed out"
+  },
+  "export": {
+    "title": "Export my data",
+    "help": "Download your conversations, prompts and settings as JSON.",
+    "button": "Export my data"
+  },
+  "delete": {
+    "title": "Delete account",
+    "help": "Permanently deletes your account and everything in it: conversations, prompts, knowledge, uploads and personal connections.",
+    "button": "Delete my account",
+    "confirmTitle": "Delete your account?",
+    "confirmBody": "This cannot be undone. Enter your password to confirm.",
+    "password": "Password",
+    "confirm": "Delete account"
+  }
+}

@@ -36,7 +36,10 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 class ExtractionError(Exception):
-    pass
+    def __init__(self, message: str, code: str = "file_invalid", **params):
+        super().__init__(message)
+        self.code = code
+        self.params = params
 
 
 @dataclass
@@ -78,7 +81,7 @@ def _sniff_image(data: bytes) -> str | None:
 
 def decode_text(data: bytes) -> str:
     if b"\x00" in data[:8192] and not data.startswith((b"\xff\xfe", b"\xfe\xff")):
-        raise ExtractionError("This looks like a binary file, not text.")
+        raise ExtractionError("This looks like a binary file, not text.", "file_binary")
     for encoding in ("utf-8-sig", "utf-16"):
         try:
             if encoding == "utf-16" and not data.startswith((b"\xff\xfe", b"\xfe\xff")):
@@ -92,13 +95,13 @@ def decode_text(data: bytes) -> str:
         text = data.decode("latin-1")
         printable = sum(ch.isprintable() or ch in "\n\r\t" for ch in text[:4096])
         if printable / max(1, min(len(text), 4096)) < 0.9:
-            raise ExtractionError("Could not decode this file as text.") from None
+            raise ExtractionError("Could not decode this file as text.", "file_decode") from None
         return text
 
 
 def extract_pdf(data: bytes) -> str:
     if not data.startswith(b"%PDF-"):
-        raise ExtractionError("The file does not look like a valid PDF.")
+        raise ExtractionError("The file does not look like a valid PDF.", "pdf_invalid")
     try:
         from pypdf import PdfReader
 
@@ -107,7 +110,7 @@ def extract_pdf(data: bytes) -> str:
             try:
                 reader.decrypt("")
             except Exception as exc:  # noqa: BLE001
-                raise ExtractionError("The PDF is password protected.") from exc
+                raise ExtractionError("The PDF is password protected.", "pdf_encrypted") from exc
         pages = []
         for number, page in enumerate(reader.pages, start=1):
             text = (page.extract_text() or "").strip()
@@ -117,27 +120,27 @@ def extract_pdf(data: bytes) -> str:
         raise
     except Exception as exc:  # noqa: BLE001
         log.info("pdf extraction failed: %s", exc)
-        raise ExtractionError("Could not read text from this PDF.") from exc
+        raise ExtractionError("Could not read text from this PDF.", "pdf_unreadable") from exc
     if not pages:
-        raise ExtractionError("No extractable text found (the PDF may be scanned images).")
+        raise ExtractionError("No extractable text found (the PDF may be scanned images).", "pdf_no_text")
     return "\n\n".join(pages)
 
 
 def extract(filename: str, data: bytes, max_bytes: int, max_chars: int) -> Extracted:
     if not data:
-        raise ExtractionError("The file is empty.")
+        raise ExtractionError("The file is empty.", "file_empty")
     kind = classify(filename)
     if kind is None:
-        raise ExtractionError("Unsupported file type.")
+        raise ExtractionError("Unsupported file type.", "file_unsupported")
     if kind == "image":
         if len(data) > min(max_bytes, MAX_IMAGE_BYTES):
-            raise ExtractionError("Image is too large.")
+            raise ExtractionError("Image is too large.", "image_too_large")
         mime = _sniff_image(data)
         if not mime:
-            raise ExtractionError("The file content is not a supported image.")
+            raise ExtractionError("The file content is not a supported image.", "image_invalid")
         return Extracted(kind="image", mime=mime)
     if len(data) > max_bytes:
-        raise ExtractionError(f"File exceeds the {max_bytes // (1024 * 1024)} MB limit.")
+        raise ExtractionError(f"File exceeds the {max_bytes // (1024 * 1024)} MB limit.", "file_too_large", mb=max_bytes // (1024 * 1024))
     if kind == "pdf":
         text, mime = extract_pdf(data), "application/pdf"
     else:
@@ -147,5 +150,5 @@ def extract(filename: str, data: bytes, max_bytes: int, max_chars: int) -> Extra
     if truncated:
         text = text[:max_chars]
     if not text.strip():
-        raise ExtractionError("The file contains no text.")
+        raise ExtractionError("The file contains no text.", "file_no_text")
     return Extracted(kind="text", mime=mime, text=text, truncated=truncated)

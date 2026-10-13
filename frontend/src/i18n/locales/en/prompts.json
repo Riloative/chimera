@@ -1,0 +1,27 @@
+{
+  "title": "Prompts",
+  "description": "Reusable instructions and templates. Insert one into a message, or use it as a conversation's system prompt.",
+  "new": "New prompt",
+  "edit": "Edit prompt",
+  "filter": "Filter prompts",
+  "empty": {
+    "title": "Your prompt library is empty",
+    "body": "Save instructions you use often — a code reviewer, a translator, a writing style."
+  },
+  "uncategorized": "Uncategorized",
+  "use": "Use",
+  "options": "Options for “{{title}}”",
+  "useAsSystem": "New chat with this as the system prompt",
+  "useAsSystemToast": "The new chat will use “{{title}}” as its system prompt",
+  "copy": "Copy",
+  "copied": "Copied",
+  "deleteTitle": "Delete “{{title}}”?",
+  "fields": {
+    "title": "Title",
+    "category": "Category",
+    "categoryPlaceholder": "e.g. Code",
+    "description": "Description",
+    "optional": "Optional",
+    "content": "Prompt"
+  }
+}

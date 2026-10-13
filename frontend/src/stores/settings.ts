@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import type { AppSettings } from "@/lib/types";
 
 const APPEARANCE_KEY = "chimera.appearance";
@@ -47,7 +48,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
       applyAppearance(settings);
       set({ settings, error: null });
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: errorText(err) });
     }
   },
   update: async (patch) => {

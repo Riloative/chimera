@@ -1,65 +1,78 @@
 import { Download, HardDrive, Monitor, Moon, Sun, Upload } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, NavLink, useParams } from "react-router-dom";
-import { PageHeader, PageShell } from "@/components/Page";
+import { LanguageSelect } from "@/components/LanguageSelect";
+import { Group, PageHeader, PageShell } from "@/components/Page";
 import { ParamsEditor, cleanParams } from "@/components/ParamsEditor";
 import { Button, ConfirmDialog, Field, Input, SegmentedControl, Select, Spinner, Switch, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import type { AppSettings, GenerationParams } from "@/lib/types";
 import { cn, downloadUrl, formatBytes } from "@/lib/utils";
+import { AccountSettings } from "@/pages/settings/AccountSettings";
+import { AdminUsers } from "@/pages/settings/AdminUsers";
+import { useAuth } from "@/stores/auth";
 import { useConversations } from "@/stores/conversations";
 import { findProvider, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { toast } from "@/stores/ui";
 
-const SECTIONS = [
-  { id: "appearance", label: "Appearance" },
-  { id: "chat", label: "Chat" },
-  { id: "documents", label: "Documents" },
-  { id: "data", label: "Privacy & data" },
-  { id: "about", label: "About" },
-] as const;
+const SECTIONS = ["account", "appearance", "chat", "documents", "data", "users", "about"] as const;
+type SectionId = (typeof SECTIONS)[number];
 
 export function SettingsPage() {
-  const { section = "appearance" } = useParams();
+  const { t } = useTranslation("settings");
+  const { section = "account" } = useParams();
   const settings = useSettings((s) => s.settings);
+  const isAdmin = useAuth((s) => s.user?.role === "admin");
+  const visible = SECTIONS.filter((s) => s !== "users" || isAdmin);
+  const current = (visible as readonly string[]).includes(section) ? (section as SectionId) : "account";
+
+  useEffect(() => {
+    document.title = `${t("title")} · Chimera`;
+  }, [t]);
 
   return (
     <PageShell wide>
-      <PageHeader title="Settings" />
+      <PageHeader title={t("title")} />
       <div className="flex flex-col gap-8 md:flex-row md:gap-12">
-        <nav aria-label="Settings sections" className="flex shrink-0 gap-1 overflow-x-auto md:w-44 md:flex-col">
-          {SECTIONS.map((s) => (
+        <nav aria-label={t("sections")} className="-mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 md:w-48 md:flex-col">
+          {visible.map((s) => (
             <NavLink
-              key={s.id}
-              to={`/settings/${s.id}`}
+              key={s}
+              to={`/settings/${s}`}
               className={({ isActive }) =>
                 cn(
-                  "flex h-8 shrink-0 items-center rounded-lg px-3 text-[0.8125rem] transition-colors",
-                  isActive || (section === s.id) ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
+                  "flex h-8 shrink-0 items-center rounded-lg px-3 text-[0.8125rem] whitespace-nowrap transition-colors",
+                  isActive || current === s ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
                 )
               }
             >
-              {s.label}
+              {t(`nav.${s}`)}
             </NavLink>
           ))}
-          <Link to="/models" className="flex h-8 shrink-0 items-center rounded-lg px-3 text-[0.8125rem] text-muted transition-colors hover:bg-hover hover:text-fg">
-            Models & connections →
+          <Link to="/models" className="flex h-8 shrink-0 items-center rounded-lg px-3 text-[0.8125rem] whitespace-nowrap text-muted transition-colors hover:bg-hover hover:text-fg">
+            {t("nav.models")} →
           </Link>
         </nav>
         <div className="min-w-0 flex-1 md:max-w-2xl">
-          {!settings ? (
-            <Spinner />
-          ) : section === "appearance" ? (
-            <Appearance settings={settings} />
-          ) : section === "chat" ? (
-            <ChatSettings settings={settings} />
-          ) : section === "documents" ? (
-            <DocumentSettings settings={settings} />
-          ) : section === "data" ? (
-            <DataSettings />
-          ) : (
+          {current === "account" ? (
+            <AccountSettings />
+          ) : current === "users" ? (
+            <AdminUsers />
+          ) : current === "about" ? (
             <About />
+          ) : current === "data" ? (
+            <DataSettings />
+          ) : !settings ? (
+            <Spinner />
+          ) : current === "appearance" ? (
+            <Appearance settings={settings} />
+          ) : current === "chat" ? (
+            <ChatSettings settings={settings} />
+          ) : (
+            <DocumentSettings settings={settings} />
           )}
         </div>
       </div>
@@ -67,25 +80,15 @@ export function SettingsPage() {
   );
 }
 
-function Group({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="mb-10 last:mb-0">
-      <h2 className="text-[0.9375rem] font-medium text-fg">{title}</h2>
-      {description && <p className="mt-0.5 text-[0.8125rem] leading-relaxed text-muted">{description}</p>}
-      <div className="mt-4 space-y-5">{children}</div>
-    </section>
-  );
-}
-
 function useSave() {
   const update = useSettings((s) => s.update);
-  return (patch: Partial<AppSettings>) => update(patch).catch((e) => toast((e as Error).message, "error"));
+  return (patch: Partial<AppSettings>) => update(patch).catch((e) => toast(errorText(e), "error"));
 }
 
 function Row({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
+      <div className="min-w-0">
         <p className="text-sm font-medium text-fg">{label}</p>
         {description && <p className="text-[0.8125rem] text-muted">{description}</p>}
       </div>
@@ -95,61 +98,61 @@ function Row({ label, description, children }: { label: string; description?: st
 }
 
 function Appearance({ settings }: { settings: AppSettings }) {
+  const { t } = useTranslation("settings");
   const save = useSave();
   return (
     <>
-      <Group title="Theme">
+      <Group title={t("appearance.language")} description={t("appearance.languageHelp")}>
+        <LanguageSelect className="-ml-1.5" compact />
+      </Group>
+      <Group title={t("appearance.theme")}>
         <SegmentedControl
-          label="Theme"
+          label={t("appearance.theme")}
           value={settings.theme}
           onChange={(theme) => save({ theme })}
           options={[
-            { value: "system", label: <><Monitor className="size-3.5" /> System</> },
-            { value: "light", label: <><Sun className="size-3.5" /> Light</> },
-            { value: "dark", label: <><Moon className="size-3.5" /> Dark</> },
+            { value: "system", label: <><Monitor className="size-3.5" /> {t("appearance.system")}</> },
+            { value: "light", label: <><Sun className="size-3.5" /> {t("appearance.light")}</> },
+            { value: "dark", label: <><Moon className="size-3.5" /> {t("appearance.dark")}</> },
           ]}
         />
       </Group>
-      <Group title="Reading">
-        <Row label="Font size">
+      <Group title={t("appearance.reading")}>
+        <Row label={t("appearance.fontSize")}>
           <SegmentedControl
-            label="Font size"
+            label={t("appearance.fontSize")}
             value={settings.font_size}
             onChange={(font_size) => save({ font_size })}
             options={[
-              { value: "sm", label: "Small" },
-              { value: "md", label: "Default" },
-              { value: "lg", label: "Large" },
+              { value: "sm", label: t("appearance.small") },
+              { value: "md", label: t("appearance.default") },
+              { value: "lg", label: t("appearance.large") },
             ]}
           />
         </Row>
-        <Row label="Conversation width">
+        <Row label={t("appearance.width")}>
           <SegmentedControl
-            label="Conversation width"
+            label={t("appearance.width")}
             value={settings.chat_width}
             onChange={(chat_width) => save({ chat_width })}
             options={[
-              { value: "narrow", label: "Narrow" },
-              { value: "default", label: "Default" },
-              { value: "wide", label: "Wide" },
+              { value: "narrow", label: t("appearance.narrow") },
+              { value: "default", label: t("appearance.default") },
+              { value: "wide", label: t("appearance.wide") },
             ]}
           />
         </Row>
       </Group>
-      <Group title="Interface">
-        <Switch label="Collapse sidebar" description="Show a slim icon rail instead of the full sidebar." checked={settings.sidebar_collapsed} onChange={(v) => save({ sidebar_collapsed: v })} />
-        <Switch
-          label="Reduce motion"
-          description="Turn off animations and transitions. Your system preference is always respected."
-          checked={settings.reduce_motion}
-          onChange={(v) => save({ reduce_motion: v })}
-        />
+      <Group title={t("appearance.interface")}>
+        <Switch label={t("appearance.collapse")} description={t("appearance.collapseHelp")} checked={settings.sidebar_collapsed} onChange={(v) => save({ sidebar_collapsed: v })} />
+        <Switch label={t("appearance.reduceMotion")} description={t("appearance.reduceMotionHelp")} checked={settings.reduce_motion} onChange={(v) => save({ reduce_motion: v })} />
       </Group>
     </>
   );
 }
 
 function ChatSettings({ settings }: { settings: AppSettings }) {
+  const { t } = useTranslation("settings");
   const save = useSave();
   const entries = useModels((s) => s.entries);
   const [prompt, setPrompt] = useState(settings.default_system_prompt);
@@ -164,18 +167,13 @@ function ChatSettings({ settings }: { settings: AppSettings }) {
 
   return (
     <>
-      <Group title="Behavior">
-        <Switch label="Enter to send" description="When off, Enter adds a new line and Ctrl/⌘+Enter sends." checked={settings.enter_to_send} onChange={(v) => save({ enter_to_send: v })} />
-        <Switch label="Stream responses" description="Show text as it is generated. When off, the full answer appears at once." checked={settings.stream} onChange={(v) => save({ stream: v })} />
-        <Switch
-          label="Generate titles with the model"
-          description="After the first reply, ask the model for a short title. Otherwise the first message is used."
-          checked={settings.auto_title}
-          onChange={(v) => save({ auto_title: v })}
-        />
-        <Switch label="Show reasoning" description="Display the thought process of reasoning models in a collapsible section." checked={settings.show_reasoning} onChange={(v) => save({ show_reasoning: v })} />
+      <Group title={t("chat.behavior")}>
+        <Switch label={t("chat.enterToSend")} description={t("chat.enterToSendHelp")} checked={settings.enter_to_send} onChange={(v) => save({ enter_to_send: v })} />
+        <Switch label={t("chat.stream")} description={t("chat.streamHelp")} checked={settings.stream} onChange={(v) => save({ stream: v })} />
+        <Switch label={t("chat.autoTitle")} description={t("chat.autoTitleHelp")} checked={settings.auto_title} onChange={(v) => save({ auto_title: v })} />
+        <Switch label={t("chat.showReasoning")} description={t("chat.showReasoningHelp")} checked={settings.show_reasoning} onChange={(v) => save({ show_reasoning: v })} />
       </Group>
-      <Group title="Default system prompt" description="Used by every conversation unless it sets its own.">
+      <Group title={t("chat.systemPrompt")} description={t("chat.systemPromptHelp")}>
         <Textarea
           rows={6}
           value={prompt}
@@ -183,19 +181,11 @@ function ChatSettings({ settings }: { settings: AppSettings }) {
             setPrompt(e.target.value);
             setDirty(true);
           }}
-          placeholder="You are a concise, helpful assistant."
-          aria-label="Default system prompt"
+          placeholder={t("chat.systemPromptPlaceholder")}
+          aria-label={t("chat.systemPrompt")}
         />
       </Group>
-      <Group
-        title="Default generation parameters"
-        description={
-          <>
-            Leave a field empty to use the server's own default. Parameters are only sent when the connection supports them
-            {provider ? <> (checked against <span className="text-fg">{provider.name}</span>)</> : null}.
-          </>
-        }
-      >
+      <Group title={t("chat.params")} description={provider ? t("chat.paramsHelpProvider", { name: provider.name }) : t("chat.paramsHelp")}>
         <ParamsEditor
           value={params}
           onChange={(p) => {
@@ -217,10 +207,10 @@ function ChatSettings({ settings }: { settings: AppSettings }) {
             };
             await save({ default_system_prompt: prompt, params: full });
             setDirty(false);
-            toast("Chat settings saved", "success");
+            toast(t("chat.saved"), "success");
           }}
         >
-          Save changes
+          {t("saveChanges")}
         </Button>
       </div>
     </>
@@ -228,6 +218,7 @@ function ChatSettings({ settings }: { settings: AppSettings }) {
 }
 
 function DocumentSettings({ settings }: { settings: AppSettings }) {
+  const { t } = useTranslation("settings");
   const save = useSave();
   const entries = useModels((s) => s.entries);
   const k = settings.knowledge;
@@ -235,15 +226,20 @@ function DocumentSettings({ settings }: { settings: AppSettings }) {
   const [chars, setChars] = useState(settings.max_attachment_chars);
   const [embedModel, setEmbedModel] = useState(k.embedding_model ?? "");
   const [chunk, setChunk] = useState({ chunk_size: k.chunk_size, chunk_overlap: k.chunk_overlap, top_k: k.top_k });
+  const fields = [
+    ["chunk_size", t("documents.chunkSize"), 200, 8000],
+    ["chunk_overlap", t("documents.chunkOverlap"), 0, 2000],
+    ["top_k", t("documents.topK"), 1, 20],
+  ] as const;
 
   return (
     <>
-      <Group title="Attachments" description="Files are read on this server; extracted text is sent to the model with your message.">
+      <Group title={t("documents.attachments")} description={t("documents.attachmentsHelp")}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Maximum file size (MB)" htmlFor="att-mb">
+          <Field label={t("documents.maxSize")} htmlFor="att-mb">
             <Input id="att-mb" type="number" min={1} max={100} value={mb} onChange={(e) => setMb(Number(e.target.value))} onBlur={() => mb !== settings.max_attachment_mb && save({ max_attachment_mb: Math.min(100, Math.max(1, mb || 10)) })} />
           </Field>
-          <Field label="Maximum extracted characters" htmlFor="att-chars" hint="Longer documents are truncated; use Knowledge for large files.">
+          <Field label={t("documents.maxChars")} htmlFor="att-chars" hint={t("documents.maxCharsHelp")}>
             <Input
               id="att-chars"
               type="number"
@@ -257,18 +253,15 @@ function DocumentSettings({ settings }: { settings: AppSettings }) {
           </Field>
         </div>
       </Group>
-      <Group
-        title="Knowledge base"
-        description="Keyword search works offline out of the box. Add a local embedding model for semantic search (e.g. llama-server started with --embeddings, or Ollama's nomic-embed-text)."
-      >
+      <Group title={t("documents.knowledge")} description={t("documents.knowledgeHelp")}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Embedding connection" htmlFor="kb-provider">
+          <Field label={t("documents.embeddingConnection")} htmlFor="kb-provider">
             <Select
               id="kb-provider"
               value={k.embedding_provider_id ?? ""}
               onChange={(e) => save({ knowledge: { ...k, embedding_provider_id: e.target.value || null, embedding_model: e.target.value ? k.embedding_model : null } })}
             >
-              <option value="">None (keyword search only)</option>
+              <option value="">{t("documents.none")}</option>
               {entries.map((e) => (
                 <option key={e.provider.id} value={e.provider.id}>
                   {e.provider.name}
@@ -276,7 +269,7 @@ function DocumentSettings({ settings }: { settings: AppSettings }) {
               ))}
             </Select>
           </Field>
-          <Field label="Embedding model" htmlFor="kb-model" hint="Re-index existing documents after changing it.">
+          <Field label={t("documents.embeddingModel")} htmlFor="kb-model" hint={t("documents.embeddingModelHelp")}>
             <Input
               id="kb-model"
               list="kb-models"
@@ -293,13 +286,7 @@ function DocumentSettings({ settings }: { settings: AppSettings }) {
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
-          {(
-            [
-              ["chunk_size", "Chunk size (chars)", 200, 8000],
-              ["chunk_overlap", "Overlap (chars)", 0, 2000],
-              ["top_k", "Passages per message", 1, 20],
-            ] as const
-          ).map(([key, label, min, max]) => (
+          {fields.map(([key, label, min, max]) => (
             <Field key={key} label={label} htmlFor={`kb-${key}`}>
               <Input
                 id={`kb-${key}`}
@@ -319,6 +306,8 @@ function DocumentSettings({ settings }: { settings: AppSettings }) {
 }
 
 function DataSettings() {
+  const { t } = useTranslation("settings");
+  const isAdmin = useAuth((s) => s.user?.role === "admin");
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.info>> | null>(null);
   const [confirm, setConfirm] = useState<null | "conversations" | "all" | "restore">(null);
   const [pendingRestore, setPendingRestore] = useState<File | null>(null);
@@ -338,34 +327,34 @@ function DataSettings() {
 
   return (
     <>
-      <Group title="Your data stays here">
+      <Group title={t("data.private")}>
         <ul className="space-y-2 text-[0.8125rem] leading-relaxed text-muted">
-          <li>• Conversations, documents and settings are stored in a local SQLite database on this server.</li>
-          <li>• No telemetry, analytics or tracking. The interface loads no external fonts, scripts or styles.</li>
-          <li>• Prompts are only sent to the model connections you configure.</li>
+          <li>• {t("data.point1")}</li>
+          <li>• {t("data.point2")}</li>
+          <li>• {t("data.point3")}</li>
         </ul>
-        {info && (
+        {info && isAdmin && info.database && (
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 rounded-xl bg-subtle px-4 py-3 text-[0.8125rem]">
-            <dt className="text-muted">Database</dt>
+            <dt className="text-muted">{t("data.database")}</dt>
             <dd className="truncate font-mono text-fg" title={info.database}>
               {info.database}
             </dd>
-            <dt className="text-muted">Size</dt>
-            <dd className="text-fg">{formatBytes(info.db_size)}</dd>
-            <dt className="text-muted">Access</dt>
-            <dd className="text-fg">{info.auth_enabled ? "Password protected" : info.remote_access ? "Open on the network (no password)" : "This machine only"}</dd>
-            <dt className="text-muted">Telemetry</dt>
-            <dd className="text-fg">Off</dd>
+            <dt className="text-muted">{t("data.size")}</dt>
+            <dd className="text-fg">{formatBytes(info.db_size ?? 0)}</dd>
+            <dt className="text-muted">{t("data.accounts")}</dt>
+            <dd className="text-fg">{info.users}</dd>
+            <dt className="text-muted">{t("data.telemetry")}</dt>
+            <dd className="text-fg">{t("data.off")}</dd>
           </dl>
         )}
       </Group>
-      <Group title="Export & import" description="A portable JSON file with conversations, prompts and settings. API keys are never exported.">
+      <Group title={t("data.exportTitle")} description={t("data.exportHelp")}>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" icon={<Download className="size-4" />} onClick={() => downloadUrl("/api/data/export")}>
-            Export JSON
+            {t("data.export")}
           </Button>
           <Button variant="outline" icon={<Upload className="size-4" />} onClick={() => importRef.current?.click()}>
-            Import JSON
+            {t("data.import")}
           </Button>
           <input
             ref={importRef}
@@ -378,66 +367,70 @@ function DataSettings() {
               if (!file) return;
               try {
                 const r = await api.importData(file);
-                toast(`Imported ${r.conversations} conversations, ${r.prompts} prompts${r.skipped ? ` (${r.skipped} already existed)` : ""}`, "success");
+                toast(
+                  t("data.imported", {
+                    conversations: t("data.conversationCount", { count: r.conversations }),
+                    prompts: t("data.promptCount", { count: r.prompts }),
+                  }) + (r.skipped ? ` ${t("data.skipped", { count: r.skipped })}` : ""),
+                  "success",
+                );
                 await loadConversations();
               } catch (err) {
-                toast((err as Error).message, "error");
+                toast(errorText(err), "error");
               }
             }}
           />
         </div>
       </Group>
-      <Group title="Backup & restore" description="A complete copy of the database, including connections and knowledge collections.">
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" icon={<HardDrive className="size-4" />} onClick={() => downloadUrl("/api/data/backup")}>
-            Download backup
-          </Button>
-          <Button variant="outline" icon={<Upload className="size-4" />} onClick={() => restoreRef.current?.click()}>
-            Restore from backup
-          </Button>
-          <input
-            ref={restoreRef}
-            type="file"
-            accept=".sqlite,.db,application/vnd.sqlite3,application/octet-stream"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) {
-                setPendingRestore(file);
-                setConfirm("restore");
-              }
-            }}
-          />
-        </div>
-      </Group>
-      <Group title="Delete data">
+      {isAdmin && (
+        <Group title={t("data.backupTitle")} description={t("data.backupHelp")}>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" icon={<HardDrive className="size-4" />} onClick={() => downloadUrl("/api/data/backup")}>
+              {t("data.backup")}
+            </Button>
+            <Button variant="outline" icon={<Upload className="size-4" />} onClick={() => restoreRef.current?.click()}>
+              {t("data.restore")}
+            </Button>
+            <input
+              ref={restoreRef}
+              type="file"
+              accept=".sqlite,.db,application/vnd.sqlite3,application/octet-stream"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) {
+                  setPendingRestore(file);
+                  setConfirm("restore");
+                }
+              }}
+            />
+          </div>
+        </Group>
+      )}
+      <Group title={t("data.deleteTitle")} description={t("data.deleteHelp")}>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="text-danger" onClick={() => setConfirm("conversations")}>
-            Delete all conversations
+            {t("data.deleteConversations")}
           </Button>
           <Button variant="outline" className="text-danger" onClick={() => setConfirm("all")}>
-            Clear all local data
+            {t("data.deleteAll")}
           </Button>
         </div>
       </Group>
       <ConfirmDialog
         open={confirm === "conversations" || confirm === "all"}
         onOpenChange={(o) => !o && setConfirm(null)}
-        title={confirm === "all" ? "Clear all local data?" : "Delete all conversations?"}
-        description={
-          confirm === "all"
-            ? "Conversations, prompts, knowledge collections, connections, uploads and settings will be permanently deleted. Consider downloading a backup first."
-            : "Every conversation and message will be permanently deleted."
-        }
-        confirmLabel={confirm === "all" ? "Clear everything" : "Delete all"}
+        title={confirm === "all" ? t("data.deleteAllTitle") : t("data.deleteConversationsTitle")}
+        description={confirm === "all" ? t("data.deleteAllBody") : t("data.deleteConversationsBody")}
+        confirmLabel={confirm === "all" ? t("data.deleteAllConfirm") : t("data.deleteConversationsConfirm")}
         onConfirm={async () => {
           try {
             await api.clearData(confirm === "all" ? "all" : "conversations");
             await reloadAll();
-            toast("Data deleted");
+            toast(t("data.deleted"));
           } catch (err) {
-            toast((err as Error).message, "error");
+            toast(errorText(err), "error");
           }
         }}
       />
@@ -449,17 +442,17 @@ function DataSettings() {
             setPendingRestore(null);
           }
         }}
-        title="Restore this backup?"
-        description={`All current data will be replaced with the contents of “${pendingRestore?.name}”.`}
-        confirmLabel="Restore"
+        title={t("data.restoreTitle")}
+        description={t("data.restoreBody", { name: pendingRestore?.name ?? "" })}
+        confirmLabel={t("data.restoreConfirm")}
         onConfirm={async () => {
           if (!pendingRestore) return;
           try {
             await api.restore(pendingRestore);
-            await reloadAll();
-            toast("Backup restored", "success");
+            toast(t("data.restored"), "success");
+            window.location.reload();
           } catch (err) {
-            toast((err as Error).message, "error");
+            toast(errorText(err), "error");
           }
         }}
       />
@@ -468,29 +461,19 @@ function DataSettings() {
 }
 
 function About() {
-  const [info, setInfo] = useState<{ version: string; auth_enabled: boolean } | null>(null);
+  const { t } = useTranslation("settings");
+  const [info, setInfo] = useState<{ version: string } | null>(null);
   useEffect(() => {
     api.info().then(setInfo).catch(() => undefined);
   }, []);
   return (
-    <Group title="Chimera" description="A calm, local-first workspace for your own language models.">
+    <Group title="Chimera" description={t("about.tagline")}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-[0.8125rem]">
-        <dt className="text-muted">Version</dt>
+        <dt className="text-muted">{t("about.version")}</dt>
         <dd className="font-mono text-fg">{info?.version ?? "…"}</dd>
-        <dt className="text-muted">Inference</dt>
-        <dd className="text-fg">llama.cpp (llama-server), OpenAI-compatible servers, Ollama</dd>
+        <dt className="text-muted">{t("about.inference")}</dt>
+        <dd className="text-fg">{t("about.inferenceValue")}</dd>
       </dl>
-      {info?.auth_enabled && (
-        <Button
-          variant="outline"
-          onClick={async () => {
-            await api.logout();
-            window.location.reload();
-          }}
-        >
-          Sign out
-        </Button>
-      )}
     </Group>
   );
 }

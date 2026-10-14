@@ -23,6 +23,7 @@ from ..netpolicy import url_allowed
 from ..services.conversations import conversation_out, message_out
 from ..services.documents import ExtractionError, extract, safe_filename
 from ..services.files import file_out
+from ..web.service import source_meta
 from . import schemas
 from .deps import AppState, current_user, get_state, require_admin
 
@@ -204,6 +205,7 @@ async def get_conversation(cid: str, user: dict = Depends(current_user), state: 
     gen = state.chat.active_for(user["id"], cid)
     out = conversation_out(row)
     out["messages"] = state.conversations.messages(cid)
+    out["web_sources"] = state.web.for_conversation(user["id"], cid)
     out["generation_id"] = gen.id if gen else None
     if gen:  # expose the freshest partial text
         for m in out["messages"]:
@@ -256,14 +258,16 @@ async def send_message(
     cid: str, body: schemas.SendMessage, user: dict = Depends(current_user), state: AppState = Depends(get_state)
 ):
     params = body.params.model_dump(exclude_none=True) if body.params else None
-    gen, extra = state.chat.prepare_send(user, cid, body.content, body.attachments, body.provider_id, body.model, params)
+    gen, extra = state.chat.prepare_send(user, cid, body.content, body.attachments, body.provider_id, body.model, params,
+                                         body.urls, body.web_search, body.timezone)
     return _stream(state, gen, _start_payload(state, gen, extra))
 
 
 @router.post("/conversations/{cid}/regenerate")
 async def regenerate(cid: str, body: schemas.Regenerate, user: dict = Depends(current_user), state: AppState = Depends(get_state)):
     params = body.params.model_dump(exclude_none=True) if body.params else None
-    gen, extra = state.chat.prepare_regenerate(user, cid, body.message_id, body.provider_id, body.model, params)
+    gen, extra = state.chat.prepare_regenerate(user, cid, body.message_id, body.provider_id, body.model, params,
+                                               body.web_search, body.timezone)
     return _stream(state, gen, _start_payload(state, gen, extra))
 
 
@@ -272,7 +276,8 @@ async def edit_message(
     cid: str, mid: str, body: schemas.EditMessage, user: dict = Depends(current_user), state: AppState = Depends(get_state)
 ):
     params = body.params.model_dump(exclude_none=True) if body.params else None
-    gen, extra = state.chat.prepare_edit(user, cid, mid, body.content, body.provider_id, body.model, params)
+    gen, extra = state.chat.prepare_edit(user, cid, mid, body.content, body.provider_id, body.model, params,
+                                         body.urls, body.web_search, body.timezone)
     return _stream(state, gen, _start_payload(state, gen, extra))
 
 
@@ -497,6 +502,10 @@ def export_payload(state: AppState, user: dict) -> dict:
     for row in state.db.all("SELECT * FROM conversations WHERE user_id = ? ORDER BY created_at", (user["id"],)):
         conv = conversation_out(row)
         conv["messages"] = state.conversations.messages(row["id"])
+        # Pages read and search results, including the extracted text.
+        conv["web_sources"] = [
+            {**source_meta(r), "content": r["content"]} for r in state.web.full_for_conversation(user["id"], row["id"])
+        ]
         conversations.append(conv)
     return {
         "format": "chimera-export",
@@ -630,6 +639,8 @@ def delete_owned_data(state: AppState, user_id: str, *, everything: bool) -> Non
         if gen.user["id"] == user_id:
             state.chat.cancel(None, gen.id)
     state.db.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
+    state.db.execute("DELETE FROM web_sources WHERE user_id = ?", (user_id,))  # also cascades; explicit for clarity
+    state.web.forget_user(user_id)
     if everything:
         state.knowledge.delete_user_data(user_id)
         with state.db.transaction() as conn:

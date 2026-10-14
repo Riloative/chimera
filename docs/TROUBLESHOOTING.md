@@ -121,9 +121,18 @@ The proxy buffers responses. Caddy: `flush_interval -1`. nginx:
 Run `cd frontend && npm ci && npm run build`, or set `CHIMERA_STATIC_DIR` to the
 built `dist` directory.
 
+## Web reading and search
+
+"No Search button", "SearXNG refused JSON output", "could not reach its search
+engines", "This address points to a private or local network", "This page needs
+JavaScript", timeouts, quotas and context-limit messages are explained in the
+troubleshooting table of [WEB.md](WEB.md#troubleshooting).
+
 ## Logs
 
 - Docker: `docker compose logs -f chimera`
 - Native: stdout of `scripts/start.sh`; set `CHIMERA_LOG_LEVEL=debug` for more.
 
-Logs never contain message content, passwords, session tokens or API keys.
+Logs never contain message content, passwords, session tokens, API keys or fetched
+page content; web requests are logged by domain only (full URLs only with
+`CHIMERA_WEB_VERBOSE_LOG=true`).

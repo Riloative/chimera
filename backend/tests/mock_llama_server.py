@@ -70,6 +70,32 @@ def tokenize(text: str) -> list[str]:
     return re.findall(r"\s*\S{1,4}|\s+", text)
 
 
+def mock_queries(prompt: str) -> str:
+    """Answer a query-generation prompt like a small model would."""
+    message = prompt.rsplit("Latest user message:", 1)[-1].strip()
+    if "[badjson]" in message:
+        return "Sure! Here are some good queries: weather today, news"
+    words = re.sub(r"https?://\S+|\[[a-z]+\]", " ", message).split()
+    base = " ".join(words[:6]) or "query"
+    return "<think>planning</think>" + json.dumps({"queries": [base, f"{base} latest"]})
+
+
+def mock_grounded_answer(text: str) -> str:
+    """Cite every source the app provided, quoting the first line of each, and
+    say so truthfully when a source could not be read."""
+    parts = []
+    for m in re.finditer(r'<source id="(\d+)" token="(\w+)">\n(.*?)\n---\n?(.*?)</source token="\2">', text, re.S):
+        n, head, body = m.group(1), m.group(3), m.group(4).strip()
+        if "COULD NOT BE READ" in head:
+            parts.append(f"Source [{n}] could not be read.")
+            continue
+        first = next((ln.strip("#*- ").strip() for ln in body.splitlines() if ln.strip()), "")
+        parts.append(f"According to [{n}], {first[:120]}")
+    if "[badcite]" in text:
+        parts.append("See also [42].")
+    return "\n\n".join(parts) or "No sources were provided."
+
+
 def embed_text(text: str, dims: int = 64) -> list[float]:
     vec = [0.0] * dims
     for word in re.findall(r"\w+", text.lower()):
@@ -170,12 +196,19 @@ def create_mock_app(
 
         if "Write a short, specific title" in text:
             answer = "Mock Conversation Title"
+        elif "Write web search queries" in text:
+            answer = mock_queries(text)
+            if "[slowquery]" in text:
+                await asyncio.sleep(5)
+        elif "<web_sources>" in text and "[slow]" not in text:
+            answer = mock_grounded_answer(text)
         elif "[markdown]" in text:
             answer = MARKDOWN_SAMPLE
         elif "[slow]" in text:
             answer = " ".join(f"word{i}" for i in range(150))
         else:
-            visible = re.sub(r"<attachments>.*?</attachments>\s*", "", text, flags=re.S).strip()
+            visible = re.sub(r"<attachments>.*?</attachments>\s*", "", text, flags=re.S)
+            visible = re.sub(r"<web_sources>.*?</web_sources>\s*", "", visible, flags=re.S).strip()
             answer = f"You said: {visible}"
             if images:
                 answer += f" (I can see {images} image(s).)"

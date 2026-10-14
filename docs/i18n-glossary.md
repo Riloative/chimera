@@ -42,6 +42,22 @@ breaks, `el. paštas` abbreviation.
 | seed | sėkla | |
 | timeout | laukimo laikas | |
 | vision (image input) | vaizdai / vaizdų atpažinimas | |
+| web search | paieška internete | toggle label: *Paieška* |
+| search engine | paieškos sistema | |
+| search query | paieškos užklausa | (see *užklausa* for prompt below) |
+| source | šaltinis | plural *šaltiniai*, gen. pl. *šaltinių* |
+| citation | nuoroda į šaltinį | aria-label "{n} šaltinis: …" |
+| link (URL) | nuoroda | |
+| read a page / read again | perskaityti puslapį / perskaityti iš naujo | "Reading 4 sources" → *Skaitoma 4 šaltinių*… with plural forms |
+| page | puslapis | |
+| search result | paieškos rezultatas | |
+| snippet / summary | santrauka | "Summary only" → *Tik santrauka* |
+| context window | konteksto langas | "context limit" → *konteksto riba* |
+| web access | prieiga prie interneto | Settings section "Web" → *Internetas* |
+| allow-list / deny-list | leidžiamų sąrašas / „niekada neskaityti“ | phrased as full sentences in the UI |
+| user agent | naudotojo agentas | |
+| port | prievadas | |
+| robots.txt | robots.txt | not translated |
 
 ## Phrases that deserve native-speaker review
 
@@ -58,6 +74,23 @@ These were the least certain choices:
 - **Sampling parameter names** ("Bauda už kartojimą", "Bauda už buvimą",
   "Bauda už dažnumą", "Branduolio atrankos tikimybių suma").
 - **Greetings** "Laba diena" (afternoon) and "Dirbate vėlai" (late night).
+
+Web reading and search (0.3), additionally:
+
+- **"užklausa"** now appears both as *prompt* (library) and in *paieškos
+  užklausa* (search query); a reviewer may prefer *raginimas* for prompts to
+  keep them apart.
+- **"nuoroda"** is used for a link and in *nuoroda į šaltinį* (citation).
+- **Plural sentences with two numbers**, e.g. *"Dėl modelio konteksto ribos
+  panaudota 2 iš 3 šaltinių"* (the plural form follows the second number), and
+  *"Nepavyko perskaityti 1 šaltinio – panaudota paieškos santrauka"*.
+- **"Bus perskaityta ne daugiau kaip 5 nuorodų"** (limit hint) and
+  **"Skaitoma 5 šaltinių"** (impersonal *skaitoma* with the genitive plural).
+- **Technical terms:** *naudotojo agentas* (user agent), *prievadas* (port),
+  *vietos rezervavimo ženklai* (placeholders), *nuorašai* (transcripts),
+  *debesijos metaduomenų adresai* (cloud metadata addresses).
+- **Privacy notice wording** (Settings → Web, first use of search): accuracy
+  matters more than style here.
 - **"many" plural forms** (e.g. "1,5 pokalbio") – only reachable with fractional
   counts, which the UI never produces, but provided for completeness.
 - **Mixed constructions with interpolated names**, e.g. "Ryšys „{{name}}“

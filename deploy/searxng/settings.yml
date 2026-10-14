@@ -1,0 +1,36 @@
+# Minimal SearXNG configuration for Chimera's optional web search
+# (docker compose --profile searxng up -d). See docs/WEB.md.
+#
+# - JSON output is enabled (Chimera uses the JSON API; it is off by default).
+# - The service is only reachable on the internal Compose network.
+# - The secret comes from SEARXNG_SECRET in your .env. The placeholder below is
+#   SearXNG's own "unset" marker: SearXNG refuses to start with it, so a
+#   missing secret fails closed instead of running with a public default.
+use_default_settings: true
+
+general:
+  instance_name: "Chimera search"
+  enable_metrics: false
+
+server:
+  secret_key: "ultrasecretkey"
+  # Only Chimera talks to this instance (internal network), so the bot limiter
+  # (which needs Valkey/Redis) is off.
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"
+
+search:
+  safe_search: 1
+  autocomplete: ""
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+
+outgoing:
+  request_timeout: 4.0
+  max_request_timeout: 8.0

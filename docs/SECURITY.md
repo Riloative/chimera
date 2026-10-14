@@ -1,7 +1,9 @@
 # Security and privacy
 
 Chimera treats "local-first" as a requirement: nothing leaves your
-infrastructure unless you configure a connection that sends it somewhere. Every
+infrastructure unless you configure a connection that sends it somewhere, or an
+administrator enables web access (then only when a user pastes a link or turns
+on search; see [WEB.md](WEB.md)). Every
 part of the app and API (except the health check, sign-in and registration)
 requires an account.
 
@@ -11,8 +13,9 @@ requires an account.
 - No requests to CDNs: fonts, KaTeX fonts, icons, scripts and both language
   catalogs are bundled. The Content-Security-Policy forbids loading anything
   from another origin (`default-src 'self'`).
-- No remote images in model output (replaced with a placeholder, so a response
-  can't make your browser contact a tracker).
+- No remote images in model output (replaced with a placeholder with an
+  explicit *Open image* link, so a response can't make your browser contact a
+  tracker or carry data out in an image URL).
 - No logging of message content, passwords, session tokens or API keys.
 - No email/SMTP or other cloud dependency for accounts.
 
@@ -73,6 +76,29 @@ directories under random IDs, and the server re-validates every path. See
   when a connection is saved or tested; a hostile DNS server could still change
   the answer later (DNS rebinding), so use the allow-list mode with IP ranges if
   you don't trust your users.
+
+## Web reading and search
+
+Off by default; see [WEB.md](WEB.md#security-model) for the full model.
+In short:
+
+- One outbound path (`web/fetcher.py`) for pages, `robots.txt` and search
+  engines: `http(s)` only, no credentials in URLs, ports 80/443, the host is
+  resolved by Chimera and **every** address must be public; the connection is
+  pinned to the checked address (DNS rebinding) and each redirect hop is checked
+  again. Loopback, private, CGNAT, link-local/metadata, ULA, multicast,
+  embedded-IPv4 IPv6 forms, numeric IPv4 spellings, `localhost`, `*.local` and
+  single-label names are blocked. An administrator allow-list can open specific
+  internal hosts; the configured SearXNG address is exempt for search only.
+- Streamed bodies with byte and decompressed-size caps, timeouts and a deadline,
+  allowed content types, global/per-user concurrency limits, per-user hourly
+  quotas, no cookies, no connection reuse, domain-only logging.
+- No arbitrary-URL proxy: the browser only receives extracted text of sources
+  it owns. Sources, cache entries and step logs are per user.
+- Page text is delimited with a per-request random token, stripped of
+  chat-template control tokens, and declared untrusted in the system prompt.
+  This limits — but cannot eliminate — prompt injection with local models.
+- Search-engine API keys are write-only and encrypted like connection keys.
 
 ## Deployment modes
 
@@ -158,7 +184,8 @@ origins only.
 ## Not implemented (by design for this iteration)
 
 Email verification, password reset by email (SMTP), two-factor authentication,
-OAuth/SSO/LDAP, per-user quotas, and audit logs beyond the server log. The
+OAuth/SSO/LDAP, per-user quotas (beyond the hourly web limits), and audit logs
+beyond the server log. The
 account layer keeps email as a separate field and recovery behind one service
 (`services/auth.py`), so an SMTP sender, TOTP or an external identity provider
 can be added without changing the data model.

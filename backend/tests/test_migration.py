@@ -49,7 +49,7 @@ def test_legacy_database_is_backed_up_migrated_and_adopted(tmp_path):
         state = app.state.chimera
         # 1. automatic backup before migrating
         backup = state.db.last_backup
-        assert backup and backup.is_file() and "pre-migration-v1-to-v2" in backup.name
+        assert backup and backup.is_file() and f"pre-migration-v1-to-v{len(MIGRATIONS)}" in backup.name
         old = sqlite3.connect(backup)
         assert old.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 1
         old.close()

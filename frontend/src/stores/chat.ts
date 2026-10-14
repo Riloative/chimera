@@ -3,11 +3,12 @@
  * response keeps streaming while the user navigates elsewhere in the app.
  */
 import { create } from "zustand";
-import { api, stream, type SendBody } from "@/lib/api";
+import { api, ApiError, stream, type SendBody } from "@/lib/api";
 import { errorText } from "@/lib/errors";
-import type { Attachment, ConversationDetail, Message } from "@/lib/types";
+import type { Attachment, ConversationDetail, Message, WebSource } from "@/lib/types";
 import { useConversations } from "./conversations";
 import { useModels } from "./models";
+import { useWeb } from "./web";
 
 export interface ConvChat {
   messages: Message[];
@@ -18,6 +19,8 @@ export interface ConvChat {
   streaming: boolean;
   /** Set when a request failed before the server accepted it. */
   sendError: string | null;
+  /** Pages read and search results in this conversation (metadata only). */
+  webSources: Record<string, WebSource>;
 }
 
 interface ChatState {
@@ -27,6 +30,7 @@ interface ChatState {
   regenerate: (id: string, messageId?: string, target?: Partial<SendBody>) => Promise<void>;
   edit: (id: string, messageId: string, content: string, target?: Partial<SendBody>) => Promise<void>;
   stop: (id: string) => Promise<void>;
+  updateWebSource: (id: string, source: WebSource) => void;
   deleteMessage: (id: string, messageId: string) => Promise<void>;
   clearSendError: (id: string) => void;
   forget: (id: string) => void;
@@ -40,7 +44,10 @@ const empty = (): ConvChat => ({
   assistantId: null,
   streaming: false,
   sendError: null,
+  webSources: {},
 });
+
+const byId = (list: WebSource[] | undefined) => Object.fromEntries((list ?? []).map((s) => [s.id, s]));
 
 const controllers = new Map<string, AbortController>();
 
@@ -114,8 +121,19 @@ export const useChat = create<ChatState>((set, get) => {
       case "snapshot":
         if (data.message) {
           upsertMessage(convId, data.message);
-          patchConv(convId, () => ({ generationId: data.generation_id, assistantId: data.message.id, streaming: true }));
+          patchConv(convId, (c) => ({
+            generationId: data.generation_id,
+            assistantId: data.message.id,
+            streaming: true,
+            webSources: { ...c.webSources, ...byId(data.web_sources) },
+          }));
         }
+        break;
+      case "web":
+        patchConv(convId, (c) => ({
+          messages: c.messages.map((m) => (m.id === data.message_id ? { ...m, web: data.web } : m)),
+          webSources: { ...c.webSources, ...byId(data.sources) },
+        }));
         break;
       case "delta":
         queueDelta(convId, data);
@@ -157,6 +175,8 @@ export const useChat = create<ChatState>((set, get) => {
 
   const failBeforeStart = (convId: string, err: unknown) => {
     const message = errorText(err);
+    // e.g. an administrator turned web access off meanwhile: refresh what the composer offers.
+    if (err instanceof ApiError && err.code.startsWith("web.")) void useWeb.getState().load();
     patchConv(convId, (c) => ({
       messages: c.messages.filter((m) => !m.id.startsWith("temp-")),
       streaming: false,
@@ -173,6 +193,7 @@ export const useChat = create<ChatState>((set, get) => {
         const detail = await api.conversation(id);
         patchConv(id, () => ({
           messages: detail.messages,
+          webSources: byId(detail.web_sources),
           loaded: true,
           loadError: null,
           generationId: detail.generation_id,
@@ -249,6 +270,8 @@ export const useChat = create<ChatState>((set, get) => {
         }
       }
     },
+
+    updateWebSource: (id, source) => patchConv(id, (c) => ({ webSources: { ...c.webSources, [source.id]: source } })),
 
     deleteMessage: async (id, messageId) => {
       await api.deleteMessage(messageId);

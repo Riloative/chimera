@@ -40,7 +40,9 @@ def test_every_api_route_requires_a_session(app, anon):
     # Streaming and inference specifically:
     for method, path in [("POST", "/api/conversations/x/messages"), ("GET", "/api/conversations/x/stream"),
                          ("GET", "/api/models"), ("POST", "/api/generations/x/cancel"), ("POST", "/api/files"),
-                         ("POST", "/api/providers/test")]:
+                         ("POST", "/api/providers/test"), ("GET", "/api/web/status"), ("GET", "/api/web/sources/x"),
+                         ("POST", "/api/web/sources/x/refetch"), ("GET", "/api/admin/web"), ("PATCH", "/api/admin/web"),
+                         ("POST", "/api/admin/web/test")]:
         assert anon.request(method, path, json={}).status_code == 401
 
 

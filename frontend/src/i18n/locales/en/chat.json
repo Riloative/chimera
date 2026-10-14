@@ -115,9 +115,7 @@
     "copy": "Copy code",
     "copied": "Code copied",
     "copyShort": "Copy",
-    "copiedShort": "Copied",
-    "imageAlt": "image: {{alt}}",
-    "imageBlocked": "external image blocked"
+    "copiedShort": "Copied"
   },
   "settings": {
     "title": "Conversation settings",

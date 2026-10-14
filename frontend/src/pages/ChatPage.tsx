@@ -3,10 +3,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { errorText, providerErrorText } from "@/lib/errors";
-import { Composer } from "@/components/Composer";
+import { Composer, type WebChoice } from "@/components/Composer";
 import { ConversationSettings, type ConversationSettingsValue } from "@/components/ConversationSettings";
 import { LogoMark } from "@/components/Logo";
 import { AssistantMessage, UserMessage } from "@/components/MessageView";
+import type { WebSources } from "@/components/WebParts";
 import { Button, ConfirmDialog, Dialog, IconButton, Input, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useActiveModel } from "@/lib/hooks";
@@ -18,6 +19,7 @@ import { useConversations } from "@/stores/conversations";
 import { findProvider, modelSupportsVision, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { toast, useUI } from "@/stores/ui";
+import { browserTimeZone, useWeb } from "@/stores/web";
 
 const EXAMPLES = ["explain", "review", "write", "plan"] as const;
 
@@ -66,8 +68,9 @@ export function ChatPage() {
     }
   };
 
-  const onSend = async (content: string, attachments: Attachment[]) => {
+  const onSend = async (content: string, attachments: Attachment[], web: WebChoice) => {
     if (!model) return;
+    const body = { content, attachments: attachments.map((a) => a.id), ...target(model), ...web, timezone: browserTimeZone() };
     let convId = id;
     if (!convId) {
       const created = await api
@@ -85,13 +88,14 @@ export function ChatPage() {
       useConversations.getState().upsert(created);
       convId = created.id;
       resetDraft();
-      const p = send(convId, { content, attachments: attachments.map((a) => a.id), ...target(model) }, attachments);
+      useWeb.getState().moveSearch("new", convId);
+      const p = send(convId, body, attachments);
       navigate(`/c/${convId}`, { replace: true });
       // Rejections propagate so the composer restores what was typed.
       await p;
       return;
     }
-    await send(convId, { content, attachments: attachments.map((a) => a.id), ...target(model) }, attachments);
+    await send(convId, body, attachments);
   };
 
   const settingsValue: ConversationSettingsValue = conv
@@ -199,8 +203,14 @@ export function ChatPage() {
         loading={!chat?.loaded}
         busy={busy}
         showReasoning={settings?.show_reasoning ?? true}
-        onRegenerate={(mid) => regenerate(id, mid, target(model)).catch((e) => toast(errorText(e), "error"))}
-        onEdit={(mid, content) => edit(id, mid, content, target(model)).catch((e) => toast(errorText(e), "error"))}
+        expandSteps={settings?.web?.expand_steps ?? false}
+        webSources={chat?.webSources ?? {}}
+        onRegenerate={(mid, webSearch) =>
+          regenerate(id, mid, { ...target(model), timezone: browserTimeZone(), ...(webSearch === undefined ? {} : { web_search: webSearch }) }).catch((e) =>
+            toast(errorText(e), "error"),
+          )
+        }
+        onEdit={(mid, content) => edit(id, mid, content, { ...target(model), timezone: browserTimeZone() }).catch((e) => toast(errorText(e), "error"))}
         onDelete={(mid) => deleteMessage(id, mid).catch((e) => toast(errorText(e), "error"))}
       >
         <div className="mx-auto w-full max-w-[var(--chat-width)] px-4 pb-3 md:px-6">
@@ -422,6 +432,8 @@ function MessageList({
   loading,
   busy,
   showReasoning,
+  expandSteps,
+  webSources,
   onRegenerate,
   onEdit,
   onDelete,
@@ -431,7 +443,9 @@ function MessageList({
   loading: boolean;
   busy: boolean;
   showReasoning: boolean;
-  onRegenerate: (messageId?: string) => void;
+  expandSteps: boolean;
+  webSources: WebSources;
+  onRegenerate: (messageId?: string, webSearch?: boolean) => void;
   onEdit: (messageId: string, content: string) => Promise<void> | void;
   onDelete: (messageId: string) => void;
   children: React.ReactNode;
@@ -493,14 +507,22 @@ function MessageList({
               {messages.map((m) => (
                 <li key={m.id} className={cn("animate-fade-in", m.role === "assistant" && "pr-1")}>
                   {m.role === "user" ? (
-                    <UserMessage message={m} disabled={busy} onEdit={async (c) => void (await onEdit(m.id, c))} onDelete={() => onDelete(m.id)} />
+                    <UserMessage
+                      message={m}
+                      disabled={busy}
+                      webSources={webSources}
+                      onEdit={async (c) => void (await onEdit(m.id, c))}
+                      onDelete={() => onDelete(m.id)}
+                    />
                   ) : m.role === "assistant" ? (
                     <AssistantMessage
                       message={m}
                       isLast={m.id === lastAssistant}
                       busy={busy}
                       showReasoning={showReasoning}
-                      onRegenerate={() => onRegenerate(m.id)}
+                      webSources={webSources}
+                      expandSteps={expandSteps}
+                      onRegenerate={(webSearch) => onRegenerate(m.id, webSearch)}
                       onDelete={() => onDelete(m.id)}
                     />
                   ) : null}

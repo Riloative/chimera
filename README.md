@@ -10,7 +10,8 @@ settings) stays on your machine.
 
 - **Local-first** – built around `llama-server`; no cloud account, API key or internet connection required.
 - **Private** – no telemetry, no analytics, no CDN. The UI ships its own fonts and assets.
-- **Offline-capable** – after installation, nothing is fetched from the internet.
+- **Offline-capable** – after installation, nothing is fetched from the internet unless an administrator turns on web access.
+- **Web-aware when you want it** – paste a link and the model reads the page; turn on search for a message and it answers with citations (self-hosted SearXNG recommended).
 - **Calm** – a warm, restrained design that stays readable during long technical sessions.
 - **Multi-user** – accounts with private data per person; shareable connections for a household or team.
 - **English and Lithuanian** – switch instantly, before or after signing in.
@@ -32,7 +33,7 @@ settings) stays on your machine.
 - [Testing](#testing)
 - [Project layout](#project-layout)
 - [Status and limitations](#status-and-limitations)
-- Further docs: [llama-server guide](docs/LLAMA_SERVER.md) ·
+- Further docs: [llama-server guide](docs/LLAMA_SERVER.md) · [web reading & search](docs/WEB.md) ·
   [Deployment, backups & upgrades](docs/DEPLOYMENT.md) ·
   [Security & privacy](docs/SECURITY.md) ·
   [Endpoint audit](docs/ENDPOINT_AUDIT.md) ·
@@ -154,6 +155,7 @@ surface used, multi-server setups, embeddings and vision.
 | **Parameters** | Temperature, top-p, top-k, min-p, max tokens, stop sequences, repeat / presence / frequency penalty, seed: as global defaults and per conversation. Only parameters the connection supports are sent |
 | **Attachments** | Text, Markdown, source code, JSON/CSV, PDF (text extraction). Images for vision-capable models only. Size limits, type sniffing, truncation notice, preview of what the model receives |
 | **Knowledge (RAG)** | Local collections, chunking, SQLite FTS5 keyword search out of the box, optional local embeddings for hybrid semantic search, retrieval test bench, sources shown under answers |
+| **Web** | Off by default. Pasted links are read (HTML → clean Markdown, PDF, JSON, CSV, RSS, GitHub raw files) with per-link status; per-message web search via SearXNG, Brave or Tavily with live steps, inline citations and a sources list; BM25 passage selection within the model's context budget; SSRF-hardened fetcher, prompt-injection delimiting, per-user quotas. See [docs/WEB.md](docs/WEB.md) |
 | **Prompts** | Library with categories, insert into composer, use as a conversation's system prompt |
 | **Settings** | Light / dark / system theme, font size, conversation width, reduced motion, sidebar, Enter-to-send, streaming, auto titles, default system prompt & parameters, attachment limits, embedding model |
 | **Data** | JSON export / import, one-click SQLite backup / restore, delete all conversations or all data |
@@ -232,7 +234,12 @@ security-sensitive endpoints (CSRF, DNS rebinding, origin checks, secret
 handling), and accounts: registration modes, login by email or name, generic
 errors and timing, lockout, session expiry/rotation/revocation, an enumeration
 test proving every API route rejects anonymous requests, cross-user isolation
-for every resource type, account deletion, and migrating a 0.1 database.
+for every resource type, account deletion, and migrating a 0.1 database. Web
+features are tested against a local mock web (`backend/tests/mock_web.py`:
+realistic and hostile pages, failures, SearXNG/Brave/Tavily-compatible
+engines), including a table of hostile URLs for the SSRF validator, DNS
+rebinding, redirects to internal addresses, size and decompression limits,
+prompt-injection fixtures, cancellation at every stage and cross-user isolation.
 Localization tests check catalog parity (keys, plural forms, placeholders),
 Lithuanian plurals, `Intl` formatting, localized error codes, instant language
 switching and a scan for hardcoded strings; an end-to-end test covers register →
@@ -244,11 +251,13 @@ switch to Lithuanian → reload → sign out → sign in → streaming chat.
 backend/
   chimera/
     providers/     provider abstraction + llama.cpp, OpenAI-compatible, Ollama adapters, SSE parser
+    web/           hardened fetcher, extraction, search engines, ranking, web-grounded pipeline
     services/      chat engine (streaming, cancel, reattach), conversations, files, knowledge, settings
     api/           HTTP routes and request schemas
     security.py    access control, CSRF / rebinding protection, sessions, CSP
     db.py          SQLite + migrations
-  tests/           pytest suite and the mock llama-server
+  tests/           pytest suite, the mock llama-server and the mock web
+deploy/searxng/    minimal SearXNG configuration for the optional Compose profile
 frontend/
   src/components/  composer, messages, markdown, model picker, sidebar, primitives
   src/pages/       chat, models, knowledge, prompts, settings
@@ -277,11 +286,14 @@ Known limitations and planned work:
 - **No email.** No SMTP, email verification or reset-by-email (admin/CLI reset
   instead). No 2FA, OAuth/SSO or LDAP. The account layer is structured so these
   can be added later.
-- **No projects/workspaces** grouping conversations, and no per-user quotas.
+- **No projects/workspaces** grouping conversations, and no per-user quotas
+  (except hourly limits for web reads and searches).
 - **Rate limiting behind Docker NAT** sees all clients as one IP (per-account
   limits still apply).
 - **Lithuanian translation** was written without native-speaker review; see
   [docs/i18n-glossary.md](docs/i18n-glossary.md).
-- **No tool calling / web search / image generation.**
+- **Web:** no headless browser for JavaScript-only pages, no model-driven
+  ("agentic") search yet, no video transcripts; see [docs/WEB.md](docs/WEB.md).
+- **No image generation.**
 - Remote (cloud) providers can be added as *OpenAI-compatible* connections, but
   none is configured by default.

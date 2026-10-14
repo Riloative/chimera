@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..db import Database, dumps, loads
+from ..web.settings import WebUserSettings
 
 
 class GenerationParams(BaseModel):
@@ -58,6 +59,8 @@ class AppSettings(BaseModel):
     max_attachment_mb: int = Field(10, ge=1, le=100)
     max_attachment_chars: int = Field(100_000, ge=1_000, le=2_000_000)
     knowledge: KnowledgeSettings = Field(default_factory=KnowledgeSettings)
+    # Web reading & search (the instance-wide switch and limits are admin settings)
+    web: WebUserSettings = Field(default_factory=WebUserSettings)
 
 
 class SettingsStore:

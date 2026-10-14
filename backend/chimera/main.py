@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .api.auth_routes import router as auth_router
 from .api.routes import router
+from .api.web_routes import router as web_router
 from .config import Config, ensure_secrets, load_config
 from .errors import AppError
 from .security import SecurityMiddleware
@@ -42,6 +43,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         client = httpx.AsyncClient(trust_env=config.http_trust_env, follow_redirects=False)
         state = AppState.build(config, client)
+        web_client = state.web.fetcher.client
         recovered = state.chat.recover_interrupted()
         if recovered:
             log.info("marked %d interrupted message(s) after restart", recovered)
@@ -63,6 +65,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         finally:
             await state.chat.shutdown()
             await client.aclose()
+            await web_client.aclose()
             state.db.close()
 
     app = FastAPI(title="Chimera", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -87,6 +90,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         return AppError(exc.status_code, f"http_{exc.status_code}", str(exc.detail)).response()
 
     app.include_router(auth_router)
+    app.include_router(web_router)
     app.include_router(router)  # last: ends with the /api catch-all
     _mount_frontend(app, config.static_dir)
     app.add_middleware(SecurityMiddleware, config=config)

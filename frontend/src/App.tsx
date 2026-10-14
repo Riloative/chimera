@@ -17,6 +17,7 @@ import { useAuth } from "@/stores/auth";
 import { useConversations } from "@/stores/conversations";
 import { useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
+import { useWeb } from "@/stores/web";
 import { useUI } from "@/stores/ui";
 
 function Shortcuts() {
@@ -52,7 +53,7 @@ function AppLayout() {
   useEffect(() => {
     if (loaded.current) return;
     loaded.current = true;
-    void Promise.all([useSettings.getState().load(), useConversations.getState().load(), useModels.getState().load(false)]);
+    void Promise.all([useSettings.getState().load(), useConversations.getState().load(), useModels.getState().load(false), useWeb.getState().load()]);
   }, []);
   return (
     <div className="flex h-full overflow-hidden bg-bg">

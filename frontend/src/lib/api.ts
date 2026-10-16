@@ -175,9 +175,10 @@ export const api = {
 
   webStatus: () => request<WebStatus>("/api/web/status"),
   webSource: (id: string) => request<WebSource & { content: string }>(`/api/web/sources/${id}`),
-  refetchWebSource: (id: string) =>
+  refetchWebSource: (id: string, loader: "auto" | "static" | "browser" = "auto") =>
     request<{ ok: boolean; source: WebSource; error_code?: string | null; error_params?: Record<string, unknown> }>(`/api/web/sources/${id}/refetch`, {
       method: "POST",
+      json: { loader },
     }),
   adminWeb: () => request<WebAdminView>("/api/admin/web"),
   adminUpdateWeb: (data: { settings?: Partial<WebAdminSettings>; engine_keys?: Partial<Record<WebEngineKind, string | null>> }) =>

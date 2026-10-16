@@ -13,6 +13,8 @@ STATUS = {
     "web.rate_limited": 429,
     "web.source_not_found": 404,
     "web.busy": 409,
+    "web.browser_unavailable": 503,
+    "web.browser_limit": 429,
 }
 
 

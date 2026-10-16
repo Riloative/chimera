@@ -267,6 +267,8 @@ export interface WebSource {
   query: string | null;
   snippet: string | null;
   rank: number | null;
+  /** How the page was read: plain HTTP or the headless browser. */
+  loader?: "static" | "browser";
   fetched_at: string | null;
 }
 
@@ -277,6 +279,8 @@ export interface WebStatus {
   max_urls_per_message: number;
   max_results: number;
   is_admin: boolean;
+  /** The headless browser can render pages (configured, on and reachable). */
+  browser_available?: boolean;
 }
 
 export type WebEngineKind = "searxng" | "brave" | "tavily";
@@ -314,6 +318,20 @@ export interface WebAdminSettings {
   total_chars: number;
   fetches_per_hour: number;
   searches_per_hour: number;
+  browser_enabled: boolean;
+  browser_auto: boolean;
+  browser_timeout_seconds: number;
+  browser_renders_per_hour: number;
+}
+
+/** State of the optional headless browser service (admin view). */
+export interface WebBrowserStatus {
+  configured: boolean;
+  reachable: boolean;
+  error?: string;
+  version?: string;
+  active?: number;
+  proxy?: boolean;
 }
 
 export interface WebEngineTest {
@@ -329,6 +347,7 @@ export interface WebAdminView {
   settings: WebAdminSettings;
   engines: { kind: WebEngineKind; configured: boolean; has_key: boolean; status: WebEngineTest | null }[];
   defaults: { query_prompt: string; grounding_prompt: string };
+  browser?: WebBrowserStatus;
 }
 
 export interface KnowledgeSettings {

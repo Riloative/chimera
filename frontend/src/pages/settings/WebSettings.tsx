@@ -6,6 +6,7 @@ import { Button, Field, Input, Select, Spinner, Switch, Textarea } from "@/compo
 import { api } from "@/lib/api";
 import { errorText, providerErrorText } from "@/lib/errors";
 import { relativeTime } from "@/lib/time";
+import { cn } from "@/lib/utils";
 import type { AppSettings, WebAdminSettings, WebAdminView, WebEngineKind, WebEngineTest, WebUserSettings } from "@/lib/types";
 import { useAuth } from "@/stores/auth";
 import { useModels } from "@/stores/models";
@@ -125,7 +126,68 @@ function AdminWebSettings() {
       <PipelineSettings settings={s} defaults={view.defaults} save={save} />
       <NetworkSettings settings={s} save={save} />
       <LimitSettings settings={s} save={save} />
+      <BrowserSettings view={view} save={save} />
     </>
+  );
+}
+
+function BrowserSettings({ view, save }: { view: WebAdminView; save: Save }) {
+  const { t } = useTranslation("web");
+  const s = view.settings;
+  const status = view.browser;
+  const [timeout, setTimeoutValue] = useState(s.browser_timeout_seconds);
+  const [perHour, setPerHour] = useState(s.browser_renders_per_hour);
+  useEffect(() => {
+    setTimeoutValue(s.browser_timeout_seconds);
+    setPerHour(s.browser_renders_per_hour);
+  }, [s.browser_timeout_seconds, s.browser_renders_per_hour]);
+  const state = !status?.configured ? "notConfigured" : status.reachable ? "ready" : status.error === "unauthorized" ? "unauthorized" : "unreachable";
+  return (
+    <Group title={t("settings.admin.browserTitle")} description={t("settings.admin.browserHelp")}>
+      <p
+        className={cn("flex items-center gap-2 rounded-lg bg-subtle px-3 py-2 text-[0.8125rem]", state === "ready" ? "text-fg" : "text-muted")}
+        data-testid="browser-status"
+      >
+        {state === "ready" ? <CheckCircle2 className="size-4 text-success" aria-hidden /> : <XCircle className="size-4 text-faint" aria-hidden />}
+        {t(`settings.admin.browserStatus.${state}`)}
+      </p>
+      {status?.configured && (
+        <>
+          <Switch label={t("settings.admin.browserEnabled")} description={t("settings.admin.browserEnabledHelp")} checked={s.browser_enabled} onChange={(v) => save({ settings: { browser_enabled: v } })} />
+          <Switch label={t("settings.admin.browserAuto")} description={t("settings.admin.browserAutoHelp")} checked={s.browser_auto} disabled={!s.browser_enabled} onChange={(v) => save({ settings: { browser_auto: v } })} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t("settings.admin.browserTimeout")} htmlFor="web-browser-timeout">
+              <Input
+                id="web-browser-timeout"
+                type="number"
+                min={5}
+                max={60}
+                value={timeout}
+                onChange={(e) => setTimeoutValue(Number(e.target.value))}
+                onBlur={() => {
+                  const v = Math.min(60, Math.max(5, timeout || 25));
+                  if (v !== s.browser_timeout_seconds) void save({ settings: { browser_timeout_seconds: v } }, true);
+                }}
+              />
+            </Field>
+            <Field label={t("settings.admin.browserPerHour")} htmlFor="web-browser-hour">
+              <Input
+                id="web-browser-hour"
+                type="number"
+                min={1}
+                max={10000}
+                value={perHour}
+                onChange={(e) => setPerHour(Number(e.target.value))}
+                onBlur={() => {
+                  const v = Math.min(10000, Math.max(1, perHour || 60));
+                  if (v !== s.browser_renders_per_hour) void save({ settings: { browser_renders_per_hour: v } }, true);
+                }}
+              />
+            </Field>
+          </div>
+        </>
+      )}
+    </Group>
   );
 }
 

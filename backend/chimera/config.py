@@ -85,6 +85,16 @@ class Config:
     web_proxy: str = ""
     # Log full URLs (may contain secrets in query strings) instead of domains.
     web_verbose_log: bool = False
+    # --- optional headless browser (docker compose --profile browser; docs/WEB.md)
+    browser_url: str = ""
+    browser_secret: str = ""
+    # Where the browser's egress filter proxy listens (host:port). Only the
+    # browser container should be able to reach it.
+    browser_proxy_bind: str = "127.0.0.1:8701"
+
+    @property
+    def browser_configured(self) -> bool:
+        return bool(self.browser_url and len(self.browser_secret) >= 16)
 
     @property
     def db_path(self) -> Path:
@@ -170,6 +180,9 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         web_user_agent=(env.get("CHIMERA_WEB_USER_AGENT") or "").strip(),
         web_proxy=(env.get("CHIMERA_WEB_PROXY") or "").strip(),
         web_verbose_log=_bool(env.get("CHIMERA_WEB_VERBOSE_LOG")),
+        browser_url=(env.get("CHIMERA_BROWSER_URL") or "").strip().rstrip("/"),
+        browser_secret=(env.get("CHIMERA_BROWSER_SECRET") or "").strip(),
+        browser_proxy_bind=(env.get("CHIMERA_BROWSER_PROXY_BIND") or "127.0.0.1:8701").strip(),
     )
     return cfg
 

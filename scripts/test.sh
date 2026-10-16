@@ -6,7 +6,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "== Backend (pytest)"
-backend/.venv/bin/python -m pytest -q backend/tests
+# The real-Chromium browser tests (test_browser_live.py) run when a Python with
+# Playwright is available: browser/.venv (see browser/README.md) or
+# CHIMERA_TEST_BROWSER_PYTHON. Otherwise they are reported as skipped.
+backend/.venv/bin/python -m pytest -q -rs backend/tests
 
 echo "== Frontend typecheck + unit tests (vitest)"
 (cd frontend && npx tsc -b && npx vitest run)

@@ -17,6 +17,8 @@ from .services.files import FileStore
 from .services.knowledge import KnowledgeBase
 from .services.providers import ProviderRegistry
 from .services.settings import SettingsStore
+from .web.browser import BrowserClient
+from .web.egress import EgressProxy
 from .web.fetcher import SafeFetcher, make_client
 from .web.service import WebService
 
@@ -43,6 +45,8 @@ class AppState:
         fetcher = SafeFetcher(web_client or make_client(config.web_proxy or None), via_proxy=bool(config.web_proxy),
                               verbose_log=config.web_verbose_log)
         web = WebService(db, config, box, fetcher)
+        if config.browser_configured:
+            web.browser = BrowserClient(config.browser_url, config.browser_secret, EgressProxy(resolver=fetcher.resolver))
         settings = SettingsStore(db)
         conversations = ConversationStore(db)
         files = FileStore(db, config.uploads_dir)

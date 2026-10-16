@@ -14,9 +14,11 @@ from urllib.parse import urlsplit
 from ..config import Config
 from ..crypto import SecretBox
 from ..db import Database, dumps, loads, new_id, now_iso
+from .browser import BrowserClient
+from .egress import EgressRules
 from .errors import WebError
 from .extract import extract_page
-from .fetcher import FetchPolicy, SafeFetcher
+from .fetcher import FetchPolicy, FetchResult, SafeFetcher
 from .netguard import Allowlist
 from .prompting import DEFAULT_GROUNDING_PROMPT, DEFAULT_QUERY_PROMPT
 from .search import ENGINE_KINDS, EngineConfig, SearchEngine, SearchResult, build_engine, probe_engine
@@ -57,6 +59,7 @@ class SourceData:
     snippet: str | None = None
     rank: int | None = None
     engine: str | None = None
+    loader: str = "static"  # static | browser
 
     @property
     def ok(self) -> bool:
@@ -87,13 +90,14 @@ def source_meta(row: dict) -> dict[str, Any]:
         "query": row["query"],
         "snippet": row["snippet"],
         "rank": row["rank"],
+        "loader": row.get("loader") or "static",
         "fetched_at": row["fetched_at"],
     }
 
 
 META_COLUMNS = (
     "id, message_id, origin, position, url, final_url, title, site_name, description, published, kind, status, "
-    "error_code, error_params, length(content) AS chars, truncated, notes, query, snippet, rank, fetched_at"
+    "error_code, error_params, length(content) AS chars, truncated, notes, query, snippet, rank, loader, fetched_at"
 )
 
 
@@ -106,6 +110,7 @@ class WebService:
         self._cache: dict[str, dict[str, tuple[float, SourceData]]] = {}
         self._robots: dict[str, dict[str, tuple[float, urllib.robotparser.RobotFileParser | None]]] = {}
         self._user_sems: dict[str, asyncio.Semaphore] = {}
+        self.browser: BrowserClient | None = None
 
     # ------------------------------------------------------------ settings
     def _defaults(self) -> dict[str, Any]:
@@ -193,10 +198,21 @@ class WebService:
             "defaults": {"query_prompt": DEFAULT_QUERY_PROMPT, "grounding_prompt": DEFAULT_GROUNDING_PROMPT},
         }
 
+    def browser_available(self, settings: WebAdminSettings) -> bool:
+        """Configured, switched on and not known to be down."""
+        return bool(self.browser and settings.enabled and settings.browser_enabled and self.browser.proxy.running
+                    and not self.browser.known_down())
+
+    async def browser_status(self) -> dict[str, Any]:
+        if not self.browser:
+            return {"configured": False, "reachable": False}
+        return {"configured": True, **(await self.browser.status(fresh=True))}
+
     def status_for(self, user: dict) -> dict[str, Any]:
         settings = self.admin()
         return {
             "enabled": settings.enabled,
+            "browser_available": self.browser_available(settings),
             "search_available": self.search_available(settings),
             "engine": settings.engine if self.search_available(settings) else None,
             "max_urls_per_message": settings.max_urls_per_message,
@@ -300,10 +316,69 @@ class WebService:
         return True if parser is None else parser.can_fetch(ROBOTS_AGENT, url)
 
     # --------------------------------------------------------------- reading
-    async def read(self, user: dict, url: str, settings: WebAdminSettings, *, robots: bool = False, use_cache: bool = True) -> SourceData:
+    def egress_rules(self, settings: WebAdminSettings) -> EgressRules:
+        return EgressRules(
+            allowed_ports=tuple(settings.allowed_ports),
+            allowlist=Allowlist(settings.fetch_allowlist),
+            domain_allowlist=list(settings.domain_allowlist),
+            domain_denylist=list(settings.domain_denylist),
+            max_bytes=max(settings.max_page_kb * 1024 * 6, 32 * 1024 * 1024),
+        )
+
+    async def render(self, user: dict, url: str, settings: WebAdminSettings) -> SourceData:
+        """Read ``url`` with the headless browser (raises :class:`WebError`)."""
+        if not self.browser or not settings.browser_enabled or not self.browser.proxy.running:
+            raise WebError("web.browser_unavailable", "The headless browser is not available.")
+        self.check_domain(url, settings)
+        # Same checks as a static fetch before anything is started; the egress
+        # proxy re-checks this and every further request the page makes.
+        await self.fetcher.validate(url, self.policy(settings))
+        try:
+            self.consume(user["id"], "browser", settings.browser_renders_per_hour)
+        except WebError as exc:
+            raise WebError("web.browser_limit", "You have reached the hourly limit for browser rendering.",
+                           reason="quota", retry_after=exc.params.get("retry_after")) from exc
+        rendered = await self.browser.render(url, self.egress_rules(settings), timeout=settings.browser_timeout_seconds,
+                                             user_agent=settings.user_agent)
+        result: FetchResult = rendered.fetch
+        try:
+            page = await asyncio.to_thread(extract_page, result, MAX_STORED_CHARS, None)
+        except WebError as exc:
+            if exc.code == "web.needs_javascript":  # still a shell after rendering
+                raise WebError("web.extraction_empty", "No readable text was found on this page.", **exc.params) from exc
+            raise
+        notes = list(page.notes)
+        if any(b.get("code") for b in rendered.blocked):
+            notes.append("browser_requests_blocked")
+        return SourceData(
+            url=url, status="ok", final_url=result.final_url, title=page.title, site_name=page.site_name,
+            description=page.description, published=page.published, kind=page.kind, content_type=result.content_type,
+            content=page.markdown, truncated=page.truncated, notes=list(dict.fromkeys(notes)), fetched_at=now_iso(),
+            loader="browser",
+        )
+
+    async def read(self, user: dict, url: str, settings: WebAdminSettings, *, robots: bool = False, use_cache: bool = True,
+                   loader: str = "auto") -> SourceData:
         """Fetch and extract one URL for ``user``. Never raises for page-level
-        failures: they come back as ``status="error"`` with a code."""
+        failures: they come back as ``status="error"`` with a code.
+
+        ``loader``: ``auto`` reads the page statically and renders it with the
+        headless browser when it turns out to need JavaScript (if enabled);
+        ``static`` never uses the browser; ``browser`` only uses it."""
         uid = user["id"]
+        if loader == "browser":
+            data = SourceData(url=url, status="error", fetched_at=now_iso(), loader="browser")
+            try:
+                if robots and not await self._robots_allowed(uid, url, settings):
+                    raise WebError("web.robots_disallowed", "The site asks automated tools not to read this page.")
+                async with self._sem(uid):
+                    data = await self.render(user, url, settings)
+            except WebError as exc:
+                data.status, data.error_code, data.error_params = "error", exc.code, exc.params
+                log.info("web render failed host=%s code=%s", display_domain(url) or "?", exc.code)
+            if data.status == "ok":
+                self._cache_put(uid, url, data)
+            return data
         if use_cache:
             cached = self._cache_get(uid, url)
             if cached:
@@ -343,6 +418,16 @@ class WebService:
             if last_error:
                 raise last_error
         except WebError as exc:
+            if exc.code == "web.needs_javascript" and loader == "auto" and settings.browser_auto and self.browser_available(settings):
+                try:
+                    async with self._sem(uid):
+                        data = await self.render(user, url, settings)
+                    self._cache_put(uid, url, data)
+                    return data
+                except WebError as browser_exc:
+                    # Keep the static result's explanation; say why rendering didn't help.
+                    exc.params["browser"] = browser_exc.code
+                    log.info("web render fallback failed host=%s code=%s", display_domain(url) or "?", browser_exc.code)
             data.status, data.error_code, data.error_params = "error", exc.code, exc.params
             data.title = data.title or exc.params.get("title")
             log.info("web read failed host=%s code=%s", display_domain(url) or "?", exc.code)
@@ -400,12 +485,12 @@ class WebService:
                 conn.execute(
                     """INSERT INTO web_sources(id, user_id, conversation_id, message_id, origin, position, url, final_url,
                            title, site_name, description, published, kind, content_type, status, error_code, error_params,
-                           content, truncated, notes, query, snippet, rank, engine, fetched_at, created_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                           content, truncated, notes, query, snippet, rank, engine, loader, fetched_at, created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (sid, user_id, conversation_id, message_id, origin, position, item.url, item.final_url, item.title,
                      item.site_name, item.description, item.published, item.kind, item.content_type, item.status,
                      item.error_code, dumps(item.error_params or {}), item.content, int(item.truncated),
-                     dumps(item.notes), item.query, item.snippet, item.rank, item.engine, item.fetched_at, now_iso()),
+                     dumps(item.notes), item.query, item.snippet, item.rank, item.engine, item.loader, item.fetched_at, now_iso()),
                 )
                 rows.append(sid)
         return [source_meta(r) for r in self.rows_by_ids(rows)]
@@ -437,8 +522,8 @@ class WebService:
         self.db.execute(
             """UPDATE web_sources SET final_url = ?, title = COALESCE(?, title), site_name = ?, description = ?, published = ?,
                    kind = ?, content_type = ?, status = ?, error_code = ?, error_params = ?, content = ?, truncated = ?,
-                   notes = ?, fetched_at = ? WHERE id = ?""",
+                   notes = ?, loader = ?, fetched_at = ? WHERE id = ?""",
             (data.final_url, data.title, data.site_name, data.description, data.published, data.kind, data.content_type,
              data.status, data.error_code, dumps(data.error_params or {}), data.content, int(data.truncated),
-             dumps(data.notes), data.fetched_at, source_id),
+             dumps(data.notes), data.loader, data.fetched_at, source_id),
         )

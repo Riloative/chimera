@@ -146,7 +146,12 @@
     "no_query": "Šioje žinutėje nėra ko ieškoti.",
     "tool_invalid": "Modelio įrankio iškvietimo argumentai netinkami.",
     "tool_unknown": "Modelis paprašė nežinomo įrankio.",
-    "tool_limit": "Modelis iškvietė įrankius per daug kartų."
+    "tool_limit": "Modelis iškvietė įrankius per daug kartų.",
+    "browser_unavailable": "Foninė naršyklė šiuo metu nepasiekiama.",
+    "browser_timeout": "Puslapio atvaizdavimas foninėje naršyklėje užtruko per ilgai.",
+    "browser_blocked": "Puslapis arba puslapis, į kurį jis nukreipė, neleidžiamas (privatus ar užblokuotas adresas, atsisiuntimas ar kitas nesaugus veiksmas).",
+    "browser_limit": "Foninė naršyklė užimta arba pasiekėte jos valandinį limitą. Pabandykite vėliau.",
+    "browser_failed": "Foninė naršyklė negalėjo atvaizduoti puslapio."
   },
   "branch": {
     "not_found": "Šios žinutės pokalbyje nebėra."

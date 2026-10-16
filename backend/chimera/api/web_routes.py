@@ -47,6 +47,11 @@ class EngineTest(Strict):
     query: str = Field("open source software", min_length=1, max_length=200)
 
 
+class Refetch(Strict):
+    # auto: as when reading a link; browser: "Render with browser"; static: never render.
+    loader: Literal["auto", "static", "browser"] = "auto"
+
+
 def _validation(exc: ValidationError) -> AppError:
     first = exc.errors()[0] if exc.errors() else {}
     field = ".".join(str(p) for p in first.get("loc", []))
@@ -73,15 +78,19 @@ async def get_source(sid: str, user: dict = Depends(current_user), state: AppSta
 
 
 @router.post("/web/sources/{sid}/refetch")
-async def refetch_source(sid: str, user: dict = Depends(current_user), state: AppState = Depends(get_state)):
+async def refetch_source(sid: str, body: Refetch | None = None, user: dict = Depends(current_user),
+                         state: AppState = Depends(get_state)):
     row = _owned_source(state, user, sid)
     settings = state.web.admin()
+    loader = body.loader if body else "auto"
     if not settings.enabled:
         raise WebError("web.disabled", "Web access is turned off on this server.")
+    if loader == "browser" and not state.web.browser_available(settings):
+        raise WebError("web.browser_unavailable", "The headless browser is not available.")
     if state.chat.active_for(user["id"], row["conversation_id"]):
         raise WebError("web.busy", "Wait until the current response has finished.")
     data = await state.web.read(user, row["url"], settings, robots=row["origin"] == "search" and settings.robots_for_search,
-                                use_cache=False)
+                                use_cache=False, loader=loader)
     if data.status != "ok":
         # Keep what was read before; report why the new attempt failed.
         return {"ok": False, "error_code": data.error_code, "error_params": data.error_params, "source": source_meta(row)}
@@ -92,7 +101,7 @@ async def refetch_source(sid: str, user: dict = Depends(current_user), state: Ap
 # ----------------------------------------------------------------- admin
 @router.get("/admin/web")
 async def admin_web(admin: dict = Depends(require_admin), state: AppState = Depends(get_state)):
-    return state.web.admin_view()
+    return {**state.web.admin_view(), "browser": await state.web.browser_status()}
 
 
 @router.patch("/admin/web")
@@ -105,7 +114,7 @@ async def admin_web_update(body: AdminWebPatch, admin: dict = Depends(require_ad
     if body.engine_keys is not None:
         for kind, value in body.engine_keys.model_dump(exclude_unset=True).items():
             state.web.set_engine_key(kind, value)
-    return state.web.admin_view()
+    return {**state.web.admin_view(), "browser": await state.web.browser_status()}
 
 
 @router.post("/admin/web/test")

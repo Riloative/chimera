@@ -85,6 +85,10 @@
     "refetch": "Read again",
     "refetched": "The page was read again.",
     "refetchFailed": "Reading again failed: {{reason}}. The earlier text is kept.",
+    "renderBrowser": "Render with browser",
+    "renderedWithBrowser": "Rendered with the headless browser",
+    "browserFailed": "The headless browser couldn't help either: {{reason}}",
+    "tryBrowser": "Try “Render with browser”.",
     "characters": "{{chars}} characters",
     "failedTo": "Could not read {{domain}}: {{reason}}",
     "status": {
@@ -182,6 +186,20 @@
       "timeout": "Page timeout (seconds)",
       "fetchesPerHour": "Pages per user per hour",
       "searchesPerHour": "Searches per user per hour",
+      "browserTitle": "Headless browser",
+      "browserHelp": "Renders pages that only show their content with JavaScript. It runs in its own isolated container and reaches the web only through Chimera's filter, with the same rules as normal page reading.",
+      "browserStatus": {
+        "ready": "The browser service is running.",
+        "notConfigured": "Not set up. Start the browser profile and set CHIMERA_BROWSER_URL and CHIMERA_BROWSER_SECRET (see docs/WEB.md).",
+        "unreachable": "The browser service is set up but not reachable. Pages are read without it.",
+        "unauthorized": "The browser service rejected Chimera's secret. Check that CHIMERA_BROWSER_SECRET matches on both."
+      },
+      "browserEnabled": "Use the headless browser",
+      "browserEnabledHelp": "Lets people render pages with it, from a source's details.",
+      "browserAuto": "Render pages that need JavaScript automatically",
+      "browserAutoHelp": "When a page turns out to be an empty JavaScript app, it is rendered instead. Slower and uses more memory than normal reading.",
+      "browserTimeout": "Render timeout (seconds)",
+      "browserPerHour": "Renders per user per hour",
       "saved": "Web settings saved"
     }
   }

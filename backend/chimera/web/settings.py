@@ -49,6 +49,11 @@ class WebAdminSettings(BaseModel):
     total_chars: int = Field(24_000, ge=2_000, le=800_000)
     fetches_per_hour: int = Field(300, ge=1, le=100_000)
     searches_per_hour: int = Field(60, ge=1, le=100_000)
+    # Headless browser (only when the browser service is configured)
+    browser_enabled: bool = True
+    browser_auto: bool = True  # render pages that need JavaScript automatically
+    browser_timeout_seconds: float = Field(25, ge=5, le=60)
+    browser_renders_per_hour: int = Field(60, ge=1, le=10_000)
 
     _lists = field_validator("fetch_allowlist", "domain_allowlist", "domain_denylist")(_clean_list)
 

@@ -44,6 +44,17 @@ def create_app(config: Config | None = None) -> FastAPI:
         client = httpx.AsyncClient(trust_env=config.http_trust_env, follow_redirects=False)
         state = AppState.build(config, client)
         web_client = state.web.fetcher.client
+        browser = state.web.browser
+        if browser is not None:
+            host, _, port = config.browser_proxy_bind.rpartition(":")
+            try:
+                await browser.proxy.start(host.strip("[]") or "127.0.0.1", int(port))
+            except (OSError, ValueError) as exc:
+                log.error("browser egress proxy could not start on %s (%s); the headless browser is disabled",
+                          config.browser_proxy_bind, exc)
+        elif config.browser_url:
+            log.warning("CHIMERA_BROWSER_URL is set but CHIMERA_BROWSER_SECRET is missing or shorter than 16 "
+                        "characters; the headless browser is disabled")
         recovered = state.chat.recover_interrupted()
         if recovered:
             log.info("marked %d interrupted message(s) after restart", recovered)
@@ -66,6 +77,9 @@ def create_app(config: Config | None = None) -> FastAPI:
             await state.chat.shutdown()
             await client.aclose()
             await web_client.aclose()
+            if browser is not None:
+                await browser.proxy.stop()
+                await browser.aclose()
             state.db.close()
 
     app = FastAPI(title="Chimera", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)

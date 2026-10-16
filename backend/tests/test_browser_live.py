@@ -23,6 +23,7 @@ from chimera.web.browser import BrowserClient
 from chimera.web.egress import EgressProxy, EgressRules
 from chimera.web.errors import WebError
 from chimera.web.extract import extract_page
+from chimera.web.netguard import Allowlist
 from tests.conftest import FakeResolver, free_port
 from tests.test_web_browser import map_connector
 
@@ -139,6 +140,17 @@ def test_page_cannot_reach_internal_addresses_or_use_dangerous_apis(live):
     assert not any(path == "/image.png" for _, path in hits)  # images are not loaded
     assert not any(path == "/article" for _, path in hits)  # the popup never opened
     assert not any(path == "/sw.js" for _, path in hits)  # no service worker
+
+
+def test_no_service_workers_even_in_a_secure_context(live):
+    """http://127.0.0.1 is a secure context (unlike the plain-http fake hosts),
+    so navigator.serviceWorker would exist there: it must still be unusable."""
+    live.web.reset()
+    rules = EgressRules(allowlist=Allowlist(["127.0.0.1"]), allowed_ports=(80, 443, live.web.port))
+    result = live.render(f"http://127.0.0.1:{live.web.port}/spa-probe", rules)
+    text = text_of(result)
+    assert "sw:missing" in text
+    assert not any(path == "/sw.js" for _, path in live.web.app.state.hits)
 
 
 def test_redirect_to_a_private_address_is_blocked(live):

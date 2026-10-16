@@ -26,6 +26,8 @@ def map_connector(web_port: int):
     async def connect(host: str, port: int):
         if host == FAKE_PUBLIC_IP and port == 80:
             return await asyncio.open_connection("127.0.0.1", web_port)
+        if host == "127.0.0.1" and port == web_port:  # an administrator-allow-listed internal host
+            return await asyncio.open_connection("127.0.0.1", web_port)
         raise OSError("unreachable in tests")
 
     return connect

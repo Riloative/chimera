@@ -49,6 +49,9 @@ INIT_SCRIPT = """
     try { Object.defineProperty(window, name, { value: undefined, configurable: false, writable: false }); } catch (e) {}
   }
   try { Object.defineProperty(window, "open", { value: () => null, configurable: false, writable: false }); } catch (e) {}
+  // Playwright's service_workers="block" does not stop navigator.serviceWorker.register()
+  // in secure contexts (https, loopback); remove the API itself.
+  try { Object.defineProperty(Navigator.prototype, "serviceWorker", { get: () => undefined, configurable: false }); } catch (e) {}
   try {
     if (navigator.mediaDevices) Object.defineProperty(navigator, "mediaDevices", { value: undefined, configurable: false });
   } catch (e) {}

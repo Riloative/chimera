@@ -35,12 +35,52 @@ Chimera never invents models: only what the server reported (or you added
 manually) is shown. If a server is unreachable, the last known list is shown
 with a warning.
 
-## Response stops with "the request exceeds the available context size"
+## "Your message is too long for this model's context window"
 
-The conversation plus attachments is longer than the server's context (`-c`).
-Start a new conversation, remove large attachments, or restart llama-server with
-a larger `-c` (memory permitting). The connection diagnostics show the current
-`n_ctx`.
+`context.too_large`: the system prompt plus your latest message (with its
+attachments and web pages) alone don't fit, so nothing was sent. Older history
+is already left out automatically; this is about the message itself. Shorten
+it, remove attachments or links, choose a model with a larger context, or
+restart llama-server with a larger `-c` (per slot: `-c ÷ --parallel`; see
+[LLAMA_SERVER.md](LLAMA_SERVER.md#context-size-slots-and-how-chimera-uses-them)).
+
+## "The model server rejected the request as too long … even after sending less history"
+
+`context_exceeded`: llama-server refused the request, Chimera retried once
+with less history against the size the server reported, and it refused again.
+Usually the server's real per-slot context is smaller than it reports to
+Chimera (another proxy in between, or `--parallel` changed without a restart).
+Set **Context size override** on the connection (Models → Edit → Advanced) to
+the real size. With the strategy **Off** there is no retry: the server's error
+is shown as is.
+
+## Older messages are "not included in the model's context"
+
+That is the dashed marker in the chat: the conversation is longer than the
+window, so the oldest exchanges are left out (or summarized, with *Summarize
+older messages*). The indicator in the top bar shows what the next request
+contains. To keep a specific message, use **Pin to context** on it. To change
+the behaviour: **Change strategy** on the marker (this conversation) or
+Settings → Chat → Context window (your default).
+
+## "Summarizing failed, so older messages were left out instead"
+
+The summary request failed or the model ignored the length limit. The answer
+was produced with the sliding window instead. Pick a smaller, faster model for
+summaries in Settings → Chat → Context window, or check that the connection
+works.
+
+## The context indicator shows "default" instead of the server's size
+
+The server doesn't report its context size (not llama-server, or an old build).
+Set it per connection (Models → Edit → Advanced → *Context size override*) or
+change *Context size when the server doesn't report it* in Settings → Chat.
+
+## Where did my old answer go after editing / regenerating?
+
+It is still there: editing or regenerating creates a new **version**. Use the
+`‹ 1 / 2 ›` arrows under the message to switch. Deleting a message deletes it
+and every version that branches from it (the confirmation says how many).
 
 ## "did not respond within the configured timeout"
 
@@ -120,6 +160,14 @@ The proxy buffers responses. Caddy: `flush_interval -1`. nginx:
 
 Run `cd frontend && npm ci && npm run build`, or set `CHIMERA_STATIC_DIR` to the
 built `dist` directory.
+
+## Headless browser
+
+See [WEB.md → Troubleshooting](WEB.md#troubleshooting). Quick checks: Settings →
+Web → *Headless browser* shows *not set up*, *not reachable* or *rejected
+Chimera's secret*; `docker compose --profile browser ps` and
+`docker compose logs browser`. The service refuses to start without
+`CHIMERA_BROWSER_SECRET` (≥ 16 characters).
 
 ## Web reading and search
 

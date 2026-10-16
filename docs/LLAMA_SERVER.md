@@ -43,6 +43,32 @@ Useful options:
 | `--host 0.0.0.0` | Listen on the LAN. Only do this with `--api-key` on a trusted network. |
 | `-c 16384` | Larger context for web search: reading one link needs ~8k tokens, search with 5 results ~16k. Chimera reads the size from `/props` and fits web text into it (see [WEB.md](WEB.md#context-budget-and-relevance)). With `-np N` the context is divided between slots, so raise `-c` accordingly. |
 
+### Context size, slots and how Chimera uses them
+
+With several parallel slots (`-np`/`--parallel`) llama-server can split `-c`
+between them, and **a single request can then use only one slot's share**
+(the default number of slots, and whether the KV cache is shared, depend on
+the llama.cpp build). Chimera doesn't guess: it uses the per-request size the
+server reports in `/props` (`default_generation_settings.n_ctx`, plus
+`total_slots`) and shows it under **Models** (*"8,192 tokens per slot (2
+slots)"*). Pass `-np` explicitly so you know what you get.
+
+| Goal | Suggested flags |
+| --- | --- |
+| One user, long conversations | `-c 16384 -np 1` (all 16k for one request; titles queue briefly) |
+| One user, titles/summaries without waiting | `-c 32768 -np 2` (16k per slot) |
+| A few users | `-c 65536 -np 4` (16k per slot), memory permitting |
+
+When a conversation outgrows the slot, Chimera leaves out (or summarizes) the
+oldest exchanges and marks where in the chat; see
+[ARCHITECTURE.md](ARCHITECTURE.md#context-management). It counts tokens with
+the model's own tokenizer (`/tokenize`, `/apply-template`), so the numbers
+match what llama-server will see. Keep `cache_prompt` on (the default):
+Chimera trims history in blocks so the start of the prompt stays the same
+between turns and the server can reuse its cache. If you set a different
+size than the server really has (e.g. behind a proxy), use the
+connection's *Context size override*.
+
 ## 2. Add the connection in Chimera
 
 **Models → Add connection**
@@ -86,6 +112,11 @@ llama-server's *router mode* (several models behind one server) is also
 understood: models report whether they're loaded.
 
 ## Exactly which API Chimera uses
+
+(Context management additionally uses `POST /tokenize` and
+`POST /apply-template`; if they are missing — older builds or other servers —
+Chimera estimates instead and retries the probe after 10 minutes.)
+
 
 | Endpoint | Used for | Required |
 | --- | --- | --- |

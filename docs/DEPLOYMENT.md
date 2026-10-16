@@ -64,6 +64,21 @@ Then Settings → Web: allow web access, engine **SearXNG**, address
 is not published to the host and refuses to start without a secret. Details,
 API engines and the security model: [WEB.md](WEB.md).
 
+## Headless browser in Compose (optional)
+
+```bash
+echo "CHIMERA_BROWSER_URL=http://browser:3000" >> .env
+echo "CHIMERA_BROWSER_SECRET=$(openssl rand -hex 32)" >> .env
+docker compose --profile browser up -d --build
+```
+
+This builds `browser/` (based on the pinned Playwright image, ~2 GB) and
+starts it on an internal-only network; Chimera joins that network and runs the
+browser's egress filter proxy on port 8701 inside its container (not
+published). Settings → Web → *Headless browser* shows whether it is reachable.
+With both `searxng` and `browser`: `--profile searxng --profile browser`.
+Details and the security model: [WEB.md](WEB.md#headless-browser-optional).
+
 ## Native
 
 ```bash
@@ -173,6 +188,26 @@ additive, so 0.2 can still open a 0.3 database if you need to roll back (it
 ignores the web data), but the backup copy is the clean way back. New Python
 dependencies (`trafilatura`, `lxml`, `charset-normalizer`) are installed by
 `./scripts/install.sh` or the Docker build.
+
+### Upgrading to 0.4 (branches, context management, headless browser)
+
+Migration 4 turns every conversation's linear history into a chain of a
+message tree (`parent_id`, `active_child_id`, `pinned`, `context` on messages;
+`active_leaf_id`, `context_strategy`, `context_state` on conversations;
+`context_override` on connections; `loader` on web sources; a new
+`context_summaries` table). It runs in Python inside one transaction after the
+usual pre-migration backup, and existing conversations look exactly as before.
+0.3 **cannot** use a 0.4 database correctly (it ignores `parent_id`, so
+branches would show as one interleaved list): roll back with the backup copy.
+
+- The per-user setting *Context size if the server doesn't report it* moved
+  from Settings → Web to Settings → Chat → Context window (its value is
+  carried over).
+- Context management is on by default (*Leave out older messages*). Long
+  conversations that used to fail with a server error now drop their oldest
+  exchanges, marked in the chat.
+- Exports now have `"version": 3` (with the tree); older exports still import.
+- The headless browser is optional and off until configured.
 
 ### Rolling back a migration
 

@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 EngineKind = Literal["searxng", "brave", "tavily"]
-DEFAULT_USER_AGENT = "Chimera/0.3 (self-hosted AI assistant; fetches pages on behalf of its users)"
+DEFAULT_USER_AGENT = "Chimera/0.4 (self-hosted AI assistant; fetches pages on behalf of its users)"
 
 
 def _clean_list(values: list[str]) -> list[str]:

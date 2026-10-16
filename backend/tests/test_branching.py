@@ -191,6 +191,7 @@ def test_pin_and_isolation_of_branch_endpoints(client, conversation, make_user):
     assert bob.post(f"/api/conversations/{cid}/active", json={"message_id": a1}).status_code == 404
     assert bob.patch(f"/api/messages/{u1}", json={"pinned": False}).status_code == 404
     assert bob.delete(f"/api/messages/{u1}").status_code == 404
+    assert bob.get(f"/api/conversations/{cid}/context").status_code == 404
     assert client.post(f"/api/conversations/{cid}/active", json={"message_id": "nope"}).json()["detail"]["code"] == "branch.not_found"
     client.send_csrf = False
     try:

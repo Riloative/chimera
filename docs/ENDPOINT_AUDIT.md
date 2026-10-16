@@ -1,8 +1,9 @@
 # API endpoint audit (accounts & data isolation)
 
-Every route under `/api` was reviewed when accounts were introduced, and again
-when web reading and search were added (version 0.3: six new routes, marked
-**new**). The table lists every registered route with how access is enforced;
+Every route under `/api` was reviewed when accounts were introduced, again
+when web reading and search were added (version 0.3), and again for
+conversation branching, context management and the headless browser (version
+0.4: four new routes and two changed ones, marked **0.4**). The table lists every registered route with how access is enforced;
 `tests/test_security.py` enumerates the live route table, so new routes are
 covered automatically.
 
@@ -49,8 +50,8 @@ their own data · **Admin** – administrators only (404 for others).
 | GET/PATCH | `/api/settings` | User | `user_settings WHERE user_id = me` (includes personal web preferences) |
 | GET | `/api/web/status` **new** | User | Instance-wide switch, whether search is available, limits; no secrets or addresses |
 | GET | `/api/web/sources/{sid}` **new** | User | `WHERE id = ? AND user_id = me` → 404; returns extracted text, never raw bytes |
-| POST | `/api/web/sources/{sid}/refetch` **new** | User | Owned source → 404; CSRF; 403 `web.disabled` when web access is off; 409 while that conversation is generating; counts against the hourly fetch quota; only re-reads the stored URL (no caller-supplied URL) |
-| GET/PATCH | `/api/admin/web` **new** | Admin | Web settings; engine keys write-only (`has_key` only), encrypted at rest |
+| POST | `/api/web/sources/{sid}/refetch` **0.4** | User | Owned source → 404; CSRF; 403 `web.disabled` when web access is off; 409 while that conversation is generating; counts against the hourly fetch quota; only re-reads the stored URL (no caller-supplied URL). New optional body `{loader: auto\|static\|browser}`: `browser` → 503 `web.browser_unavailable` unless the browser is configured, switched on and reachable; renders count against the per-user render quota (`web.browser_limit`); the URL is validated before the browser is asked and every connection the browser makes is filtered by the egress proxy |
+| GET/PATCH | `/api/admin/web` **0.4** | Admin | Web settings; engine keys write-only (`has_key` only), encrypted at rest. Now also returns the browser service status (configured / reachable / active renders); never its URL or secret |
 | POST | `/api/admin/web/test` **new** | Admin | Runs one real search against the given engine; a typed SearXNG URL is validated; a stored key is used if none is typed |
 | GET | `/api/providers` | User | Own connections + shared ones |
 | POST | `/api/providers` | User | Owner = me; `shared` admin-only; URL policy for non-admins |
@@ -60,13 +61,16 @@ their own data · **Admin** – administrators only (404 for others).
 | GET | `/api/models` | User | Discovery over own + shared connections; cache holds server facts only |
 | GET/POST | `/api/conversations` | User | `WHERE user_id = me`; provider/collection references filtered to visible/owned |
 | GET | `/api/conversations/search` | User | `WHERE c.user_id = me` (titles and message content) |
-| GET/PATCH/DELETE | `/api/conversations/{cid}` | User | `owned()` → 404 |
+| GET/PATCH/DELETE | `/api/conversations/{cid}` | User | `owned()` → 404; `context_strategy` validated (`sliding\|summarize\|off\|null`) |
+| GET | `/api/conversations/{cid}/context` **0.4** | User | Owned conversation → 404. Dry run of the next request on the active branch: counts tokens (llama-server `/tokenize` on a *visible* connection) and uses cached summaries only — never calls the model |
+| POST | `/api/conversations/{cid}/active` **0.4** | User | Owned conversation → 404, and the message must belong to *that* conversation (`branch.not_found`, 404); CSRF; allowed while streaming (only changes what is shown) |
 | POST | `/api/conversations/{cid}/messages` | User | Owned conversation; attachments must be own files; provider must be visible; `urls` must appear in the message (others ignored); `web_search`/`urls` → 403 `web.disabled` when web access is off |
 | POST | `/api/conversations/{cid}/regenerate` | User | Owned conversation |
 | POST | `/api/conversations/{cid}/messages/{mid}/edit` | User | Owned conversation and message |
 | GET | `/api/conversations/{cid}/stream` | User | Owned conversation; generation's owner checked |
 | POST | `/api/generations/{gid}/cancel` | User | Generation's `user_id` must equal caller → 404 |
-| DELETE | `/api/messages/{mid}` | User | Message joined to an owned conversation → 404 |
+| DELETE | `/api/messages/{mid}` **0.4** | User | Message joined to an owned conversation → 404. Now deletes the message's whole subtree (every branch below it) in one transaction; 409 `message_streaming` if any node in it is still generating; returns the repaired active path |
+| PATCH | `/api/messages/{mid}` **0.4** | User | Message joined to an owned conversation → 404; only `{pinned}` can change (strict schema) |
 | POST | `/api/files` | User | Stored under `uploads/<user_id>/<random id>` |
 | GET/DELETE | `/api/files/{fid}` | User | `WHERE id = ? AND user_id = me` |
 | GET | `/api/files/{fid}/content` | User | Owned + path must resolve inside the owner's directory |
@@ -100,3 +104,22 @@ Internal paths that also had to be scoped (no route of their own):
   cache are keyed by user; quotas are per user; the composed prompt only
   includes sources of the conversation being answered. Account deletion and
   *Delete all my data* remove `web_sources` rows and the user's cache entries.
+- **Context management** – summaries (`context_summaries`) carry the user and
+  conversation and are looked up by both; they're written only by that user's
+  own generations, use a model on a connection visible to that user, and are
+  deleted with the conversation or account. The token-count cache is keyed by
+  connection, model and a hash of the text (no user content is retrievable
+  from it). Pinning and the context strategy are per conversation of the
+  owner.
+- **Headless browser** – the service is not an API route: it is reachable only
+  on the internal Compose network and needs the shared secret. Each render
+  gets single-use egress-proxy credentials bound to the requesting user's
+  render, revoked when it ends; the browser context is fresh per render, so
+  no cookies or storage cross users. Rendered text is stored like any other
+  source of that user.
+- **Branches** – the tree helpers only ever load messages of one owned
+  conversation; switching or deleting validates that the target message is in
+  it. Search returns `match_message_id` only for the caller's conversations.
+  Import of a tree re-checks every parent reference inside the imported
+  conversation and maps it to fresh IDs (a parent missing from the file makes
+  the message a root); IDs can never point into another conversation.

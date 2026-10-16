@@ -58,6 +58,16 @@ breaks, `el. paštas` abbreviation.
 | user agent | naudotojo agentas | |
 | port | prievadas | |
 | robots.txt | robots.txt | not translated |
+| branch (of a conversation) | šaka | "this and all its branches" → *visose šakose* |
+| version (of a message) | versija | navigator: *1 versija iš 2*, *Atsakymas 1 iš 2* |
+| pin to context | prisegti prie konteksto | badge *Prisegta* |
+| exchange (user message + answer) | apsikeitimas | |
+| leave out (history) | praleisti | marker: *neįtraukta į modelio kontekstą* |
+| summarize / summary | apibendrinti / santrauka | |
+| tokenizer | žetonų skaidytuvas | |
+| draft | juodraštis | |
+| headless browser | foninė naršyklė | literally "background browser" |
+| render (a page) | atvaizduoti | "Render with browser" → *Atvaizduoti naršykle* |
 
 ## Phrases that deserve native-speaker review
 
@@ -96,3 +106,31 @@ Web reading and search (0.3), additionally:
 - **Mixed constructions with interpolated names**, e.g. "Ryšys „{{name}}“
   išjungtas", "{{name}} nepasiekiamas" – grammatical gender/case of the
   interpolated name can't be inflected automatically.
+
+Branches, context management and the headless browser (0.4), additionally:
+
+- **"foninė naršyklė" for headless browser** – a descriptive choice;
+  *begalvė naršyklė* (literal) or *naršyklė be sąsajos* are alternatives, and
+  admins may know the English term better.
+- **"atvaizduoti" for render** ("Atvaizduoti naršykle", "Atvaizduota foninės
+  naršyklės") – *pateikti* or *įkelti* are possible; check the instrumental
+  *naršykle* reads naturally on a button.
+- **"šaka" for branch** and **"versija"** in *"1 versija iš 2"* (word order
+  with the numeral first).
+- **"apsikeitimas" for an exchange** (a question with its answer) – may read
+  as unusual; *klausimas ir atsakymas* is longer but plainer.
+- **"prisegti prie konteksto" for pin to context**, distinct from pinning a
+  conversation in the sidebar (*prisegti*).
+- **"žetonų skaidytuvas" for tokenizer** – *tokenizatorius* is the common
+  loanword.
+- **Marker sentences with plural agreement**, e.g. *"3 ankstesnės žinutės
+  neįtrauktos į modelio kontekstą"*, *"12 ankstesnių žinučių neįtraukta…"*,
+  *"Kad tilptų puslapiai, praleista 12 ankstesnių žinučių"*.
+- **Delete confirmation** *"Bus pašalintos 3 žinutės: ši ir viskas, kas iš jos
+  tęsiasi, visose šakose."* – for counts in the *one* category above 1 (21,
+  31…) the shorter form without the explanation is used.
+- **Error texts with numbers**: *"…jai reikia maždaug {{needed}} žetonų, o
+  laisvų yra tik {{available}}"* – the genitive plural after numbers ending in
+  1 (21 žetonas) is not inflected.
+- **Admin status lines** for the browser service ("Nesukonfigūruota. Paleiskite
+  browser profilį…") mix Lithuanian with untranslated configuration names.

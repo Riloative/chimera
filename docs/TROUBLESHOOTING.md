@@ -163,6 +163,13 @@ built `dist` directory.
 
 ## Headless browser
 
+**"…still showing a loading screen when the time ran out"** (`web.browser_loading`):
+the page rendered, but after the render timeout it still looked like a loading
+screen ("Loading…", a spinner, an "enable JavaScript" placeholder), so it was
+not given to the model. Raise *Render timeout* (Settings → Web → Headless
+browser) and `BROWSER_SETTLE_MAX_MS` (`.env`, then `docker compose --profile
+browser up -d`). Pages behind a cookie wall or login can't be read.
+
 See [WEB.md → Troubleshooting](WEB.md#troubleshooting). Quick checks: Settings →
 Web → *Headless browser* shows *not set up*, *not reachable* or *rejected
 Chimera's secret*; `docker compose --profile browser ps` and

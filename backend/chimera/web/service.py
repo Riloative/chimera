@@ -27,6 +27,8 @@ from .urls import canonical_url, display_domain, domain_matches, host_of, rewrit
 
 log = logging.getLogger("chimera.web")
 
+# Browser errors that describe the page itself (vs. the service being down or busy).
+PAGE_BROWSER_ERRORS = {"web.browser_loading", "web.browser_timeout", "web.browser_blocked"}
 CACHE_TTL = 600.0
 CACHE_PER_USER = 64
 ROBOTS_TTL = 3600.0
@@ -425,8 +427,14 @@ class WebService:
                     self._cache_put(uid, url, data)
                     return data
                 except WebError as browser_exc:
-                    # Keep the static result's explanation; say why rendering didn't help.
-                    exc.params["browser"] = browser_exc.code
+                    if browser_exc.code in PAGE_BROWSER_ERRORS:
+                        # The browser saw the page and can say what's wrong with it.
+                        exc = browser_exc
+                        data.loader = "browser"
+                    else:
+                        # The browser couldn't help (down, busy): keep the static
+                        # result's explanation and say why rendering didn't help.
+                        exc.params["browser"] = browser_exc.code
                     log.info("web render fallback failed host=%s code=%s", display_domain(url) or "?", browser_exc.code)
             data.status, data.error_code, data.error_params = "error", exc.code, exc.params
             data.title = data.title or exc.params.get("title")

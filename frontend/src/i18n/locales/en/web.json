@@ -93,8 +93,7 @@
     "failedTo": "Could not read {{domain}}: {{reason}}",
     "status": {
       "ok": "Read",
-      "snippet": "Summary only",
-      "error": "Not read"
+      "snippet": "Summary only"
     }
   },
   "actions": {

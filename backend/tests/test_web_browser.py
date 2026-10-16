@@ -17,7 +17,7 @@ from chimera.web.egress import EgressProxy, EgressRules
 from chimera.web.netguard import Allowlist
 from tests.conftest import FAKE_PUBLIC_IP, FakeResolver, LiveServer
 from tests.mock_browser import SECRET, create_browser_app
-from tests.test_web_chat import detail, final, run_and_stop, send
+from tests.test_web_chat import detail, final, last_prompt, run_and_stop, send
 
 SPA = "http://news.example.org/spa"
 
@@ -322,6 +322,21 @@ def test_service_errors_are_reported_with_their_codes(client, conversation, web,
     source = only_source(client, conversation["id"])
     resp = client.post(f"/api/web/sources/{source['id']}/refetch", json={"loader": "browser"}).json()
     assert resp["ok"] is False and resp["error_code"] == code
+
+
+def test_a_loading_screen_is_reported_and_the_model_told_it_was_not_read(client, conversation, web, browser, mock):
+    browser.state.fail = {"code": "web.browser_loading", "message": "still loading", "params": {"title": "Loading…"}}
+    msg = final(send(client, conversation["id"], f"What does {SPA} say?"))
+    source = only_source(client, conversation["id"])
+    assert source["status"] == "error" and source["error_code"] == "web.browser_loading" and source["loader"] == "browser"
+    assert "COULD NOT BE READ" in last_prompt(mock) and msg["content"] == "Source [1] could not be read."
+
+
+def test_service_trouble_keeps_the_static_explanation(client, conversation, web, browser):
+    browser.state.fail = {"code": "web.browser_limit", "message": "busy", "params": {"reason": "busy"}}
+    final(send(client, conversation["id"], f"Read {SPA}"))
+    source = only_source(client, conversation["id"])
+    assert source["error_code"] == "web.needs_javascript" and source["error_params"]["browser"] == "web.browser_limit"
 
 
 def test_stop_cancels_the_render_and_revokes_its_proxy_access(client, conversation, web, browser):

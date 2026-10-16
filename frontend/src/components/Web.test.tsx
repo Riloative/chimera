@@ -3,14 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import i18n from "@/i18n";
 import { providerErrorText } from "@/lib/errors";
-import type { AppSettings, Message, WebSource, WebStatus, WebUserSettings } from "@/lib/types";
+import type { AppSettings, Message, WebRef, WebSource, WebStatus, WebUserSettings } from "@/lib/types";
 import { useChat } from "@/stores/chat";
 import { useSettings } from "@/stores/settings";
 import { useWeb } from "@/stores/web";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 import { TooltipProvider } from "./ui";
-import { citationTargets, WebSourceList, WebSteps } from "./WebParts";
+import { citationTargets, LinkStatus, visibleRefs, WebSourceList, WebSteps } from "./WebParts";
 
 const PREFS: WebUserSettings = {
   auto_read_links: true,
@@ -299,6 +299,97 @@ describe("headless browser", () => {
     expect(within(dialog).getByRole("button", { name: "Atvaizduoti naršykle" })).toBeInTheDocument();
     expect(providerErrorText("web.browser_limit", {}, "x")).toContain("valandinį limitą");
     expect(providerErrorText("web.browser_blocked", {}, "x")).toContain("neleidžiamas");
+  });
+});
+
+describe("sources under an answer", () => {
+  const withRefs = (refs: WebRef[], used: number[] = []) =>
+    ({ ...MESSAGE, web: { ...MESSAGE.web, refs, citations: { used, invalid: [] } } }) as Message;
+
+  it("lists this turn's sources and only the earlier pages the answer cites", () => {
+    const msg = withRefs(
+      [
+        { n: 1, source_id: "s1", included: true, earlier: true },
+        { n: 2, source_id: "s2", included: true, earlier: true },
+        { n: 3, source_id: "s3", included: true },
+      ],
+      [2],
+    );
+    expect(visibleRefs(msg).map((r) => r.n)).toEqual([2, 3]);
+    // Citation numbers stay stable: [2] still resolves to the earlier page.
+    expect(citationTargets(msg, SOURCES)[2].url).toBe("https://site2.example/page");
+  });
+
+  it("follows the server's decision once the answer is final", () => {
+    const msg = withRefs([
+      { n: 1, source_id: "s1", included: true, earlier: true, shown: false },
+      { n: 2, source_id: "s2", included: true, shown: true },
+    ]);
+    expect(visibleRefs(msg).map((r) => r.n)).toEqual([2]);
+  });
+
+  it("treats refs stored before 0.4.1 (no flags) as this turn's", () => {
+    expect(visibleRefs(MESSAGE).map((r) => r.n)).toEqual([1, 2, 3]);
+  });
+
+  it("shows no Sources block when nothing belongs to the answer", () => {
+    const msg = withRefs([{ n: 1, source_id: "s1", included: true, earlier: true }]);
+    wrap(<WebSourceList refs={visibleRefs(msg)} sources={SOURCES} conversationId="c1" />);
+    expect(screen.queryByTestId("web-sources")).toBeNull();
+  });
+
+  it("counts only this turn's sources in the steps summary", () => {
+    const msg = withRefs([
+      { n: 1, source_id: "s1", included: true, earlier: true },
+      { n: 2, source_id: "s3", included: true },
+    ]);
+    wrap(<WebSteps message={msg} sources={SOURCES} defaultOpen={false} />);
+    expect(screen.getByRole("button", { name: "Show web activity" })).toHaveTextContent("Used 1 source");
+  });
+});
+
+describe("failed sources say why", () => {
+  afterEach(async () => {
+    await act(() => i18n.changeLanguage("en"));
+  });
+
+  const FAILED: [string, Record<string, unknown>, RegExp][] = [
+    ["web.blocked_address", {}, /private or local network/],
+    ["web.not_found", { http_status: 404 }, /page was not found/],
+    ["web.timeout", {}, /took too long/],
+    ["web.needs_javascript", {}, /needs JavaScript/],
+    ["web.browser_blocked", {}, /not allowed/],
+    ["web.browser_loading", {}, /loading screen/],
+  ];
+
+  it.each(FAILED)("%s shows its reason, never the context-limit text, and matches the chip", (code, params, text) => {
+    useChat.setState({ convs: {} });
+    const failed = SOURCE("f1", 1, { origin: "pasted", status: "error", error_code: code, error_params: params, chars: 0 });
+    wrap(
+      <>
+        <WebSourceList refs={[{ n: 1, source_id: "f1", included: false }]} sources={{ f1: failed }} conversationId="c1" />
+        <LinkStatus sources={[failed]} conversationId="c1" />
+      </>,
+    );
+    const reason = screen.getByTestId("source-reason");
+    expect(reason).toHaveTextContent(text);
+    expect(screen.getByTestId("web-sources")).not.toHaveTextContent("context limit");
+    const chip = screen.getByTestId("link-status").querySelector("button")!;
+    expect(chip.getAttribute("aria-label")).toContain(reason.getAttribute("title"));
+  });
+
+  it("keeps 'left out' only for pages that were read but didn't fit", () => {
+    wrap(<WebSourceList refs={[{ n: 1, source_id: "s1", included: false }]} sources={{ s1: SOURCE("s1", 1) }} conversationId="c1" />);
+    expect(screen.getByTestId("web-sources")).toHaveTextContent("Left out because of the model's context limit.");
+    expect(screen.queryByTestId("source-reason")).toBeNull();
+  });
+
+  it("is translated", async () => {
+    await act(() => i18n.changeLanguage("lt"));
+    const failed = SOURCE("f1", 1, { status: "error", error_code: "web.blocked_address", chars: 0 });
+    wrap(<WebSourceList refs={[{ n: 1, source_id: "f1", included: false }]} sources={{ f1: failed }} conversationId="c1" />);
+    expect(screen.getByTestId("source-reason")).toHaveTextContent(/privat/);
+    expect(providerErrorText("web.browser_loading", {}, "x")).toContain("įkėlimo ekraną");
   });
 });
 

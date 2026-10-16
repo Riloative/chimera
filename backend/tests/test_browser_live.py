@@ -61,7 +61,6 @@ class Live:
             "BROWSER_PROXY_SERVER": f"http://127.0.0.1:{self.proxy.port}",
             "BROWSER_HOST": "127.0.0.1",
             "BROWSER_PORT": str(self.port),
-            "BROWSER_SETTLE_MS": "3000",
             "BROWSER_LOG_LEVEL": "WARNING",
         }
         self.process = subprocess.Popen([PYTHON, str(ROOT / "browser" / "chimera_browser.py")], env=env)
@@ -151,6 +150,59 @@ def test_no_service_workers_even_in_a_secure_context(live):
     text = text_of(result)
     assert "sw:missing" in text
     assert not any(path == "/sw.js" for _, path in live.web.app.state.hits)
+
+
+# ------------------------------------------------------------ settling
+def test_waits_for_content_that_arrives_after_a_loading_screen(live):
+    result = live.render("http://news.example.org/spa-delayed", timeout=20)
+    text = text_of(result)
+    assert "remote code execution vulnerability" in text and "Loading" not in text
+
+
+def test_static_pages_return_quickly(live):
+    started = time.monotonic()
+    result = live.render("http://news.example.org/article", timeout=20)
+    assert "Aurora" in text_of(result)
+    assert time.monotonic() - started < 4.0  # quiet period + minimum wait, not the timeout
+
+
+def test_pages_that_never_stop_changing_return_at_the_timeout(live):
+    started = time.monotonic()
+    result = live.render("http://news.example.org/ticker", timeout=6)
+    elapsed = time.monotonic() - started
+    assert "Market ticker" in text_of(result)
+    assert 4.0 <= elapsed < 12.0
+    assert live.status()["active"] == 0
+
+
+def test_a_page_that_stays_a_loading_screen_is_not_returned_as_content(live):
+    with pytest.raises(WebError) as err:
+        live.render("http://news.example.org/forever-loading", timeout=5)
+    assert err.value.code == "web.browser_loading"
+    assert live.status()["active"] == 0 and not live.proxy.sessions
+
+
+def test_loading_detection_and_settings():
+    """Pure checks inside the service module (runs in the browser's Python)."""
+    code = """
+import chimera_browser as b
+L = b.looks_loading
+assert L({"title": "Security Update Guide - Loading - Microsoft", "length": 900, "head": "x" * 900})
+assert L({"title": "App", "length": 0, "head": ""})
+assert L({"title": "App", "length": 10, "head": "Loading…"})
+assert L({"title": "App", "length": 80, "head": "You need to enable JavaScript to run this app. CVE-2024-38063"})
+assert not L({"title": "Uploading files - Docs", "length": 900, "head": "How to upload " * 50})
+assert not L({"title": "News", "length": 2000, "head": "Loading docks are being rebuilt " * 10})
+s = b.Settings({"BROWSER_SETTLE_MS": "1500"})
+assert s.settle_max_ms == 1500  # the old setting keeps working as the maximum wait
+s = b.Settings({"BROWSER_SETTLE_MS": "1500", "BROWSER_SETTLE_MAX_MS": "9000"})
+assert s.settle_max_ms == 9000
+s = b.Settings({})
+assert (s.settle_min_ms, s.settle_quiet_ms, s.settle_poll_ms, s.settle_max_ms) == (300, 750, 250, 15000)
+print("ok")
+"""
+    proc = subprocess.run([PYTHON, "-c", code], cwd=str(ROOT / "browser"), capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0 and "ok" in proc.stdout, proc.stderr
 
 
 def test_redirect_to_a_private_address_is_blocked(live):

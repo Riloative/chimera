@@ -125,10 +125,18 @@ the last result is remembered (*"Last tested …"*).
   address, 403/404/5xx, timeout, too large, unsupported type, needs
   JavaScript, empty) appears as a red chip under your message with the reason,
   and the model is told explicitly that the page *could not be read* and must
-  not guess its content.
+  not guess its content. The answer's **Sources** list shows the same reason
+  (e.g. *"This address points to a private or local network, which can't be
+  read."*); *"Left out because of the model's context limit"* appears only for
+  pages that were read but didn't fit.
 - **Follow-ups** reuse the stored text: ask more questions about the same page
-  without downloading it again. **Read again** (in the page dialog) re-downloads
-  it and keeps the old text if the new attempt fails.
+  without downloading it again. Pages from earlier turns are re-sent to the
+  model (within the context budget) but are **listed under a later answer only
+  if that answer cites them**; every page and search result of the answer's
+  own turn is always listed, including failures. An answer that neither read
+  nor cites anything has no Sources list. Citation numbers stay stable either
+  way. **Read again** (in the page dialog) re-downloads it and keeps the old
+  text if the new attempt fails.
 
 ### Limits
 
@@ -372,6 +380,14 @@ the only guard — prefer the container.
   normally bypasses proxies for `localhost`), host-name resolution inside the
   browser is disabled except for the proxy, and WebRTC is limited to proxied
   traffic and removed from pages.
+- **Waiting for content.** After the page loads, the browser waits until its
+  visible text has stopped changing for 0.75 s and it no longer looks like a
+  loading screen (a title with "loading", an empty body or spinner, "Loading…",
+  "Please wait", or a short "enable JavaScript" placeholder), at least 0.3 s
+  and at most 15 s, always within the render timeout. Pages that keep changing
+  are captured when the time runs out. A page that is *still* a loading screen
+  then is reported as `web.browser_loading` and the model is told it could not
+  be read. Settings: `BROWSER_SETTLE_*` in [browser/README.md](../browser/README.md).
 - **Per page:** a fresh incognito context (no cookies, storage or cache shared
   between renders or users), service workers blocked, downloads refused
   (`web.browser_blocked`), popups closed, WebSockets closed, non-http(s)
@@ -452,6 +468,9 @@ engines (Google PSE, Kagi, Serper, Mojeek).
 | *The headless browser is not available* | `CHIMERA_BROWSER_URL`/`CHIMERA_BROWSER_SECRET` not set, the `browser` profile not running, or the secrets differ (Settings → Web → Headless browser shows which). `docker compose logs browser`. |
 | *The page, or a page it redirected to, is not allowed* | The page (or a redirect) points to a private address or starts a download. Intended; allow-list an internal host if you really need it. |
 | *took too long to render* | Raise *Render timeout*; heavy pages may need 30–45 s. |
+| *still showing a loading screen when the time ran out* | The page loads its content slowly or needs an interaction (cookie wall, login). Raise *Render timeout* and `BROWSER_SETTLE_MAX_MS`; some sites can't be read automatically. |
+| A page I pasted earlier isn't listed under a later answer | Intended: earlier pages are still sent to the model, but listed only under answers that cite them. Scroll up to the answer of the turn that read it. |
+| A failed link shows "left out because of the context limit" | Fixed in 0.4.1: failures now show their real reason. |
 | *No readable text was found* | The page is mostly images or forms. |
 | *The site took too long to respond* | Raise *Page timeout* in Settings → Web → Limits. |
 | *You've reached the hourly limit* | Per-user quota; an administrator can raise it under Limits. |

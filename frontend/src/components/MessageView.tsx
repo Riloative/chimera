@@ -21,7 +21,7 @@ import { LogoMark } from "./Logo";
 import { Markdown } from "./Markdown";
 import { BranchNav } from "./BranchNav";
 import { Button, ConfirmDialog, Dialog, IconButton, Spinner } from "./ui";
-import { citationTargets, LinkStatus, WebSourceList, WebSteps, type WebSources } from "./WebParts";
+import { citationTargets, LinkStatus, visibleRefs, WebSourceList, WebSteps, type WebSources } from "./WebParts";
 
 /** Sibling navigation for a message that has other versions. */
 export interface BranchInfo {
@@ -310,7 +310,7 @@ export function AssistantMessage({
       )}
 
       {message.sources.length > 0 && <Sources sources={message.sources} />}
-      {!!message.web?.refs?.length && <WebSourceList refs={message.web.refs} sources={webSources} conversationId={message.conversation_id} />}
+      <WebSourceList refs={visibleRefs(message)} sources={webSources} conversationId={message.conversation_id} />
 
       {message.status === "error" && (
         <div role="alert" className="mt-3 flex items-start gap-3 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-3">

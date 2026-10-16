@@ -211,6 +211,9 @@ def compose(
     blocks: dict[str, list[str]] = {}
     notes: dict[str, list[str]] = {}
     refs: list[dict] = []
+    # Search results of this turn that were read but didn't fit: listed under
+    # the answer (numbered after everything the model sees), never sent.
+    unsent: list[dict] = []
     n = start_n
     used_current = total_current = omitted = 0
     current_ids = {r["id"] for r in current_rows}
@@ -226,7 +229,9 @@ def compose(
                     origin="pasted"))
                 refs.append({"n": n, "source_id": row["id"], "included": False})
                 n += 1
-            elif not is_current:
+            elif is_current:
+                unsent.append({"source_id": row["id"], "included": False})
+            else:
                 omitted += 1
                 notes.setdefault(mid, []).append(
                     f"[A page read earlier was left out to fit the context window: "
@@ -241,9 +246,15 @@ def compose(
             content=item.fitted if item.ok else "", ok=item.ok, failure=failure, published=row["published"],
             trimmed=item.trimmed or bool(row["truncated"]), origin=origin if origin != "search" else "search",
             notes=_loads_list(row.get("notes"))))
-        refs.append({"n": n, "source_id": row["id"], "included": item.ok})
+        # Pages from earlier turns are re-sent so follow-ups work; they're
+        # listed under this answer only if it cites them (see ``finish_refs``).
+        refs.append({"n": n, "source_id": row["id"], "included": item.ok, **({} if is_current else {"earlier": True})})
         if is_current and item.ok:
             used_current += 1
+        n += 1
+
+    for ref in unsent:
+        refs.append({"n": n, **ref})
         n += 1
 
     for mid, msg in turns:
@@ -254,6 +265,22 @@ def compose(
         if prefix:
             msg.content = "\n\n".join(prefix) + "\n\n" + msg.content
     return ComposeResult(refs=refs, used_current=used_current, total_current=total_current, omitted_older=omitted)
+
+
+def ref_shown(ref: dict, cited: set[int]) -> bool:
+    """Whether a source is listed under the answer: everything from this turn
+    (refs without ``earlier``, which includes every ref stored before 0.4.1),
+    plus earlier-turn pages the answer actually cites."""
+    if "shown" in ref:
+        return bool(ref["shown"])
+    return not ref.get("earlier") or ref.get("n") in cited
+
+
+def finish_refs(refs: list[dict], cited: list[int]) -> None:
+    """Record the visibility decision on each ref once the answer is final."""
+    used = set(cited)
+    for ref in refs:
+        ref["shown"] = not ref.get("earlier") or ref.get("n") in used
 
 
 def _loads_list(value: object) -> list[str]:

@@ -38,7 +38,25 @@ connection cancels the render and closes its browser context.
 | `BROWSER_MAX_REQUESTS` | 250 | network requests per page |
 | `BROWSER_MAX_HTML_KB` | 5120 | rendered HTML returned |
 | `BROWSER_MAX_TIMEOUT_SECONDS` | 60 | upper bound for a render |
-| `BROWSER_SETTLE_MS` | 1500 | wait for network idle after load |
+| `BROWSER_SETTLE_MAX_MS` | 15000 | longest wait for the page to settle after load (always within the render timeout) |
+| `BROWSER_SETTLE_QUIET_MS` | 750 | the visible text must be unchanged this long |
+| `BROWSER_SETTLE_MIN_MS` | 300 | shortest wait, so fast pages still return in about a second |
+| `BROWSER_SETTLE_POLL_MS` | 250 | how often the text is sampled |
+| `BROWSER_SETTLE_MS` | — | 0.4.0 name; still accepted as the maximum when `BROWSER_SETTLE_MAX_MS` is not set |
+
+### Waiting for content
+
+After `DOMContentLoaded` the service samples the page every 250 ms (visible
+text length, a hash of it, and the title). The page has **settled** when the
+text hasn't changed for 750 ms and it doesn't look like a loading screen: the
+title doesn't contain "loading", and the text isn't empty, a "Loading… / Please
+wait" placeholder, or a short "enable JavaScript" message. Static pages return
+after about a second; single-page apps are captured once their data has
+arrived; pages that never stop changing (tickers, ads) are captured when the
+time runs out, as before. If the page is still a loading screen when the time
+runs out, the render fails with `web.browser_loading` instead of handing a
+loading screen to the model. HTTP error pages (including the egress proxy's
+refusals) are reported immediately by their status.
 
 ## Development and tests
 

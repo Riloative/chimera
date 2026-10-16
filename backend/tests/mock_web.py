@@ -248,6 +248,29 @@ def create_web_app(self_links: bool = False) -> FastAPI:
         targets = [["private", "http://10.11.12.13/"], ["loopback", "http://127.0.0.1/"]] + ([["service", local]] if local else [])
         return html(SPA_PROBE.replace("LOCAL_TARGETS", json.dumps(targets)))
 
+    @app.get("/spa-delayed")
+    async def spa_delayed():
+        # A loading screen first; the real content arrives ~2 s later (like a SPA fetching its data).
+        return html("""<!doctype html><html><head><title>Loading - Example Guide</title></head><body>
+<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"><p>Loading…</p></div>
+<script>setTimeout(() => { document.title = "CVE-2024-0001 - Example Guide";
+  document.getElementById("root").innerHTML = "<article><h1>CVE-2024-0001</h1><p>A remote code execution vulnerability " +
+    "exists in the example network stack. Systems are affected when IPv6 is enabled. Apply the update to fix it; " +
+    "as a workaround, IPv6 can be disabled on affected interfaces.</p></article>"; }, 2000);</script></body></html>""")
+
+    @app.get("/ticker")
+    async def ticker():
+        # Never stops changing (a live counter), but has real content.
+        return html("""<!doctype html><html><head><title>Live ticker</title></head><body><article><h1>Market ticker</h1>
+<p>Prices of example goods are updated continuously on this page. Apples, pears and plums are traded every few
+seconds, and the counter below shows how many trades happened since the page was opened.</p><p id="n">0</p></article>
+<script>let n = 0; setInterval(() => { document.getElementById("n").textContent = String(++n); }, 100);</script></body></html>""")
+
+    @app.get("/forever-loading")
+    async def forever_loading():
+        return html("""<!doctype html><html><head><title>Loading…</title></head><body><div class="spinner"></div>
+<p>Please wait…</p><script>setInterval(() => {}, 1000);</script></body></html>""")
+
     @app.get("/sw.js")
     async def service_worker():
         return Response("self.addEventListener('fetch', () => {});", media_type="text/javascript")

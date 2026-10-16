@@ -68,7 +68,7 @@ def test_pasted_url_is_read_and_answer_uses_it(client, conversation, web, mock):
     assert source["message_id"] == user["id"] and source["origin"] == "pasted" and source["status"] == "ok"
     assert source["title"] == "Aurora Borealis Festival comes to Vilnius" and source["domain"] == "news.example.org"
     assert "content" not in source  # metadata only in conversation payloads
-    assert asst["web"]["refs"] == [{"n": 1, "source_id": source["id"], "included": True}]
+    assert asst["web"]["refs"] == [{"n": 1, "source_id": source["id"], "included": True, "shown": True}]
     assert asst["web"]["citations"] == {"used": [1], "invalid": []}
     full = client.get(f"/api/web/sources/{source['id']}").json()
     assert "40,000 visitors" in full["content"]
@@ -110,6 +110,45 @@ def test_follow_up_reuses_page_without_refetching(client, conversation, web, moc
     assert web.hits[("news.example.org", "/article")] == 1
     assert "Drone show: 16 March" in last_prompt(mock)
     assert msg["web"]["refs"][0]["n"] == 1
+
+
+def shown_refs(msg):
+    return [r for r in msg["web"]["refs"] if r.get("shown", True)]
+
+
+def test_uncited_earlier_page_is_sent_but_not_listed(client, conversation, web, mock):
+    final(send(client, conversation["id"], f"Read {ARTICLE}"))
+    msg = final(send(client, conversation["id"], "Test"))
+    assert "Aurora Borealis Festival" in last_prompt(mock)  # still sent to the model for follow-ups
+    [ref] = msg["web"]["refs"]
+    assert ref["earlier"] is True and ref["shown"] is False
+    assert shown_refs(msg) == []  # no Sources block under "Test"
+    assert msg["web"]["citations"] == {"used": [], "invalid": []}
+
+
+def test_cited_earlier_page_is_listed_with_a_stable_number(client, conversation, web, mock):
+    final(send(client, conversation["id"], f"Read {ARTICLE}"))
+    msg = final(send(client, conversation["id"], "And the dates? [cite-earlier]"))
+    assert msg["content"].startswith("According to [1]")
+    [ref] = shown_refs(msg)
+    assert ref["n"] == 1 and ref["earlier"] is True and ref["included"] is True
+    assert msg["web"]["citations"]["used"] == [1]
+    source = next(s for s in detail(client, conversation["id"])["web_sources"] if s["id"] == ref["source_id"])
+    assert source["url"] == ARTICLE
+
+
+def test_this_turns_sources_are_always_listed_including_failures(client, conversation, web, mock):
+    final(send(client, conversation["id"], f"Read {ARTICLE}"))
+    msg = final(send(client, conversation["id"], "Now http://docs.example.org/docs and http://news.example.org/status/404"))
+    shown = shown_refs(msg)
+    by_id = {s["id"]: s for s in detail(client, conversation["id"])["web_sources"]}
+    urls = {by_id[r["source_id"]]["url"]: r for r in shown}
+    assert set(urls) == {"http://docs.example.org/docs", "http://news.example.org/status/404"}
+    assert urls["http://news.example.org/status/404"]["included"] is False
+    assert by_id[urls["http://news.example.org/status/404"]["source_id"]]["error_code"] == "web.not_found"
+    # The earlier article was sent (and cited by the mock) but belongs to this answer only if cited.
+    earlier = [r for r in msg["web"]["refs"] if r.get("earlier")]
+    assert all(r["shown"] == (r["n"] in msg["web"]["citations"]["used"]) for r in earlier)
 
 
 def test_refetch_updates_source(client, conversation, web):
@@ -224,6 +263,12 @@ def test_context_budget_drops_lowest_ranked_sources(client, conversation, web, p
     assert msg["web"]["context_tokens"] == 1300
     included = [r for r in msg["web"]["refs"] if r["included"]]
     assert len(included) == budget[0]["params"]["used"]
+    # Results that were read but didn't fit are still listed under the answer
+    # (as left out), numbered after everything the model saw.
+    assert len(msg["web"]["refs"]) == 4 and all(r["shown"] for r in msg["web"]["refs"])
+    left_out = [r for r in msg["web"]["refs"] if not r["included"]]
+    assert min(r["n"] for r in left_out) > max(r["n"] for r in included)
+    assert all(f"[{r['n']}]" not in msg["content"] for r in left_out)
 
 
 # ------------------------------------------------------------- cancellation
@@ -404,6 +449,20 @@ def test_export_includes_web_content_and_account_deletion_removes_it(client, web
     assert bob.request("DELETE", "/api/account", json={"password": PASSWORD}).status_code == 204
     assert db.one("SELECT COUNT(*) AS n FROM web_sources WHERE user_id = ?", (bob_id,))["n"] == 0
     assert bob_id not in client.app.state.chimera.web._cache
+
+
+def test_export_keeps_source_visibility_and_import_still_works(client, conversation, web):
+    final(send(client, conversation["id"], f"Read {ARTICLE}"))
+    final(send(client, conversation["id"], "Test"))
+    export = json.loads(client.get("/api/data/export").content)
+    [conv] = [c for c in export["conversations"] if c["id"] == conversation["id"]]
+    refs = [m["web"]["refs"] for m in conv["messages"] if m["role"] == "assistant"]
+    assert refs[0][0]["shown"] is True and refs[1][0] == {**refs[1][0], "earlier": True, "shown": False}
+    assert client.delete(f"/api/conversations/{conversation['id']}").status_code in (200, 204)
+    resp = client.post("/api/data/import", files={"file": ("export.json", json.dumps(export), "application/json")})
+    assert resp.status_code == 200 and resp.json()["conversations"] == 1
+    restored = [c for c in client.get("/api/conversations").json() if c["title"] == conv["title"]]
+    assert len(detail(client, restored[0]["id"])["messages"]) == 4
 
 
 # ------------------------------------------------- agentic tool interface

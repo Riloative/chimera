@@ -149,6 +149,7 @@
     "tool_limit": "Modelis iškvietė įrankius per daug kartų.",
     "browser_unavailable": "Foninė naršyklė šiuo metu nepasiekiama.",
     "browser_timeout": "Puslapio atvaizdavimas foninėje naršyklėje užtruko per ilgai.",
+    "browser_loading": "Baigiantis laikui puslapis vis dar rodė įkėlimo ekraną, todėl jo perskaityti nepavyko.",
     "browser_blocked": "Puslapis arba puslapis, į kurį jis nukreipė, neleidžiamas (privatus ar užblokuotas adresas, atsisiuntimas ar kitas nesaugus veiksmas).",
     "browser_limit": "Foninė naršyklė užimta arba pasiekėte jos valandinį limitą. Pabandykite vėliau.",
     "browser_failed": "Foninė naršyklė negalėjo atvaizduoti puslapio."

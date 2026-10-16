@@ -108,10 +108,13 @@ export interface Conversation {
   params: GenerationParams;
   collection_ids: string[];
   pinned: boolean;
+  active_leaf_id?: string | null;
+  context_strategy?: "sliding" | "summarize" | "off" | null;
   created_at: string;
   updated_at: string;
   generating?: boolean;
   snippet?: string;
+  match_message_id?: string | null;
 }
 
 export type MessageStatus = "complete" | "streaming" | "error" | "cancelled" | "interrupted";
@@ -149,6 +152,9 @@ export interface MessageMetrics {
 export interface Message {
   id: string;
   conversation_id: string;
+  /** Parent in the message tree (null for a first message). */
+  parent_id: string | null;
+  /** Depth in the tree. */
   position: number;
   role: "user" | "assistant" | "system";
   content: string;
@@ -163,12 +169,30 @@ export interface Message {
   sources: Source[];
   metrics: MessageMetrics;
   web?: WebState;
+  pinned?: boolean;
+  context?: MessageContext;
   created_at: string;
   updated_at: string;
 }
 
+/** How the model's context was built for an answer (see services/context.py). */
+export interface MessageContext {
+  window?: number;
+  window_source?: "server" | "manual" | "default";
+  exact?: boolean;
+  strategy?: "sliding" | "summarize" | "off";
+  used?: number;
+  breakdown?: { system: number; summary: number; latest: number; pinned: number; history: number; reserved: number };
+  dropped?: number;
+  cut_before?: string | null;
+  summary?: string | null;
+  summary_failed?: boolean;
+  retried?: boolean;
+}
+
 export interface ConversationDetail extends Conversation {
   messages: Message[];
+  active_path: string[];
   web_sources: WebSource[];
   generation_id: string | null;
 }

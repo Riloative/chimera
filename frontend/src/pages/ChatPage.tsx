@@ -14,7 +14,7 @@ import { useActiveModel } from "@/lib/hooks";
 import { greetingKey } from "@/lib/time";
 import type { Attachment, Conversation, Message, ModelRef } from "@/lib/types";
 import { cn, modelLabel } from "@/lib/utils";
-import { useChat } from "@/stores/chat";
+import { pathMessages, siblingsOf, subtreeIds, useChat } from "@/stores/chat";
 import { useConversations } from "@/stores/conversations";
 import { findProvider, modelSupportsVision, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
@@ -30,7 +30,7 @@ export function ChatPage() {
   const conv = useConversations((s) => s.items.find((c) => c.id === id));
   const convsLoaded = useConversations((s) => s.loaded);
   const chat = useChat((s) => (id ? s.convs[id] : undefined));
-  const { load, send, regenerate, edit, stop, deleteMessage, clearSendError } = useChat.getState();
+  const { load, send, regenerate, edit, stop, deleteMessage, clearSendError, switchBranch, setPinned } = useChat.getState();
   const entries = useModels((s) => s.entries);
   const modelsLoaded = useModels((s) => s.loaded);
   const settings = useSettings((s) => s.settings);
@@ -191,7 +191,8 @@ export function ChatPage() {
     );
   }
 
-  const messages = chat?.messages ?? [];
+  const messages = pathMessages(chat);
+  const tree = chat?.messages ?? [];
   const busy = !!chat?.streaming;
 
   return (
@@ -200,6 +201,9 @@ export function ChatPage() {
       <MessageList
         key={id}
         messages={messages}
+        tree={tree}
+        onSwitch={(mid) => switchBranch(id, mid).catch((e) => toast(errorText(e), "error"))}
+        onTogglePin={(m) => setPinned(id, m.id, !m.pinned).catch((e) => toast(errorText(e), "error"))}
         loading={!chat?.loaded}
         busy={busy}
         showReasoning={settings?.show_reasoning ?? true}
@@ -434,6 +438,9 @@ function MessageList({
   showReasoning,
   expandSteps,
   webSources,
+  tree,
+  onSwitch,
+  onTogglePin,
   onRegenerate,
   onEdit,
   onDelete,
@@ -445,6 +452,9 @@ function MessageList({
   showReasoning: boolean;
   expandSteps: boolean;
   webSources: WebSources;
+  tree: Message[];
+  onSwitch: (messageId: string) => void;
+  onTogglePin: (message: Message) => void;
   onRegenerate: (messageId?: string, webSearch?: boolean) => void;
   onEdit: (messageId: string, content: string) => Promise<void> | void;
   onDelete: (messageId: string) => void;
@@ -493,6 +503,11 @@ function MessageList({
   };
 
   const lastAssistant = messages.findLast((m) => m.role === "assistant")?.id;
+  const branchInfo = (m: Message) => {
+    const siblings = siblingsOf(tree, m);
+    const index = siblings.findIndex((s) => s.id === m.id);
+    return siblings.length > 1 && index >= 0 ? { index, total: siblings.length, onSelect: (i: number) => onSwitch(siblings[i].id) } : undefined;
+  };
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -511,6 +526,9 @@ function MessageList({
                       message={m}
                       disabled={busy}
                       webSources={webSources}
+                      branch={branchInfo(m)}
+                      deleteCount={subtreeIds(tree, m.id).length}
+                      onTogglePin={() => onTogglePin(m)}
                       onEdit={async (c) => void (await onEdit(m.id, c))}
                       onDelete={() => onDelete(m.id)}
                     />
@@ -522,6 +540,9 @@ function MessageList({
                       showReasoning={showReasoning}
                       webSources={webSources}
                       expandSteps={expandSteps}
+                      branch={branchInfo(m)}
+                      deleteCount={subtreeIds(tree, m.id).length}
+                      onTogglePin={() => onTogglePin(m)}
                       onRegenerate={(webSearch) => onRegenerate(m.id, webSearch)}
                       onDelete={() => onDelete(m.id)}
                     />

@@ -11,7 +11,10 @@ import { useModels } from "./models";
 import { useWeb } from "./web";
 
 export interface ConvChat {
+  /** Every message of every branch (the message tree). */
   messages: Message[];
+  /** Message IDs from the root to the shown leaf. */
+  activePath: string[];
   loaded: boolean;
   loadError: string | null;
   generationId: string | null;
@@ -32,12 +35,15 @@ interface ChatState {
   stop: (id: string) => Promise<void>;
   updateWebSource: (id: string, source: WebSource) => void;
   deleteMessage: (id: string, messageId: string) => Promise<void>;
+  switchBranch: (id: string, messageId: string) => Promise<void>;
+  setPinned: (id: string, messageId: string, pinned: boolean) => Promise<void>;
   clearSendError: (id: string) => void;
   forget: (id: string) => void;
 }
 
 const empty = (): ConvChat => ({
   messages: [],
+  activePath: [],
   loaded: false,
   loadError: null,
   generationId: null,
@@ -65,7 +71,7 @@ export const useChat = create<ChatState>((set, get) => {
   const upsertMessage = (id: string, msg: Message) =>
     patchConv(id, (c) => {
       const idx = c.messages.findIndex((m) => m.id === msg.id);
-      if (idx === -1) return { messages: [...c.messages, msg].sort((a, b) => a.position - b.position) };
+      if (idx === -1) return { messages: [...c.messages, msg] };
       const messages = c.messages.slice();
       messages[idx] = msg;
       return { messages };
@@ -105,15 +111,21 @@ export const useChat = create<ChatState>((set, get) => {
       case "start": {
         const asst: Message = data.assistant_message;
         patchConv(convId, (c) => {
-          // Drop anything at/after the new answer (regenerate/edit) and the optimistic user message.
-          let messages = c.messages.filter((m) => !m.id.startsWith("temp-") && m.position < asst.position);
+          // Edit and regenerate add branches: nothing is removed, the new nodes join the tree.
+          let messages = c.messages.filter((m) => !m.id.startsWith("temp-"));
           if (data.user_message) {
             messages = messages.filter((m) => m.id !== data.user_message.id);
             messages.push(data.user_message);
           }
           messages.push(asst);
-          messages.sort((a, b) => a.position - b.position);
-          return { messages, generationId: data.generation_id, assistantId: asst.id, streaming: true, sendError: null };
+          return {
+            messages,
+            activePath: data.active_path ?? c.activePath,
+            generationId: data.generation_id,
+            assistantId: asst.id,
+            streaming: true,
+            sendError: null,
+          };
         });
         useConversations.getState().upsert({ id: convId, updated_at: asst.created_at, generating: true });
         break;
@@ -179,6 +191,7 @@ export const useChat = create<ChatState>((set, get) => {
     if (err instanceof ApiError && err.code.startsWith("web.")) void useWeb.getState().load();
     patchConv(convId, (c) => ({
       messages: c.messages.filter((m) => !m.id.startsWith("temp-")),
+      activePath: c.activePath.filter((m) => !m.startsWith("temp-")),
       streaming: false,
       sendError: message,
     }));
@@ -193,6 +206,7 @@ export const useChat = create<ChatState>((set, get) => {
         const detail = await api.conversation(id);
         patchConv(id, () => ({
           messages: detail.messages,
+          activePath: detail.active_path,
           webSources: byId(detail.web_sources),
           loaded: true,
           loadError: null,
@@ -214,11 +228,13 @@ export const useChat = create<ChatState>((set, get) => {
     send: async (id, body, optimisticAttachments = []) => {
       if (get().convs[id]?.streaming) return;
       const now = new Date().toISOString();
-      const lastPos = get().convs[id]?.messages.at(-1)?.position ?? -1;
+      const conv = get().convs[id];
+      const leaf = conv?.messages.find((m) => m.id === conv.activePath.at(-1));
       const temp: Message = {
         id: `temp-${Date.now()}`,
         conversation_id: id,
-        position: lastPos + 1,
+        parent_id: leaf?.id ?? null,
+        position: leaf ? leaf.position + 1 : 0,
         role: "user",
         content: body.content,
         reasoning: "",
@@ -232,7 +248,7 @@ export const useChat = create<ChatState>((set, get) => {
         created_at: now,
         updated_at: now,
       };
-      patchConv(id, (c) => ({ messages: [...c.messages, temp], streaming: true, sendError: null, loaded: true }));
+      patchConv(id, (c) => ({ messages: [...c.messages, temp], activePath: [...c.activePath, temp.id], streaming: true, sendError: null, loaded: true }));
       try {
         await run(id, `/api/conversations/${id}/messages`, { method: "POST", json: body });
       } catch (err) {
@@ -274,8 +290,22 @@ export const useChat = create<ChatState>((set, get) => {
     updateWebSource: (id, source) => patchConv(id, (c) => ({ webSources: { ...c.webSources, [source.id]: source } })),
 
     deleteMessage: async (id, messageId) => {
-      await api.deleteMessage(messageId);
-      patchConv(id, (c) => ({ messages: c.messages.filter((m) => m.id !== messageId) }));
+      const result = await api.deleteMessage(messageId);
+      // The whole subtree is gone; keep everything else of the tree.
+      patchConv(id, (c) => {
+        const doomed = new Set(subtreeIds(c.messages, messageId));
+        return { messages: c.messages.filter((m) => !doomed.has(m.id)), activePath: result.active_path };
+      });
+    },
+
+    switchBranch: async (id, messageId) => {
+      const result = await api.activateBranch(id, messageId);
+      patchConv(id, () => ({ activePath: result.active_path }));
+    },
+
+    setPinned: async (id, messageId, pinned) => {
+      const updated = await api.updateMessage(messageId, { pinned });
+      patchConv(id, (c) => ({ messages: c.messages.map((m) => (m.id === messageId ? { ...m, pinned: updated.pinned } : m)) }));
     },
 
     clearSendError: (id) => patchConv(id, () => ({ sendError: null })),
@@ -290,3 +320,31 @@ export const useChat = create<ChatState>((set, get) => {
     },
   };
 });
+
+/** IDs of a message and all its descendants (every branch below it). */
+export function subtreeIds(messages: Message[], rootId: string): string[] {
+  const children = new Map<string | null, string[]>();
+  for (const m of messages) children.set(m.parent_id ?? null, [...(children.get(m.parent_id ?? null) ?? []), m.id]);
+  const out: string[] = [];
+  const stack = [rootId];
+  while (stack.length) {
+    const node = stack.pop()!;
+    out.push(node);
+    stack.push(...(children.get(node) ?? []));
+  }
+  return out;
+}
+
+/** Siblings of a message (same parent), oldest first. */
+export function siblingsOf(messages: Message[], message: Message): Message[] {
+  return messages
+    .filter((m) => (m.parent_id ?? null) === (message.parent_id ?? null) && !m.id.startsWith("temp-"))
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+}
+
+/** The messages on the active path, in order. */
+export function pathMessages(conv: Pick<ConvChat, "messages" | "activePath"> | undefined): Message[] {
+  if (!conv) return [];
+  const byId = new Map(conv.messages.map((m) => [m.id, m]));
+  return conv.activePath.map((mid) => byId.get(mid)).filter((m): m is Message => !!m);
+}

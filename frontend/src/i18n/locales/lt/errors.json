@@ -95,7 +95,8 @@
     "disabled": "Ryšys „{{name}}“ išjungtas.",
     "provider_missing": "Šio ryšio nebėra.",
     "interrupted": "Serveris buvo paleistas iš naujo nebaigus šio atsakymo.",
-    "provider_error": "Modelio serveris pranešė apie problemą."
+    "provider_error": "Modelio serveris pranešė apie problemą.",
+    "context_exceeded": "Modelio serveris atmetė užklausą kaip per ilgą jo konteksto langui ({{n_prompt_tokens}} iš {{n_ctx}} žetonų), net ir išsiuntus mažiau istorijos. Sutrumpinkite žinutę, pašalinkite priedus, pasirinkite modelį su didesniu kontekstu arba paleiskite llama-server su didesniu -c."
   },
   "web": {
     "disabled": "Šiame serveryje prieiga prie interneto išjungta.",
@@ -146,5 +147,11 @@
     "tool_invalid": "Modelio įrankio iškvietimo argumentai netinkami.",
     "tool_unknown": "Modelis paprašė nežinomo įrankio.",
     "tool_limit": "Modelis iškvietė įrankius per daug kartų."
+  },
+  "branch_not_found": "Šios žinutės pokalbyje nebėra.",
+  "context": {
+    "too_large": "Jūsų žinutė per ilga šio modelio konteksto langui: jai reikia maždaug {{needed}} žetonų, o laisvų yra tik {{available}}. Sutrumpinkite žinutę, pašalinkite priedus ar interneto puslapius, pasirinkite modelį su didesniu kontekstu arba paleiskite llama-server su didesniu -c.",
+    "summary_failed": "Ankstesnių žinučių apibendrinti nepavyko.",
+    "window_unknown": "Modelio konteksto dydis nežinomas; nustatykite jį šiam ryšiui skiltyje „Modeliai“."
   }
 }

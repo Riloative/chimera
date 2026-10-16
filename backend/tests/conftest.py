@@ -320,3 +320,9 @@ def web(client: CsrfClient, web_server: WebServer) -> Iterator[WebEnv]:
     assert resp.status_code == 200, resp.text
     yield WebEnv(web_server, transport, resolver, state)
     client.portal.call(fetcher.client.aclose)
+
+
+def active_messages(detail: dict) -> list[dict]:
+    """The messages on a conversation's active branch, in order."""
+    by_id = {m["id"]: m for m in detail["messages"]}
+    return [by_id[i] for i in detail["active_path"]]

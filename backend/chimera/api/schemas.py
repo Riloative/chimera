@@ -111,6 +111,14 @@ class EditMessage(WebOptions):
     content: str = Field(max_length=1_000_000)
 
 
+class ActiveBranch(Strict):
+    message_id: str = Field(min_length=1, max_length=64)
+
+
+class MessageUpdate(Strict):
+    pinned: bool
+
+
 class PromptBody(Strict):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field("", max_length=1000)

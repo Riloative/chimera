@@ -6,6 +6,7 @@ import type {
   Collection,
   Conversation,
   ConversationDetail,
+  Message,
   GenerationParams,
   KnowledgeDocument,
   Prompt,
@@ -203,7 +204,13 @@ export const api = {
   updateConversation: (id: string, data: Record<string, unknown>) =>
     request<Conversation>(`/api/conversations/${id}`, { method: "PATCH", json: data }),
   deleteConversation: (id: string) => request<void>(`/api/conversations/${id}`, { method: "DELETE" }),
-  deleteMessage: (id: string) => request<void>(`/api/messages/${id}`, { method: "DELETE" }),
+  deleteMessage: (id: string) => request<{ deleted: number; active_path: string[] }>(`/api/messages/${id}`, { method: "DELETE" }),
+  updateMessage: (id: string, data: { pinned: boolean }) => request<Message>(`/api/messages/${id}`, { method: "PATCH", json: data }),
+  activateBranch: (conversationId: string, messageId: string) =>
+    request<{ active_leaf_id: string; active_path: string[] }>(`/api/conversations/${conversationId}/active`, {
+      method: "POST",
+      json: { message_id: messageId },
+    }),
   cancelGeneration: (id: string) => request<{ cancelled: boolean }>(`/api/generations/${id}/cancel`, { method: "POST" }),
 
   uploadFile: async (file: File) => {

@@ -1,0 +1,93 @@
+{
+  "pin": {
+    "pin": "Prisegti prie konteksto",
+    "unpin": "Atsegti nuo konteksto",
+    "pinned": "Prisegta",
+    "pinnedHelp": "Visada įtraukiama į modelio kontekstą, jei telpa."
+  },
+  "indicator": {
+    "label": "Konteksto lango užimtumas",
+    "value": "{{used}} / {{window}}",
+    "estimate": "Kitos jūsų žinutės įvertis",
+    "actual": "Panaudota paskutiniam atsakymui, kaip pranešė serveris",
+    "window": "Konteksto langas: {{window}} žetonų ({{source}})",
+    "source": {
+      "server": "pranešė serveris",
+      "manual": "nustatyta rankiniu būdu",
+      "default": "serveris nepranešė; numatytasis"
+    },
+    "exact": "Suskaičiuota paties modelio žetonų skaidytuvu.",
+    "estimated": "Įvertinta apytiksliai: maždaug 3,5 simbolio vienam žetonui.",
+    "parts": {
+      "system": "Sistemos užklausa",
+      "summary": "Ankstesnių žinučių santrauka",
+      "latest": "Paskutinė žinutė, priedai ir interneto puslapiai",
+      "pinned": "Prisegtos žinutės",
+      "history": "Pokalbio istorija",
+      "reserved": "Rezervuota atsakymui",
+      "draft": "Jūsų juodraštis"
+    },
+    "strategy": {
+      "sliding": "Kai langas pilnas, senesnės žinutės praleidžiamos.",
+      "summarize": "Kai langas pilnas, senesnės žinutės apibendrinamos.",
+      "off": "Konteksto valdymas išjungtas: siunčiama viskas."
+    }
+  },
+  "marker": {
+    "dropped_one": "{{count}} ankstesnė žinutė neįtraukta į modelio kontekstą.",
+    "dropped_few": "{{count}} ankstesnės žinutės neįtrauktos į modelio kontekstą.",
+    "dropped_many": "{{count}} ankstesnės žinutės neįtraukta į modelio kontekstą.",
+    "dropped_other": "{{count}} ankstesnių žinučių neįtraukta į modelio kontekstą.",
+    "summarized_one": "{{count}} ankstesnė žinutė modelio kontekste pakeista santrauka.",
+    "summarized_few": "{{count}} ankstesnės žinutės modelio kontekste pakeistos santrauka.",
+    "summarized_many": "{{count}} ankstesnės žinutės modelio kontekste pakeista santrauka.",
+    "summarized_other": "{{count}} ankstesnių žinučių modelio kontekste pakeista santrauka.",
+    "summaryFailed": "Apibendrinti nepavyko, todėl senesnės žinutės buvo praleistos.",
+    "retried": "Serveris pirmą bandymą atmetė kaip per ilgą, todėl išsiųsta mažiau istorijos.",
+    "showSummary": "Rodyti santrauką",
+    "hideSummary": "Slėpti santrauką",
+    "summaryTitle": "Ankstesnio pokalbio santrauka",
+    "summaryHelp": "Vietoj ankstesnių žinučių modelis mato šią santrauką. Ji tik skaitoma ir sudaroma iš naujo, kai tos žinutės pasikeičia.",
+    "change": "Keisti strategiją"
+  },
+  "strategy": {
+    "label": "Konteksto strategija",
+    "help": "Ką daryti, kai šis pokalbis nebetelpa į modelio konteksto langą.",
+    "inherit": "Mano numatytoji ({{name}})",
+    "sliding": "Praleisti senesnes žinutes",
+    "slidingHelp": "Senesni apsikeitimai praleidžiami ištisai, pradedant seniausiais. Greita ir nuspėjama.",
+    "summarize": "Apibendrinti senesnes žinutes",
+    "summarizeHelp": "Praleistus apsikeitimus apibendrina modelis. Išlaiko daugiau pokalbio, bet kartais reikia papildomos užklausos.",
+    "off": "Išjungta: siųsti viską",
+    "offHelp": "Siunčiama visa šaka. Jei ji per ilga, rodoma serverio klaida."
+  },
+  "settings": {
+    "title": "Konteksto langas",
+    "help": "Kaip Chimera sutalpina ilgus pokalbius į modelio konteksto langą.",
+    "strategy": "Numatytoji strategija",
+    "summaryModel": "Modelis santraukoms",
+    "summaryModelHelp": "Santraukas greičiau gali rašyti mažesnis modelis. Pagal numatymą naudojamas pokalbio modelis.",
+    "summaryModelDefault": "Pokalbio modelis",
+    "fallback": "Konteksto dydis, kai serveris jo nepraneša (žetonais)",
+    "fallbackHelp": "llama-server dydį praneša pats. Kitiems serveriams nustatykite jį čia arba kiekvienam ryšiui skiltyje „Modeliai“.",
+    "advanced": "Išplėstiniai",
+    "hysteresis": "Apkarpymo tikslas (% istorijos biudžeto)",
+    "hysteresisHelp": "Kai istoriją reikia apkarpyti, Chimera ją sumažina iki šios dalies ir paskui, kol telpa, nekeičia užklausos pradžios, kad llama-server galėtų pakartotinai naudoti užklausos podėlį ir neperskaitytų viso pokalbio iš naujo.",
+    "margin": "Atsarga (% konteksto lango)",
+    "marginHelp": "Laisva vieta įverčio paklaidoms ir pokalbio šablono žetonams.",
+    "reserve": "Rezervas atsakymui, kai maksimumas nenustatytas (žetonais)",
+    "reserveHelp": "Parametruose nustatykite didžiausią atsakymo žetonų skaičių, kad būtų rezervuota būtent tiek."
+  },
+  "connection": {
+    "title": "Konteksto langas",
+    "reported": "{{size}} žetonų, pranešė serveris",
+    "reportedSlots_one": "{{size}} žetonų vienam lizdui, pranešė serveris ({{count}} lizdas)",
+    "reportedSlots_few": "{{size}} žetonų vienam lizdui, pranešė serveris ({{count}} lizdai)",
+    "reportedSlots_many": "{{size}} žetonų vienam lizdui, pranešė serveris ({{count}} lizdo)",
+    "reportedSlots_other": "{{size}} žetonų vienam lizdui, pranešė serveris ({{count}} lizdų)",
+    "manual": "{{size}} žetonų, nustatyta rankiniu būdu",
+    "unknown": "Serveris nepranešė",
+    "override": "Konteksto dydžio keitimas (žetonais)",
+    "overrideHelp": "Palikite tuščią, kad būtų naudojama tai, ką praneša serveris. Nustatykite serveriams, kurie konteksto dydžio nepraneša."
+  }
+}

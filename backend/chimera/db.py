@@ -14,9 +14,57 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
-MIGRATIONS: list[str] = [
+
+def _migrate_tree(conn: sqlite3.Connection) -> None:
+    """4 — message tree (branching), active branch, pins, context management.
+
+    Every existing conversation becomes a single chain: each message's parent
+    is the previous message by (position, created_at), ``position`` becomes the
+    depth, and the last message is the active leaf. Contents and timestamps are
+    untouched. Additive: an older Chimera ignores the new columns (and would
+    show all branches of a conversation in creation order)."""
+    for statement in (
+        "ALTER TABLE messages ADD COLUMN parent_id TEXT",
+        "ALTER TABLE messages ADD COLUMN active_child_id TEXT",
+        "ALTER TABLE messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE messages ADD COLUMN context TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE conversations ADD COLUMN active_leaf_id TEXT",
+        "ALTER TABLE conversations ADD COLUMN context_strategy TEXT",
+        "ALTER TABLE conversations ADD COLUMN context_state TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE providers ADD COLUMN context_override INTEGER",
+        "ALTER TABLE web_sources ADD COLUMN loader TEXT NOT NULL DEFAULT 'static'",
+        "CREATE INDEX idx_messages_parent ON messages(conversation_id, parent_id)",
+        """CREATE TABLE context_summaries (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            covers_hash TEXT NOT NULL,
+            last_message_id TEXT NOT NULL,
+            message_count INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            model TEXT,
+            created_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX idx_context_summaries_conv ON context_summaries(conversation_id, covers_hash)",
+    ):
+        conn.execute(statement)
+    conversations = [r[0] for r in conn.execute("SELECT id FROM conversations")]
+    for cid in conversations:
+        rows = conn.execute(
+            "SELECT id FROM messages WHERE conversation_id = ? ORDER BY position, created_at, rowid", (cid,)
+        ).fetchall()
+        previous = None
+        for depth, (mid,) in enumerate(rows):
+            conn.execute("UPDATE messages SET parent_id = ?, position = ? WHERE id = ?", (previous, depth, mid))
+            if previous:
+                conn.execute("UPDATE messages SET active_child_id = ? WHERE id = ?", (mid, previous))
+            previous = mid
+        conn.execute("UPDATE conversations SET active_leaf_id = ? WHERE id = ?", (previous, cid))
+
+
+MIGRATIONS: list[str | Callable[[sqlite3.Connection], None]] = [
     # 1 — initial schema
     """
     CREATE TABLE providers (
@@ -261,6 +309,7 @@ MIGRATIONS: list[str] = [
     CREATE INDEX idx_web_sources_user ON web_sources(user_id);
     ALTER TABLE messages ADD COLUMN web TEXT NOT NULL DEFAULT '{}';
     """,
+    _migrate_tree,
 ]
 
 
@@ -330,8 +379,11 @@ class Database:
                     continue
                 self._conn.execute("BEGIN")
                 try:
-                    for statement in _split_sql(script):
-                        self._conn.execute(statement)
+                    if callable(script):
+                        script(self._conn)
+                    else:
+                        for statement in _split_sql(script):
+                            self._conn.execute(statement)
                     self._conn.execute("INSERT INTO schema_version(version) VALUES (?)", (index,))
                     self._conn.execute("COMMIT")
                 except Exception:

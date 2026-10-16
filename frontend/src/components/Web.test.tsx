@@ -151,6 +151,7 @@ const SOURCES = { s1: SOURCE("s1", 1), s2: SOURCE("s2", 2, { status: "snippet", 
 const MESSAGE = {
   id: "a1",
   conversation_id: "c1",
+  parent_id: "u1",
   position: 1,
   role: "assistant",
   content: "Fact [1] and [2]. Unknown [7]. Code `[1]`.",

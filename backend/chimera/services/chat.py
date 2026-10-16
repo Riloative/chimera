@@ -26,6 +26,7 @@ from ..web.prompting import citations, grounding_prompt, new_token
 from ..web.rank import estimate_tokens, tokens_to_chars
 from ..web.service import WebService
 from ..web.urls import dedupe_key, find_urls
+from . import tree as message_tree
 from .conversations import ConversationStore, fallback_title, message_out
 from .files import FileStore
 from .knowledge import KnowledgeBase
@@ -181,21 +182,31 @@ class ChatEngine:
         if conversation_id in self.by_conversation:
             raise ChatError("A response is already being generated in this conversation.", status=409, code="busy")
 
-    def _next_position(self, conversation_id: str) -> int:
-        row = self.db.one("SELECT COALESCE(MAX(position), -1) + 1 AS p FROM messages WHERE conversation_id = ?", (conversation_id,))
-        return int(row["p"]) if row else 0
-
-    def _insert_message(self, conn, conversation_id: str, position: int, role: str, content: str, **extra) -> str:
+    def _insert_message(self, conn, conversation_id: str, parent: dict | None, role: str, content: str, **extra) -> dict:
+        """Insert a node under ``parent`` (``None`` = a new root); returns a
+        minimal node dict usable as the parent of the next insert."""
         mid, ts = new_id(), now_iso()
+        position = parent["position"] + 1 if parent else 0
         conn.execute(
-            """INSERT INTO messages(id, conversation_id, position, role, content, status, provider_id, model,
-                   attachments, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO messages(id, conversation_id, parent_id, position, role, content, status, provider_id, model,
+                   attachments, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                mid, conversation_id, position, role, content, extra.get("status", "complete"),
-                extra.get("provider_id"), extra.get("model"), dumps(extra.get("attachments") or []), ts, ts,
+                mid, conversation_id, parent["id"] if parent else None, position, role, content,
+                extra.get("status", "complete"), extra.get("provider_id"), extra.get("model"),
+                dumps(extra.get("attachments") or []), ts, ts,
             ),
         )
-        return mid
+        return {"id": mid, "position": position}
+
+    @staticmethod
+    def _activate_chain(conn, conversation_id: str, path: list[str]) -> None:
+        """Point every node on ``path`` at its successor and make the last one the active leaf."""
+        for parent, child in zip(path, path[1:]):
+            conn.execute("UPDATE messages SET active_child_id = ? WHERE id = ?", (child, parent))
+        conn.execute("UPDATE conversations SET active_leaf_id = ? WHERE id = ?", (path[-1] if path else None, conversation_id))
+
+    def _node(self, message_id: str | None) -> dict | None:
+        return self.db.one("SELECT id, position FROM messages WHERE id = ?", (message_id,)) if message_id else None
 
     def _start(self, user: dict, conversation_id: str, message_id: str, pid: str, model: str, params: dict,
                plan: WebPlan | None = None, user_message_id: str | None = None) -> Generation:
@@ -270,13 +281,17 @@ class ChatEngine:
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
         plan = self.web_plan(user, content, urls, web_search, timezone)
         attachments = self._attachment_snapshots(user, attachment_ids, pid, mdl)
-        position = self._next_position(conversation_id)
-        first = position == 0
+        tree = message_tree.load(self.db, conversation_id)
+        path = message_tree.active_path(self.db, conversation_id, tree)
+        first = not tree.nodes
         with self.db.transaction() as conn:
-            user_id = self._insert_message(conn, conversation_id, position, "user", content, attachments=attachments)
-            asst_id = self._insert_message(
-                conn, conversation_id, position + 1, "assistant", "", status="streaming", provider_id=pid, model=mdl
-            )
+            # A new message continues the active branch.
+            user_node = self._insert_message(conn, conversation_id, self._node(path[-1] if path else None), "user", content,
+                                             attachments=attachments)
+            asst_node = self._insert_message(conn, conversation_id, user_node, "assistant", "", status="streaming",
+                                             provider_id=pid, model=mdl)
+            self._activate_chain(conn, conversation_id, [*path, user_node["id"], asst_node["id"]])
+            user_id, asst_id = user_node["id"], asst_node["id"]
             ts = now_iso()
             conn.execute(
                 "UPDATE conversations SET provider_id = ?, model = ?, updated_at = ? WHERE id = ?",
@@ -298,25 +313,22 @@ class ChatEngine:
         if not conv:
             raise ChatError("Conversation not found.", status=404, code="conversation_not_found")
         self._ensure_idle(conversation_id)
+        tree = message_tree.load(self.db, conversation_id)
         if message_id:
             target = self.conversations.message(message_id)
             if not target or target["conversation_id"] != conversation_id or target["role"] != "assistant":
                 raise ChatError("Message not found.", status=404, code="message_not_found")
-            position = target["position"]
             previous = target
+            parent_id = target["parent_id"]
         else:
-            last = self.db.one(
-                "SELECT * FROM messages WHERE conversation_id = ? ORDER BY position DESC LIMIT 1", (conversation_id,)
-            )
-            if not last:
+            path = message_tree.active_path(self.db, conversation_id, tree)
+            if not path:
                 raise ChatError("Nothing to regenerate.", code="nothing_to_regenerate")
-            position = last["position"] if last["role"] == "assistant" else last["position"] + 1
-            previous = last if last["role"] == "assistant" else None
-        prior_user = self.db.one(
-            "SELECT id, content FROM messages WHERE conversation_id = ? AND position < ? AND role = 'user' ORDER BY position DESC LIMIT 1",
-            (conversation_id, position),
-        )
-        if not prior_user:
+            last = self.conversations.message(path[-1])
+            previous = last if last and last["role"] == "assistant" else None
+            parent_id = last["parent_id"] if previous else path[-1]  # type: ignore[index]
+        prior_user = self.conversations.message(parent_id) if parent_id else None
+        if not prior_user or prior_user["role"] != "user":
             raise ChatError("Nothing to regenerate.", code="nothing_to_regenerate")
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
         # Pages read for the user message are reused (no re-fetch). Search runs
@@ -324,11 +336,18 @@ class ChatEngine:
         inherit = web_search is None
         search = bool(loads(previous["web"], {}).get("search")) if inherit and previous else bool(web_search)
         plan = self.web_plan(user, "", [], search, timezone, inherit_search=inherit)
+        # A new answer is a sibling of the old one, which stays as another
+        # branch, except an attempt that failed or was stopped before writing
+        # anything: that one is replaced so failed tries don't pile up.
+        replace = previous is not None and previous["status"] in ("error", "cancelled", "interrupted") \
+            and not (previous["content"] or "").strip() and not tree.kids(previous["id"])
+        if replace:
+            message_tree.delete_subtree(self.db, conversation_id, previous["id"])  # type: ignore[index]
+        parent_path = tree.path_to(prior_user["id"])
         with self.db.transaction() as conn:
-            conn.execute("DELETE FROM messages WHERE conversation_id = ? AND position >= ?", (conversation_id, position))
-            asst_id = self._insert_message(
-                conn, conversation_id, position, "assistant", "", status="streaming", provider_id=pid, model=mdl
-            )
+            asst_id = self._insert_message(conn, conversation_id, self._node(prior_user["id"]), "assistant", "",
+                                           status="streaming", provider_id=pid, model=mdl)["id"]
+            self._activate_chain(conn, conversation_id, [*parent_path, asst_id])
             conn.execute(
                 "UPDATE conversations SET provider_id = ?, model = ?, updated_at = ? WHERE id = ?",
                 (pid, mdl, now_iso(), conversation_id),
@@ -351,18 +370,17 @@ class ChatEngine:
             raise ChatError("Message is empty.", code="empty_message")
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
         plan = self.web_plan(user, content, urls, web_search, timezone)
+        tree = message_tree.load(self.db, conversation_id)
+        parent_path = tree.path_to(target["parent_id"]) if target["parent_id"] else []
         with self.db.transaction() as conn:
-            conn.execute(
-                "UPDATE messages SET content = ?, updated_at = ? WHERE id = ?", (content, now_iso(), message_id)
-            )
-            # The edited text decides which links are read now.
-            conn.execute("DELETE FROM web_sources WHERE message_id = ?", (message_id,))
-            conn.execute(
-                "DELETE FROM messages WHERE conversation_id = ? AND position > ?", (conversation_id, target["position"])
-            )
-            asst_id = self._insert_message(
-                conn, conversation_id, target["position"] + 1, "assistant", "", status="streaming", provider_id=pid, model=mdl
-            )
+            # The edit is a new sibling; the original message and everything
+            # after it stay intact as another branch.
+            edited = self._insert_message(conn, conversation_id, self._node(target["parent_id"]), "user", content,
+                                          attachments=loads(target["attachments"], []))
+            asst_id = self._insert_message(conn, conversation_id, edited, "assistant", "", status="streaming",
+                                           provider_id=pid, model=mdl)["id"]
+            self._activate_chain(conn, conversation_id, [*parent_path, edited["id"], asst_id])
+            message_id = edited["id"]
             conn.execute(
                 "UPDATE conversations SET provider_id = ?, model = ?, updated_at = ? WHERE id = ?",
                 (pid, mdl, now_iso(), conversation_id),
@@ -418,13 +436,21 @@ class ChatEngine:
         values = [dumps(v) if isinstance(v, (dict, list)) else v for v in fields.values()]
         self.db.execute(f"UPDATE messages SET {sets}, updated_at = ? WHERE id = ?", (*values, now_iso(), gen.message_id))
 
+    def path_rows(self, gen: Generation) -> list[dict]:
+        """Messages on the branch leading to the message being generated (only
+        this branch is ever sent to the model)."""
+        tree = message_tree.load(self.db, gen.conversation_id)
+        ids = tree.path_to(gen.message_id)[:-1] if gen.message_id in tree.nodes else []
+        if not ids:
+            return []
+        rows = {r["id"]: r for r in self.db.all(
+            f"SELECT * FROM messages WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))}
+        return [rows[i] for i in ids if i in rows]
+
     async def build_request(self, gen: Generation) -> tuple[ChatRequest, list[dict]]:
         conv = self.conversations.get(gen.conversation_id) or {}
         settings = self.settings.get(gen.user["id"])
-        rows = self.db.all(
-            "SELECT * FROM messages WHERE conversation_id = ? AND position < (SELECT position FROM messages WHERE id = ?) ORDER BY position",
-            (gen.conversation_id, gen.message_id),
-        )
+        rows = self.path_rows(gen)
         vision = self.vision_supported(gen.provider_id, gen.model)
         messages: list[ChatMessage] = []
         user_turns: list[tuple[str, ChatMessage]] = []
@@ -537,9 +563,7 @@ class ChatEngine:
             turn.add_sources(self.web.store(uid, gen.conversation_id, gen.user_message_id, "pasted", data))
         if plan.search:
             settings = self.settings.get(uid)
-            history = [(r["role"], r["content"]) for r in self.db.all(
-                "SELECT role, content FROM messages WHERE conversation_id = ? AND position < (SELECT position FROM messages WHERE id = ?) "
-                "AND status != 'error' ORDER BY position", (gen.conversation_id, gen.message_id))]
+            history = [(r["role"], r["content"]) for r in self.path_rows(gen) if r["status"] != "error"]
             message = next((text for role, text in reversed(history) if role == "user"), "")
             step = turn.step("queries")
             provider, model = self.registry.provider(gen.user, gen.provider_id), gen.model
@@ -677,10 +701,8 @@ class ChatEngine:
         conv = self.conversations.get(gen.conversation_id)
         if not conv or conv["title_source"] != "fallback" or not self.settings.get(gen.user["id"]).auto_title:
             return None
-        first = self.db.one(
-            "SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY position LIMIT 1",
-            (gen.conversation_id,),
-        )
+        # The first exchange of this branch (titles are generated once, not per branch).
+        first = next((r for r in self.path_rows(gen) if r["role"] == "user"), None)
         if not first or not first["content"].strip():
             return None
         prompt = (

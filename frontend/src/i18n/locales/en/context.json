@@ -1,0 +1,87 @@
+{
+  "pin": {
+    "pin": "Pin to context",
+    "unpin": "Unpin from context",
+    "pinned": "Pinned",
+    "pinnedHelp": "Always included in the model's context when it fits."
+  },
+  "indicator": {
+    "label": "Context window usage",
+    "value": "{{used}} / {{window}}",
+    "estimate": "Estimate for your next message",
+    "actual": "Used by the last answer, as reported by the server",
+    "window": "Context window: {{window}} tokens ({{source}})",
+    "source": {
+      "server": "reported by the server",
+      "manual": "set manually",
+      "default": "not reported by the server; default"
+    },
+    "exact": "Counted with the model's own tokenizer.",
+    "estimated": "Estimated at about 3.5 characters per token.",
+    "parts": {
+      "system": "System prompt",
+      "summary": "Summary of earlier messages",
+      "latest": "Latest message, attachments and web pages",
+      "pinned": "Pinned messages",
+      "history": "Conversation history",
+      "reserved": "Reserved for the answer",
+      "draft": "Your draft"
+    },
+    "strategy": {
+      "sliding": "Older messages are left out when the window is full.",
+      "summarize": "Older messages are summarized when the window is full.",
+      "off": "Context management is off: everything is sent."
+    }
+  },
+  "marker": {
+    "dropped_one": "{{count}} earlier message is not included in the model's context.",
+    "dropped_other": "{{count}} earlier messages are not included in the model's context.",
+    "summarized_one": "{{count}} earlier message is replaced by a summary in the model's context.",
+    "summarized_other": "{{count}} earlier messages are replaced by a summary in the model's context.",
+    "summaryFailed": "Summarizing failed, so older messages were left out instead.",
+    "retried": "The server rejected the first attempt as too long, so less history was sent.",
+    "showSummary": "Show the summary",
+    "hideSummary": "Hide the summary",
+    "summaryTitle": "Earlier conversation summary",
+    "summaryHelp": "The model sees this summary instead of the earlier messages. It is read-only and is rebuilt when those messages change.",
+    "change": "Change strategy"
+  },
+  "strategy": {
+    "label": "Context strategy",
+    "help": "What to do when this conversation no longer fits in the model's context window.",
+    "inherit": "My default ({{name}})",
+    "sliding": "Leave out older messages",
+    "slidingHelp": "Older exchanges are dropped, whole and oldest first. Fast and predictable.",
+    "summarize": "Summarize older messages",
+    "summarizeHelp": "Dropped exchanges are summarized by a model. Keeps more of the thread, costs an extra request now and then.",
+    "off": "Off: send everything",
+    "offHelp": "The full branch is sent. If it is too long, the server's error is shown."
+  },
+  "settings": {
+    "title": "Context window",
+    "help": "How Chimera fits long conversations into the model's context window.",
+    "strategy": "Default strategy",
+    "summaryModel": "Model for summaries",
+    "summaryModelHelp": "A smaller model can write summaries faster. By default the chat's own model is used.",
+    "summaryModelDefault": "The chat's model",
+    "fallback": "Context size when the server doesn't report it (tokens)",
+    "fallbackHelp": "llama-server reports its size automatically. For other servers, set it here or per connection under Models.",
+    "advanced": "Advanced",
+    "hysteresis": "Trim target (% of the history budget)",
+    "hysteresisHelp": "When history must be cut, Chimera cuts down to this share and then keeps the start of the prompt unchanged for as long as it fits, so llama-server can reuse its prompt cache instead of re-reading the whole conversation.",
+    "margin": "Safety margin (% of the context window)",
+    "marginHelp": "Room kept free for estimation errors and chat-template tokens.",
+    "reserve": "Reserved for the answer when no maximum is set (tokens)",
+    "reserveHelp": "Set Max output tokens in the parameters to reserve exactly that much instead."
+  },
+  "connection": {
+    "title": "Context window",
+    "reported": "{{size}} tokens, reported by the server",
+    "reportedSlots_one": "{{size}} tokens per slot, reported by the server ({{count}} slot)",
+    "reportedSlots_other": "{{size}} tokens per slot, reported by the server ({{count}} slots)",
+    "manual": "{{size}} tokens, set manually",
+    "unknown": "Not reported by the server",
+    "override": "Context size override (tokens)",
+    "overrideHelp": "Leave empty to use what the server reports. Set it for servers that don't report their context size."
+  }
+}

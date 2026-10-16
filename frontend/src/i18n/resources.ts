@@ -3,6 +3,7 @@ import enAdmin from "./locales/en/admin.json";
 import enAuth from "./locales/en/auth.json";
 import enChat from "./locales/en/chat.json";
 import enCommon from "./locales/en/common.json";
+import enContext from "./locales/en/context.json";
 import enErrors from "./locales/en/errors.json";
 import enKnowledge from "./locales/en/knowledge.json";
 import enModels from "./locales/en/models.json";
@@ -15,6 +16,7 @@ import ltAdmin from "./locales/lt/admin.json";
 import ltAuth from "./locales/lt/auth.json";
 import ltChat from "./locales/lt/chat.json";
 import ltCommon from "./locales/lt/common.json";
+import ltContext from "./locales/lt/context.json";
 import ltErrors from "./locales/lt/errors.json";
 import ltKnowledge from "./locales/lt/knowledge.json";
 import ltModels from "./locales/lt/models.json";
@@ -41,6 +43,7 @@ const en = {
   account: enAccount,
   admin: enAdmin,
   web: enWeb,
+  context: enContext,
   errors: enErrors,
 };
 
@@ -58,6 +61,7 @@ export const resources = {
     account: ltAccount,
     admin: ltAdmin,
     web: ltWeb,
+    context: ltContext,
     errors: ltErrors,
   },
 } as const;

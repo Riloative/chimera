@@ -30,6 +30,8 @@ def conversation_out(row: dict) -> dict[str, Any]:
         "params": loads(row["params"], {}),
         "collection_ids": loads(row["collection_ids"], []),
         "pinned": bool(row["pinned"]),
+        "active_leaf_id": row.get("active_leaf_id"),
+        "context_strategy": row.get("context_strategy"),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -39,6 +41,7 @@ def message_out(row: dict) -> dict[str, Any]:
     return {
         "id": row["id"],
         "conversation_id": row["conversation_id"],
+        "parent_id": row.get("parent_id"),
         "position": row["position"],
         "role": row["role"],
         "content": row["content"],
@@ -53,6 +56,8 @@ def message_out(row: dict) -> dict[str, Any]:
         "sources": loads(row["sources"], []),
         "metrics": loads(row["metrics"], {}),
         "web": loads(row.get("web"), {}),
+        "pinned": bool(row.get("pinned")),
+        "context": loads(row.get("context"), {}),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -127,7 +132,8 @@ class ConversationStore:
         return self.db.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,)).rowcount
 
     def messages(self, cid: str) -> list[dict]:
-        rows = self.db.all("SELECT * FROM messages WHERE conversation_id = ? ORDER BY position", (cid,))
+        """All messages of every branch (the client shows the active path)."""
+        rows = self.db.all("SELECT * FROM messages WHERE conversation_id = ? ORDER BY position, created_at, rowid", (cid,))
         return [message_out(r) for r in rows]
 
     def message(self, mid: str) -> dict | None:
@@ -148,18 +154,24 @@ class ConversationStore:
             """SELECT c.*, (
                    SELECT m.content FROM messages m
                    WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'
-                   ORDER BY m.position LIMIT 1
-               ) AS match_text
+                   ORDER BY m.position, m.created_at LIMIT 1
+               ) AS match_text, (
+                   SELECT m.id FROM messages m
+                   WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'
+                   ORDER BY m.position, m.created_at LIMIT 1
+               ) AS match_id
                FROM conversations c
                WHERE c.user_id = ? AND (c.title LIKE ? ESCAPE '\\'
                   OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'))
                ORDER BY c.updated_at DESC LIMIT ?""",
-            (pattern, user_id, pattern, pattern, limit),
+            (pattern, pattern, user_id, pattern, pattern, limit),
         )
         out = []
         for row in rows:
             item = conversation_out(row)
             item["snippet"] = _snippet(row.get("match_text") or "", q)
+            # Opening a hit activates the branch that contains it (any branch is searched).
+            item["match_message_id"] = row.get("match_id")
             out.append(item)
         return out
 

@@ -233,3 +233,6 @@ backend/chimera/static/
 *.sqlite-shm
 data-dev/
 *.tsbuildinfo
+
+# Test fixtures: databases created by released versions (upgrade tests).
+!backend/tests/fixtures/databases/*.sqlite

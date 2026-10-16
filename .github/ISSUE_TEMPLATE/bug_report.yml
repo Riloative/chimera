@@ -1,0 +1,53 @@
+name: Bug report
+description: Something doesn't work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Security problems: please report privately instead** (see SECURITY.md).
+        Never paste API keys, passwords, session cookies or private conversations.
+  - type: input
+    id: version
+    attributes:
+      label: Chimera version
+      description: Settings → About, or `curl http://localhost:8700/api/health`.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation
+      options:
+        - Docker Compose (published images)
+        - Docker Compose (built locally)
+        - Native (install.sh)
+    validations:
+      required: true
+  - type: input
+    id: profiles
+    attributes:
+      label: Compose profiles and model server
+      placeholder: "searxng, browser; llama-server b11669 with Qwen2.5-7B"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: "`docker compose logs chimera --tail 100`. Logs contain no message content, but check for host names you'd rather not share."
+      render: text

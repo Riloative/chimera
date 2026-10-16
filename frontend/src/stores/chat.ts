@@ -106,6 +106,7 @@ export const useChat = create<ChatState>((set, get) => {
     if (frame === null) frame = requestAnimationFrame(flushDeltas);
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SSE payloads differ per event; handled per case
   const onEvent = (convId: string, event: string, data: any) => {
     switch (event) {
       case "start": {

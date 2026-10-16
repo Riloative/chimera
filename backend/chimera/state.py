@@ -17,6 +17,7 @@ from .services.files import FileStore
 from .services.knowledge import KnowledgeBase
 from .services.providers import ProviderRegistry
 from .services.settings import SettingsStore
+from .services.updates import UpdateChecker
 from .web.browser import BrowserClient
 from .web.egress import EgressProxy
 from .web.fetcher import SafeFetcher, make_client
@@ -36,6 +37,7 @@ class AppState:
     chat: ChatEngine
     auth: AuthService
     web: WebService
+    updates: UpdateChecker
 
     @classmethod
     def build(cls, config: Config, client: httpx.AsyncClient, web_client: httpx.AsyncClient | None = None) -> "AppState":
@@ -64,6 +66,7 @@ class AppState:
             chat=chat,
             auth=AuthService(db, config),
             web=web,
+            updates=UpdateChecker(db, fetcher, config.update_check_url),
         )
 
 

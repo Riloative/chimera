@@ -5,7 +5,7 @@
  * backend/tests/fixtures/url_detection.json.
  */
 
-const URL_RE = /(?<![0-9A-Za-z/@])https?:\/\/[^\s<>"'` 　]+/gi;
+const URL_RE = /(?<![0-9A-Za-z/@])https?:\/\/[^\s<>"'`\u00a0\u3000]+/gi;
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const INLINE_CODE_RE = /(`+)[^`]*?\1/g;
 const TRAILING = ".,;:!?'\"*_~";

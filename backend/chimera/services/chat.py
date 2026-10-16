@@ -76,6 +76,8 @@ class Generation:
     tighten: float = 1.0
     window_cap: int | None = None
     retried: bool = False
+    # Set when the server stops: the answer is marked interrupted, not "stopped".
+    shutting_down: bool = False
     content: str = ""
     reasoning: str = ""
     status: str = "streaming"
@@ -126,12 +128,19 @@ class ChatEngine:
         )
         return cur.rowcount
 
-    async def shutdown(self) -> None:
+    async def shutdown(self, grace: float = 0) -> None:
+        """Let running answers finish for up to ``grace`` seconds, then stop
+        the rest and mark them interrupted (saved with their partial text)."""
         tasks = [g.task for g in self.active.values() if g.task and not g.task.done()]
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if tasks and grace > 0:
+            log.info("waiting up to %.0fs for %d running answer(s) before stopping", grace, len(tasks))
+            await asyncio.wait(tasks, timeout=grace)
+        remaining = [g for g in self.active.values() if g.task and not g.task.done()]
+        for gen in remaining:
+            gen.shutting_down = True
+            gen.task.cancel()  # type: ignore[union-attr]
+        if remaining:
+            await asyncio.gather(*(g.task for g in remaining), return_exceptions=True)
 
     def active_for(self, user_id: str, conversation_id: str) -> Generation | None:
         gid = self.by_conversation.get(conversation_id)
@@ -773,7 +782,7 @@ class ChatEngine:
         turn = gen.turn
         if not turn:
             return
-        turn.finish_running({"complete": "done", "cancelled": "cancelled"}.get(status, "error"))
+        turn.finish_running({"complete": "done", "cancelled": "cancelled", "interrupted": "cancelled"}.get(status, "error"))
         valid = {r["n"] for r in turn.state.get("refs", []) if r.get("included", True)}
         used = citations(gen.content)
         turn.state["citations"] = {
@@ -861,7 +870,10 @@ class ChatEngine:
                 gen.publish("delta", {"content": gen.content, "reasoning": gen.reasoning})
             self.registry.mark_ok(gen.provider_id)
         except asyncio.CancelledError:
-            final_status = "cancelled"
+            if gen.shutting_down:
+                final_status, error, error_code = "interrupted", "The server restarted before this response finished.", "interrupted"
+            else:
+                final_status = "cancelled"
         except (WebError, ContextTooLarge) as exc:
             final_status, error, error_code, error_params = "error", exc.message, exc.code, exc.params
             log.info("generation=%s not sent: %s", gen.id, exc.code)

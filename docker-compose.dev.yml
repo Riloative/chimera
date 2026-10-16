@@ -1,0 +1,16 @@
+# Development: build the images from this checkout instead of pulling them.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile browser up -d --build
+#
+# (Or: export COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml)
+services:
+  chimera:
+    build:
+      context: .
+      args:
+        CHIMERA_BUILD_COMMIT: ${CHIMERA_BUILD_COMMIT:-dev}
+    image: chimera:dev
+  browser:
+    build: ./browser
+    image: chimera-browser:dev

@@ -73,3 +73,23 @@ test("knowledge collection: upload, search and use in chat with sources", async 
   await expect(page.getByText("Sources")).toBeVisible();
   await expect(page.getByRole("button", { name: /reactor\.md/ })).toBeVisible();
 });
+
+test("first-run update question and About at a narrow width", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto("/");
+  const ask = page.getByTestId("update-ask");
+  await expect(ask).toBeVisible();
+  await expect(ask).toContainText("Check for new Chimera versions?");
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await ask.getByRole("button", { name: "No, thanks" }).click();
+  await expect(ask).toBeHidden();
+  await page.reload();
+  await expect(page.getByLabel("Message", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("update-ask")).toHaveCount(0); // asked once, remembered
+  await page.goto("/settings/about");
+  await expect(page.getByTestId("about-version")).toHaveText(/^\d+\.\d+\.\d+/);
+  await expect(page.getByRole("switch", { name: "Check for updates" })).not.toBeChecked();
+  const aboutOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(aboutOverflow).toBeLessThanOrEqual(0);
+});

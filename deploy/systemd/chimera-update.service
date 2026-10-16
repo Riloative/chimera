@@ -1,0 +1,23 @@
+# Opt-in automatic updates for a Docker Compose installation of Chimera.
+# Runs update.sh: backup, health check, automatic rollback. Never crosses a
+# major version. Install: docs/DEPLOYMENT.md, "Automatic updates".
+#
+# Settings (optional) in /etc/default/chimera-update:
+#   CHIMERA_DIR=/opt/chimera
+#   CHIMERA_UPDATE_CHANNEL=patch      # patch: only x.y.Z  ·  minor: x.Y.z
+[Unit]
+Description=Update Chimera (backup, health check, rollback)
+Documentation=https://github.com/Riloative/chimera/blob/main/docs/DEPLOYMENT.md
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=CHIMERA_DIR=/opt/chimera
+Environment=CHIMERA_UPDATE_CHANNEL=patch
+EnvironmentFile=-/etc/default/chimera-update
+ExecStart=/bin/sh -c 'exec "$CHIMERA_DIR/update.sh" --dir "$CHIMERA_DIR" --channel "$CHIMERA_UPDATE_CHANNEL" --yes'
+# A failed update (rolled back) shows as a failed unit: systemctl status chimera-update
+TimeoutStartSec=30min
+Nice=10

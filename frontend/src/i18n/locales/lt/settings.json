@@ -119,6 +119,28 @@
     "tagline": "Rami, vietoje veikianti darbo erdvė jūsų pačių kalbos modeliams.",
     "version": "Versija",
     "inference": "Išvados",
-    "inferenceValue": "llama.cpp (llama-server), su OpenAI suderinami serveriai, Ollama"
+    "inferenceValue": "llama.cpp (llama-server), su OpenAI suderinami serveriai, Ollama",
+    "build": "Versijos komplektas",
+    "buildLocal": "vietinis komplektas",
+    "license": "Licencija"
+  },
+  "updates": {
+    "title": "Atnaujinimai",
+    "help": "Chimera niekada neatsinaujina pati. Atnaujinimas atliekamas sąmoningai serveryje (update.sh) – su atsargine kopija ir automatiniu atšaukimu.",
+    "check": "Tikrinti, ar yra atnaujinimų",
+    "checkHelp": "Kartą per dieną paklausti GitHub, kokie Chimeros leidimai yra, ir pranešti administratoriams apie naują versiją. Jokie duomenys apie jus, jūsų naudotojus ar šį serverį nesiunčiami.",
+    "available": "Išleista Chimera {{version}}.",
+    "releaseNotes": "Pakeitimų aprašas",
+    "howTo": "Kaip atnaujinti",
+    "dismiss": "Slėpti iki kitos versijos",
+    "neverChecked": "Dar netikrinta.",
+    "upToDate": "Naudojama naujausia versija (tikrinta {{when}}).",
+    "checkedAt": "Tikrinta {{when}}.",
+    "checkFailed": "Paskutinis tikrinimas nepavyko ({{when}}): {{reason}}. Bus bandoma rytoj; naudotojai to nemato.",
+    "never": "Iš čia niekas niekada neatsisiunčiama ir neįdiegiama.",
+    "askTitle": "Tikrinti, ar yra naujų Chimeros versijų?",
+    "askBody": "Kartą per dieną Chimera gali paklausti GitHub, kokie leidimai yra, ir pranešti administratoriams apie naują versiją. Jokie duomenys apie jus, jūsų naudotojus ar šį serverį nesiunčiami, ir niekas neįdiegiama automatiškai. Tai galėsite pakeisti skiltyje „Nustatymai → Apie“.",
+    "askYes": "Tikrinti kasdien",
+    "askNo": "Ne, ačiū"
   }
 }

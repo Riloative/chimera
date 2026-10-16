@@ -1,0 +1,47 @@
+# Dependency updates, grouped to keep the noise down. Images in
+# docker-compose.yml (SearXNG, llama.cpp) are pinned to exact tags and updated
+# here too; major updates of the base images arrive as separate PRs.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule: { interval: weekly, day: monday }
+    groups:
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: pip
+    directory: /browser
+    schedule: { interval: weekly, day: monday }
+    # Playwright must match the image tag in browser/Dockerfile: update both together.
+    groups:
+      playwright:
+        patterns: ["playwright"]
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday }
+    groups:
+      frontend-runtime:
+        dependency-type: production
+        update-types: [minor, patch]
+      frontend-dev:
+        dependency-type: development
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories: ["/", "/browser"]
+    schedule: { interval: weekly, day: monday }
+    groups:
+      base-images:
+        update-types: [minor, patch]
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      compose-images:
+        patterns: ["*"]

@@ -3,6 +3,8 @@
 import { readSSE } from "./sse";
 import type {
   AppSettings,
+  UpdateAvailable,
+  UpdateView,
   Collection,
   Conversation,
   ConversationDetail,
@@ -101,6 +103,7 @@ export async function request<T>(path: string, init: RequestInit & { json?: unkn
 }
 
 export interface StreamHandlers {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SSE payloads differ per event; handled per event type
   onEvent: (event: string, data: any) => void;
 }
 
@@ -143,9 +146,19 @@ export async function stream(path: string, init: RequestInit & { json?: unknown 
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
   info: () =>
-    request<{ version: string; telemetry: boolean; registration_mode: string; data_dir?: string; database?: string; db_size?: number; users?: number }>(
-      "/api/info",
-    ),
+    request<{
+      version: string;
+      commit: string | null;
+      telemetry: boolean;
+      registration_mode: string;
+      data_dir?: string;
+      database?: string;
+      db_size?: number;
+      users?: number;
+      update?: UpdateAvailable | null;
+    }>("/api/info"),
+  adminUpdates: () => request<UpdateView>("/api/admin/updates"),
+  setUpdateCheck: (enabled: boolean) => request<UpdateView>("/api/admin/updates", { method: "PATCH", json: { enabled } }),
 
   authStatus: () => request<AuthStatus>("/api/auth/status"),
   register: (data: { email: string; username: string; password: string; password_confirm: string; language?: string; setup_token?: string; remember?: boolean }) =>

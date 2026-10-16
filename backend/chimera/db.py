@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import threading
 import uuid
@@ -334,6 +335,23 @@ def loads(value: str | None, default: Any = None) -> Any:
         return default
 
 
+SCHEMA_VERSION = len(MIGRATIONS)
+
+
+class SchemaTooNew(RuntimeError):
+    """The database was migrated by a newer Chimera than this one."""
+
+    def __init__(self, found: int, supported: int, path: object, backups_dir: object):
+        self.found, self.supported = found, supported
+        super().__init__(
+            f"The database {path} has schema version {found}, but this version of Chimera only supports up to "
+            f"{supported}: it was upgraded by a newer Chimera. Refusing to start, so nothing is damaged. Either run "
+            f"the newer version again (set CHIMERA_VERSION back in .env), or stop Chimera and restore the backup "
+            f"written before that upgrade (pre-migration-v{supported}-to-v{found}-*.sqlite in {backups_dir}, or an "
+            f"archive from `chimera backup` / scripts/update.sh). See docs/DEPLOYMENT.md, \"Rolling back\"."
+        )
+
+
 class Database:
     def __init__(self, path: Path | str, backups_dir: Path | None = None):
         self.path = Path(path) if str(path) != ":memory:" else path
@@ -341,7 +359,11 @@ class Database:
         self.last_backup: Path | None = None
         self._lock = threading.RLock()
         self._conn = self._open()
-        self.migrate()
+        try:
+            self.migrate()
+        except SchemaTooNew:
+            self._conn.close()
+            raise
 
     def _open(self) -> sqlite3.Connection:
         if isinstance(self.path, Path):
@@ -364,9 +386,13 @@ class Database:
     def migrate(self) -> None:
         with self._lock:
             current = self.schema_version()
+            if current > SCHEMA_VERSION:
+                # Downgrade guard: never touch a database a newer version migrated.
+                raise SchemaTooNew(current, SCHEMA_VERSION, self.path, self.backups_dir)
             if 0 < current < len(MIGRATIONS) and self.backups_dir is not None:
                 # Never migrate a populated database without a restorable copy.
                 self.backups_dir.mkdir(parents=True, exist_ok=True)
+                os.chmod(self.backups_dir, 0o700)
                 stamp = now_iso().replace(":", "").replace("-", "").replace(".", "")
                 target = self.backups_dir / f"pre-migration-v{current}-to-v{len(MIGRATIONS)}-{stamp}.sqlite"
                 self.backup_to(target)
@@ -437,6 +463,19 @@ class Database:
                 src.close()
             self.migrate()
 
+    def readiness(self) -> dict[str, bool]:
+        """Checks for the readiness endpoint: migrations complete and the
+        database accepts writes (takes and releases the write lock)."""
+        with self._lock:
+            checks = {"migrations": self.schema_version() == SCHEMA_VERSION, "writable": False}
+            try:
+                self._conn.execute("BEGIN IMMEDIATE")
+                self._conn.execute("ROLLBACK")
+                checks["writable"] = True
+            except sqlite3.Error:
+                pass
+            return checks
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()
@@ -456,6 +495,19 @@ def _split_sql(script: str) -> list[str]:
     if tail:
         statements.append(tail)
     return statements
+
+
+def schema_version_of(path: Path) -> int | None:
+    """Schema version of a database file without changing it (None if unreadable)."""
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
+            return int(row[0] or 0)
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError:
+        return None
 
 
 def is_chimera_database(path: Path) -> bool:

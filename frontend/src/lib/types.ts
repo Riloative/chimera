@@ -232,6 +232,10 @@ export interface WebRef {
   n: number;
   source_id: string;
   included: boolean;
+  /** Read in an earlier turn and re-sent for follow-ups (absent = this turn, incl. messages from before 0.4.1). */
+  earlier?: boolean;
+  /** Listed under the answer; set by the server when the answer is final. */
+  shown?: boolean;
 }
 
 /** The web part of an answer: progress steps, queries and the citation map. */

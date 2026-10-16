@@ -29,6 +29,14 @@ export function citationTargets(message: Message, sources: WebSources): Record<n
   return out;
 }
 
+/** Sources listed under an answer: everything from this turn, plus earlier
+ * pages the answer cites (same rule as ``ref_shown`` in web/pipeline.py). */
+export function visibleRefs(message: Message): WebRef[] {
+  const refs = message.web?.refs ?? [];
+  const cited = new Set(message.web?.citations?.used ?? []);
+  return refs.filter((r) => r.shown ?? (!r.earlier || cited.has(r.n)));
+}
+
 function sourceReason(s: WebSource): string {
   return providerErrorText(s.error_code, s.error_params, s.error_code ?? "");
 }
@@ -91,7 +99,8 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
   if (!steps.length) return null;
   const expanded = running || open;
   const current = steps.findLast((s) => s.status === "running");
-  const included = (message.web?.refs ?? []).filter((r) => r.included && sources[r.source_id]?.status !== "error").length;
+  // Only this turn's sources: pages re-sent from earlier turns aren't "read" again.
+  const included = (message.web?.refs ?? []).filter((r) => !r.earlier && r.included && sources[r.source_id]?.status !== "error").length;
   const summary = running
     ? text(current ?? steps[steps.length - 1])
     : steps.some((s) => s.status === "error")
@@ -159,7 +168,10 @@ export function WebSourceList({ refs, sources, conversationId }: { refs: WebRef[
       <ol className="grid gap-1 sm:grid-cols-2" aria-labelledby={`sources-${refs[0].source_id}`}>
         {items.map(({ ref, source }) => {
           const url = source.final_url || source.url;
-          const state = !ref.included ? "excluded" : source.status;
+          // A failure always shows its own reason; "left out" is only for pages
+          // that were read but didn't fit the model's context.
+          const state = source.status === "error" ? "error" : !ref.included ? "excluded" : source.status;
+          const reason = state === "error" ? sourceReason(source) : null;
           return (
             <li key={ref.n} className="group/src flex min-w-0 items-center gap-1 rounded-lg border border-line pr-1 transition-colors hover:bg-hover">
               <a
@@ -173,9 +185,13 @@ export function WebSourceList({ refs, sources, conversationId }: { refs: WebRef[
                 <span className="min-w-0">
                   <span className={cn("block truncate text-[0.8125rem]", state === "ok" ? "text-fg" : "text-muted")}>{source.title || source.domain}</span>
                   <span className="flex items-center gap-1.5 text-[0.7rem] text-faint">
-                    <span className="truncate">{source.domain}</span>
+                    <span className={cn("truncate", reason && "max-w-[45%] shrink-0")}>{source.domain}</span>
                     {state === "snippet" && <span className="shrink-0 text-warning">· {t("sources.status.snippet")}</span>}
-                    {state === "error" && <span className="shrink-0 text-danger">· {t("sources.status.error")}</span>}
+                    {reason && (
+                      <span className="min-w-0 truncate text-danger" title={reason} data-testid="source-reason">
+                        · {reason}
+                      </span>
+                    )}
                     {state === "excluded" && <span className="shrink-0">· {t("sources.notIncluded")}</span>}
                   </span>
                 </span>

@@ -30,6 +30,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import signal
 import time
 from typing import Any
@@ -78,7 +79,17 @@ class Settings:
         self.max_requests = max(10, int(env.get("BROWSER_MAX_REQUESTS", "250")))
         self.max_html_bytes = max(64, int(env.get("BROWSER_MAX_HTML_KB", "5120"))) * 1024
         self.max_timeout = max(5.0, float(env.get("BROWSER_MAX_TIMEOUT_SECONDS", "60")))
-        self.settle_ms = max(0, int(env.get("BROWSER_SETTLE_MS", "1500")))
+        # Waiting for the page to settle after DOMContentLoaded (see ``settle``):
+        # sample the visible text every POLL ms; done once it hasn't changed for
+        # QUIET ms and doesn't look like a loading screen, but never before MIN
+        # ms and never longer than MAX ms (or the render timeout).
+        # BROWSER_SETTLE_MS (≤ 0.4) was the maximum wait for network idle; it
+        # still sets the maximum when BROWSER_SETTLE_MAX_MS is not given.
+        legacy = env.get("BROWSER_SETTLE_MS")
+        self.settle_max_ms = max(0, int(env.get("BROWSER_SETTLE_MAX_MS") or legacy or "15000"))
+        self.settle_min_ms = max(0, int(env.get("BROWSER_SETTLE_MIN_MS", "300")))
+        self.settle_quiet_ms = max(100, int(env.get("BROWSER_SETTLE_QUIET_MS", "750")))
+        self.settle_poll_ms = max(50, int(env.get("BROWSER_SETTLE_POLL_MS", "250")))
         self.executable = env.get("BROWSER_EXECUTABLE") or None
 
     def check(self) -> None:
@@ -86,6 +97,36 @@ class Settings:
             raise SystemExit("BROWSER_SECRET must be set (at least 16 characters); refusing to start.")
         if not self.proxy_server.startswith("http://"):
             raise SystemExit("BROWSER_PROXY_SERVER must be Chimera's egress proxy (http://host:port); refusing to start.")
+
+
+# What the page shows right now: visible text length, a cheap hash of it, the
+# title, and the start of the text (for loading-screen detection).
+SNAPSHOT_SCRIPT = """
+() => {
+  const text = document.body ? document.body.innerText || "" : "";
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return { length: text.length, hash: h >>> 0, title: document.title || "", head: text.slice(0, 600) };
+}
+"""
+LOADING_TEXT = re.compile(
+    r"^\W*(loading|please wait|just a moment|one moment|initiali[sz]ing|starting up|checking your browser)\b", re.I)
+JS_MESSAGE = re.compile(r"(enable|turn on|activate)\s+javascript|javascript\s+(is\s+)?(required|disabled|needed)|"
+                        r"requires javascript|need(s)?\s+javascript", re.I)
+
+
+def looks_loading(snapshot: dict) -> bool:
+    """A loading or skeleton screen rather than the page's content."""
+    title = str(snapshot.get("title") or "")
+    text = str(snapshot.get("head") or "").strip()
+    length = int(snapshot.get("length") or 0)
+    if re.search(r"\bloading\b", title, re.I):
+        return True
+    if length < 3:  # spinner only / empty shell
+        return True
+    if length < 300 and (LOADING_TEXT.match(text) or JS_MESSAGE.search(text)):
+        return True
+    return False
 
 
 class RenderError(Exception):
@@ -208,11 +249,18 @@ class Renderer:
                 raise RenderError("web.browser_timeout", "The page took too long to render.") from exc
             except PlaywrightError as exc:
                 raise _navigation_error(str(exc)) from exc
-            remaining = timeout - (time.monotonic() - started)
-            settle = min(self.settings.settle_ms / 1000, max(0.0, remaining - 0.5))
-            if settle > 0:
-                with contextlib.suppress(PlaywrightError):
-                    await page.wait_for_load_state("networkidle", timeout=settle * 1000)
+            # Keep a little time for capturing the content within the timeout.
+            deadline = started + max(0.0, timeout - 1.0)
+            if response is not None and response.status >= 400:
+                # An error page (including the egress proxy refusing it): report
+                # the status, there is nothing to wait for.
+                snapshot, settled = {}, True
+            else:
+                snapshot, settled = await self.settle(page, deadline)
+            if snapshot and looks_loading(snapshot):
+                # Never hand a loading screen to the model as if it were the page.
+                raise RenderError("web.browser_loading", "The page was still loading when the time ran out.",
+                                  title=snapshot.get("title") or None)
             html = await page.content()
             final_url = page.url
             title = await page.title()
@@ -230,10 +278,38 @@ class Renderer:
                 "truncated": truncated,
                 "requests": state["requests"],
                 "blocked": state["blocked"][:20],
+                "settled": settled,
+                "settle_ms": round((time.monotonic() - started) * 1000),
             }
         finally:
             with contextlib.suppress(Exception):
                 await context.close()
+
+    async def settle(self, page, deadline: float) -> tuple[dict, bool]:
+        """Wait until the visible text stops changing and isn't a loading
+        screen. Returns the last snapshot and whether the page settled (False
+        when the time ran out: what is there is returned, as before)."""
+        cfg = self.settings
+        now = time.monotonic()
+        end = min(deadline, now + cfg.settle_max_ms / 1000)
+        earliest = now + cfg.settle_min_ms / 1000
+        last: tuple | None = None
+        stable_since = now
+        snapshot: dict = {}
+        while True:
+            try:
+                snapshot = await page.evaluate(SNAPSHOT_SCRIPT)
+            except PlaywrightError:
+                snapshot = {}  # navigating (e.g. a script redirect): keep waiting
+            now = time.monotonic()
+            signature = (snapshot.get("length"), snapshot.get("hash"), snapshot.get("title"))
+            if signature != last:
+                last, stable_since = signature, now
+            elif now >= earliest and now - stable_since >= cfg.settle_quiet_ms / 1000 and not looks_loading(snapshot):
+                return snapshot, True
+            if now >= end:
+                return snapshot, False
+            await asyncio.sleep(min(cfg.settle_poll_ms / 1000, max(0.0, end - now)))
 
     async def _route(self, route, state: dict) -> None:
         request = route.request

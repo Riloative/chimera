@@ -119,8 +119,7 @@
     "failedTo": "Nepavyko perskaityti {{domain}}: {{reason}}",
     "status": {
       "ok": "Perskaityta",
-      "snippet": "Tik santrauka",
-      "error": "Neperskaityta"
+      "snippet": "Tik santrauka"
     }
   },
   "actions": {

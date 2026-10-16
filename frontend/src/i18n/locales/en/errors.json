@@ -149,6 +149,7 @@
     "tool_limit": "The model made too many tool calls.",
     "browser_unavailable": "The headless browser is not available right now.",
     "browser_timeout": "The page took too long to render in the headless browser.",
+    "browser_loading": "The page was still showing a loading screen when the time ran out, so it couldn't be read.",
     "browser_blocked": "The page, or a page it redirected to, is not allowed (private or blocked address, download, or other unsafe action).",
     "browser_limit": "The headless browser is busy or you have reached its hourly limit. Try again later.",
     "browser_failed": "The headless browser could not render the page."

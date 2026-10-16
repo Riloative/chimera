@@ -22,7 +22,7 @@ from ..db import Database, dumps, loads, new_id, now_iso
 from ..errors import AppError
 from ..providers import ChatMessage, ChatRequest, ProviderError
 from ..web.errors import WebError
-from ..web.pipeline import WebPlan, WebTurn, compose, generate_queries, read_links, run_search
+from ..web.pipeline import WebPlan, WebTurn, compose, finish_refs, generate_queries, read_links, run_search
 from ..web.prompting import citations, grounding_prompt, new_token
 from ..web.rank import estimate_tokens, tokens_to_chars
 from .context import ContextTooLarge, TokenCounter, Turn, Window, context_window, covers_hash, plan_context, verify_exact
@@ -780,6 +780,7 @@ class ChatEngine:
             "used": [n for n in used if n in valid],
             "invalid": [n for n in used if n not in valid and n > knowledge_count],
         }
+        finish_refs(turn.state.get("refs", []), turn.state["citations"]["used"])
         turn.persist()
 
     def _user_message(self, user_id: str, row: dict, vision: bool) -> ChatMessage:

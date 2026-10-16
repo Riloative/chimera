@@ -261,6 +261,10 @@ def create_mock_app(
             answer = mock_queries(text)
             if "[slowquery]" in text:
                 await asyncio.sleep(5)
+        elif "[cite-earlier]" in text:
+            # A follow-up answer that cites the pages sent with earlier turns.
+            whole = "\n".join(str(m.get("content") or "") for m in messages)
+            answer = mock_grounded_answer(whole)
         elif "<web_sources>" in text and "[slow]" not in text:
             answer = mock_grounded_answer(text)
         elif "[markdown]" in text:

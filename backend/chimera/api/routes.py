@@ -317,7 +317,7 @@ async def set_active_branch(
     _owned_conversation(state, user, cid)
     tree = message_tree.load(state.db, cid)
     if body.message_id not in tree.nodes:
-        raise missing("branch_not_found", "Message not found in this conversation")
+        raise missing("branch.not_found", "Message not found in this conversation")
     path = message_tree.activate(state.db, cid, body.message_id, tree=tree)
     return {"active_leaf_id": path[-1], "active_path": path}
 

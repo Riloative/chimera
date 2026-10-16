@@ -6,6 +6,7 @@ import type {
   Collection,
   Conversation,
   ConversationDetail,
+  ContextEstimate,
   Message,
   GenerationParams,
   KnowledgeDocument,
@@ -206,6 +207,7 @@ export const api = {
   deleteConversation: (id: string) => request<void>(`/api/conversations/${id}`, { method: "DELETE" }),
   deleteMessage: (id: string) => request<{ deleted: number; active_path: string[] }>(`/api/messages/${id}`, { method: "DELETE" }),
   updateMessage: (id: string, data: { pinned: boolean }) => request<Message>(`/api/messages/${id}`, { method: "PATCH", json: data }),
+  contextEstimate: (conversationId: string) => request<ContextEstimate>(`/api/conversations/${conversationId}/context`),
   activateBranch: (conversationId: string, messageId: string) =>
     request<{ active_leaf_id: string; active_path: string[] }>(`/api/conversations/${conversationId}/active`, {
       method: "POST",

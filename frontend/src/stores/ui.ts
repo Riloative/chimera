@@ -13,6 +13,7 @@ export interface Draft {
   systemPrompt: string | null;
   params: GenerationParams;
   collectionIds: string[];
+  contextStrategy?: "sliding" | "summarize" | "off" | null;
 }
 
 interface UIState {
@@ -22,6 +23,9 @@ interface UIState {
   composerInsert: string | null;
   selectedModel: ModelRef | null;
   draft: Draft;
+  /** Length of the composer text (for the context indicator's draft estimate). */
+  draftChars: number;
+  setDraftChars: (n: number) => void;
   setMobileSidebar: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
   toast: (t: Omit<Toast, "id">) => void;
@@ -72,6 +76,8 @@ export const useUI = create<UIState>((set) => ({
   },
   setDraft: (d) => set((s) => ({ draft: { ...s.draft, ...d } })),
   resetDraft: () => set({ draft: emptyDraft }),
+  draftChars: 0,
+  setDraftChars: (n) => set((s) => (s.draftChars === n ? s : { draftChars: n })),
 }));
 
 export const toast = (message: string, tone: Toast["tone"] = "default", action?: Toast["action"]) =>

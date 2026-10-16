@@ -24,6 +24,8 @@ export interface Provider {
   checked_at: string | null;
   models_fetched_at: string | null;
   capabilities: Capabilities;
+  /** Manual context size; null = what the server reports. */
+  context_override: number | null;
   supported_params: string[];
   created_at: string;
   updated_at: string;
@@ -190,6 +192,14 @@ export interface MessageContext {
   retried?: boolean;
 }
 
+/** GET /api/conversations/{id}/context: what the next request would contain. */
+export interface ContextEstimate extends MessageContext {
+  window: number;
+  window_source: "server" | "manual" | "default";
+  window_slots?: number | null;
+  too_large?: boolean;
+}
+
 export interface ConversationDetail extends Conversation {
   messages: Message[];
   active_path: string[];
@@ -198,7 +208,7 @@ export interface ConversationDetail extends Conversation {
 }
 
 /* ------------------------------------------------------------------ web */
-export type WebStepKind = "read_links" | "queries" | "search" | "read_results" | "budget" | "older_omitted";
+export type WebStepKind = "read_links" | "queries" | "search" | "read_results" | "budget" | "older_omitted" | "history_trimmed";
 export type WebStepStatus = "running" | "done" | "error" | "cancelled";
 
 export interface WebStep {
@@ -277,7 +287,6 @@ export interface WebUserSettings {
   keep_search_on: boolean;
   results: number;
   expand_steps: boolean;
-  context_tokens: number;
   task_provider_id: string | null;
   task_model: string | null;
   privacy_acknowledged: boolean;
@@ -348,6 +357,17 @@ export interface AppSettings {
   max_attachment_chars: number;
   knowledge: KnowledgeSettings;
   web: WebUserSettings;
+  context: ContextSettings;
+}
+
+export interface ContextSettings {
+  strategy: "sliding" | "summarize" | "off";
+  fallback_window: number;
+  hysteresis: number;
+  safety_margin_pct: number;
+  reserve_tokens: number;
+  summary_provider_id: string | null;
+  summary_model: string | null;
 }
 
 export interface Prompt {

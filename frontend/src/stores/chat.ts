@@ -141,6 +141,11 @@ export const useChat = create<ChatState>((set, get) => {
           }));
         }
         break;
+      case "context":
+        patchConv(convId, (c) => ({
+          messages: c.messages.map((m) => (m.id === data.message_id ? { ...m, context: data.context } : m)),
+        }));
+        break;
       case "web":
         patchConv(convId, (c) => ({
           messages: c.messages.map((m) => (m.id === data.message_id ? { ...m, web: data.web } : m)),

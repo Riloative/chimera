@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { errorText, providerErrorText, serverDetail } from "@/lib/errors";
 import { relativeTime } from "@/lib/time";
 import type { HealthCheck, Provider, ProviderKind, ProviderModels, TestResult } from "@/lib/types";
-import { cn, compactNumber, formatBytes, formatList, modelLabel } from "@/lib/utils";
+import { cn, compactNumber, formatBytes, formatList, formatNumber, modelLabel } from "@/lib/utils";
 import { useAuth } from "@/stores/auth";
 import { useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
@@ -126,7 +126,7 @@ export function ModelsPage() {
 }
 
 function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () => void }) {
-  const { t } = useTranslation(["models", "common"]);
+  const { t } = useTranslation(["models", "common", "context"]);
   const p = entry.provider;
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
@@ -264,12 +264,16 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
                 <dd className="text-fg">{p.has_api_key ? t("authKey", { header: p.auth_header || "Authorization" }) : t("authNone")}</dd>
                 <dt>{t("timeout")}</dt>
                 <dd className="text-fg">{t("seconds", { value: p.timeout })}</dd>
-                {caps.n_ctx != null && (
-                  <>
-                    <dt>{t("context")}</dt>
-                    <dd className="text-fg">{t("contextTokens", { value: compactNumber(caps.n_ctx) })}</dd>
-                  </>
-                )}
+                <dt>{t("context")}</dt>
+                <dd className="text-fg" data-testid="context-window">
+                  {p.context_override
+                    ? t("context:connection.manual", { size: formatNumber(p.context_override) })
+                    : caps.n_ctx != null
+                      ? caps.slots && caps.slots > 1
+                        ? t("context:connection.reportedSlots", { size: formatNumber(caps.n_ctx), count: caps.slots })
+                        : t("context:connection.reported", { size: formatNumber(caps.n_ctx) })
+                      : t("context:connection.unknown")}
+                </dd>
                 {caps.slots != null && (
                   <>
                     <dt>{t("slots")}</dt>
@@ -345,11 +349,12 @@ interface FormState {
   manual_models: string;
   enabled: boolean;
   shared: boolean;
+  context_override: string;
 }
 
 function initialForm(p: Provider | null): FormState {
   if (!p)
-    return { name: "llama-server", kind: "llamacpp", base_url: KINDS[0].url, api_path: "/v1", api_key: "", auth_header: "", timeout: 300, vision: "auto", manual_models: "", enabled: true, shared: false };
+    return { name: "llama-server", kind: "llamacpp", base_url: KINDS[0].url, api_path: "/v1", api_key: "", auth_header: "", timeout: 300, vision: "auto", manual_models: "", enabled: true, shared: false, context_override: "" };
   return {
     name: p.name,
     kind: p.kind,
@@ -362,11 +367,12 @@ function initialForm(p: Provider | null): FormState {
     manual_models: p.manual_models.join("\n"),
     enabled: p.enabled,
     shared: p.shared,
+    context_override: p.context_override ? String(p.context_override) : "",
   };
 }
 
 function ProviderDialog({ open, provider, onClose }: { open: boolean; provider: Provider | null; onClose: () => void }) {
-  const { t } = useTranslation(["models", "common"]);
+  const { t } = useTranslation(["models", "common", "context"]);
   const isAdmin = useAuth((s) => s.user?.role === "admin");
   const [form, setForm] = useState<FormState>(initialForm(provider));
   const [advanced, setAdvanced] = useState(false);
@@ -400,6 +406,7 @@ function ProviderDialog({ open, provider, onClose }: { open: boolean; provider: 
       vision: form.vision,
       manual_models: form.manual_models.split("\n").map((s) => s.trim()).filter(Boolean),
       enabled: form.enabled,
+      context_override: Number(form.context_override) >= 256 ? Math.round(Number(form.context_override)) : null,
     };
     if (isAdmin) data.shared = form.shared;
     if (form.api_key) data.api_key = form.api_key;
@@ -558,6 +565,17 @@ function ProviderDialog({ open, provider, onClose }: { open: boolean; provider: 
                 </Select>
               </Field>
             </div>
+            <Field label={t("context:connection.override")} htmlFor="pv-context" hint={t("context:connection.overrideHelp")}>
+              <Input
+                id="pv-context"
+                type="number"
+                min={256}
+                step={1024}
+                value={form.context_override}
+                onChange={(e) => set("context_override", e.target.value)}
+                className="max-w-[12rem]"
+              />
+            </Field>
             <Field label={t("dialog.manualModels")} htmlFor="pv-manual" hint={t("dialog.manualModelsHint")}>
               <Textarea id="pv-manual" rows={3} value={form.manual_models} onChange={(e) => set("manual_models", e.target.value)} className="font-mono" />
             </Field>

@@ -148,7 +148,9 @@
     "tool_unknown": "Modelis paprašė nežinomo įrankio.",
     "tool_limit": "Modelis iškvietė įrankius per daug kartų."
   },
-  "branch_not_found": "Šios žinutės pokalbyje nebėra.",
+  "branch": {
+    "not_found": "Šios žinutės pokalbyje nebėra."
+  },
   "context": {
     "too_large": "Jūsų žinutė per ilga šio modelio konteksto langui: jai reikia maždaug {{needed}} žetonų, o laisvų yra tik {{available}}. Sutrumpinkite žinutę, pašalinkite priedus ar interneto puslapius, pasirinkite modelį su didesniu kontekstu arba paleiskite llama-server su didesniu -c.",
     "summary_failed": "Ankstesnių žinučių apibendrinti nepavyko.",

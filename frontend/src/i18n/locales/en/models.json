@@ -51,7 +51,6 @@
   "authNone": "none",
   "timeout": "Timeout",
   "context": "Context",
-  "contextTokens": "{{value}} tokens",
   "slots": "Slots",
   "vision": "Vision",
   "visionYes": "supported",

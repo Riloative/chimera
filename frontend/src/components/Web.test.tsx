@@ -17,7 +17,6 @@ const PREFS: WebUserSettings = {
   keep_search_on: false,
   results: 5,
   expand_steps: false,
-  context_tokens: 8192,
   task_provider_id: null,
   task_model: null,
   privacy_acknowledged: true,

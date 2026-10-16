@@ -148,7 +148,9 @@
     "tool_unknown": "The model asked for an unknown tool.",
     "tool_limit": "The model made too many tool calls."
   },
-  "branch_not_found": "That message is no longer in this conversation.",
+  "branch": {
+    "not_found": "That message is no longer in this conversation."
+  },
   "context": {
     "too_large": "Your message is too long for this model's context window: it needs about {{needed}} tokens, but only {{available}} are available. Shorten the message, remove attachments or web pages, choose a model with a larger context, or restart llama-server with a larger -c.",
     "summary_failed": "The earlier messages could not be summarized.",

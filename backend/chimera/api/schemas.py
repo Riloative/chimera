@@ -71,6 +71,7 @@ class ConversationCreate(Strict):
     system_prompt: str | None = Field(None, max_length=100_000)
     params: GenerationParams | None = None
     collection_ids: list[str] = Field(default_factory=list, max_length=20)
+    context_strategy: Literal["sliding", "summarize", "off"] | None = None
 
 
 class ConversationUpdate(Strict):

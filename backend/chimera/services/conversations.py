@@ -84,7 +84,7 @@ class ConversationStore:
         cid, ts = new_id(), now_iso()
         self.db.execute(
             """INSERT INTO conversations(id, user_id, title, provider_id, model, system_prompt, params, collection_ids,
-                   created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                   context_strategy, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 cid,
                 user_id,
@@ -94,6 +94,7 @@ class ConversationStore:
                 data.get("system_prompt"),
                 dumps(data.get("params") or {}),
                 dumps(data.get("collection_ids") or []),
+                data.get("context_strategy"),
                 ts,
                 ts,
             ),

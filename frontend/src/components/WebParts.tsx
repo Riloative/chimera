@@ -67,6 +67,8 @@ function useStepText() {
         return t("steps.budget", { used: p.used ?? 0, count: p.total ?? 0 });
       case "older_omitted":
         return t("steps.olderOmitted", { count: p.count ?? 0 });
+      case "history_trimmed":
+        return t("steps.historyTrimmed", { count: p.count ?? 0 });
       default:
         return "";
     }

@@ -33,8 +33,6 @@ function UserWebSettings({ settings }: { settings: AppSettings }) {
   const update = useSettings((s) => s.update);
   const entries = useModels((s) => s.entries);
   const w = settings.web;
-  const [ctx, setCtx] = useState(w.context_tokens);
-  useEffect(() => setCtx(w.context_tokens), [w.context_tokens]);
   const save = (patch: Partial<WebUserSettings>) => update({ web: { ...w, ...patch } }).catch((e) => toast(errorText(e), "error"));
   const max = status?.max_results ?? 10;
   const taskValue = w.task_provider_id && w.task_model ? `${w.task_provider_id}\u0000${w.task_model}` : "";
@@ -56,18 +54,6 @@ function UserWebSettings({ settings }: { settings: AppSettings }) {
               </option>
             ))}
           </Select>
-        </Field>
-        <Field label={t("settings.user.contextTokens")} htmlFor="web-ctx" hint={t("settings.user.contextTokensHelp")}>
-          <Input
-            id="web-ctx"
-            type="number"
-            min={1024}
-            max={2000000}
-            step={1024}
-            value={ctx}
-            onChange={(e) => setCtx(Number(e.target.value))}
-            onBlur={() => ctx !== w.context_tokens && save({ context_tokens: Math.min(2000000, Math.max(1024, ctx || 8192)) })}
-          />
         </Field>
       </div>
       <Field label={t("settings.user.taskModel")} htmlFor="web-task" hint={t("settings.user.taskModelHelp")}>

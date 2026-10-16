@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { LegacyNotice } from "@/components/LegacyNotice";
+import { UpdateNotice } from "@/components/UpdateNotice";
 import { SearchDialog } from "@/components/SearchDialog";
 import { Sidebar } from "@/components/Sidebar";
 import { Toaster } from "@/components/Toaster";
@@ -63,6 +64,7 @@ function AppLayout() {
       <Sidebar />
       <div id="main" className="flex min-w-0 flex-1 flex-col">
         <LegacyNotice />
+        <UpdateNotice />
         <div className="min-h-0 flex-1">
           <Outlet />
         </div>

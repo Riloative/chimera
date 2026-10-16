@@ -10,6 +10,14 @@ changes.
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-10-16
+
+Release candidate for 1.0.0; the notes are under [1.0.0] below.
+
+## [1.0.0] - Unreleased
+
+(Filled in below.)
+
 ## [0.4.1] - 2026-10-16
 
 ### Fixed

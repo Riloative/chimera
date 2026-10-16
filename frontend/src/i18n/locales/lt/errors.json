@@ -161,5 +161,8 @@
     "too_large": "Jūsų žinutė per ilga šio modelio konteksto langui: jai reikia maždaug {{needed}} žetonų, o laisvų yra tik {{available}}. Sutrumpinkite žinutę, pašalinkite priedus ar interneto puslapius, pasirinkite modelį su didesniu kontekstu arba paleiskite llama-server su didesniu -c.",
     "summary_failed": "Ankstesnių žinučių apibendrinti nepavyko.",
     "window_unknown": "Modelio konteksto dydis nežinomas; nustatykite jį šiam ryšiui skiltyje „Modeliai“."
+  },
+  "update": {
+    "bad_response": "Leidimų sąrašo perskaityti nepavyko."
   }
 }

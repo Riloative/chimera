@@ -7,8 +7,10 @@ import { Group, PageHeader, PageShell } from "@/components/Page";
 import { ParamsEditor, cleanParams } from "@/components/ParamsEditor";
 import { Button, ConfirmDialog, Field, Input, SegmentedControl, Select, Spinner, Switch, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
-import { errorText } from "@/lib/errors";
-import type { AppSettings, GenerationParams } from "@/lib/types";
+import { errorText, providerErrorText } from "@/lib/errors";
+import { relativeTime } from "@/lib/time";
+import type { AppSettings, GenerationParams, UpdateView } from "@/lib/types";
+import { UPDATE_DOCS } from "@/components/UpdateNotice";
 import { cn, downloadUrl, formatBytes } from "@/lib/utils";
 import { AccountSettings } from "@/pages/settings/AccountSettings";
 import { AdminUsers } from "@/pages/settings/AdminUsers";
@@ -19,6 +21,9 @@ import { useConversations } from "@/stores/conversations";
 import { findProvider, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { toast } from "@/stores/ui";
+
+/** SPDX identifier (not translated). */
+const LICENSE_SPDX = "MIT";
 
 const SECTIONS = ["account", "appearance", "chat", "web", "documents", "data", "users", "about"] as const;
 type SectionId = (typeof SECTIONS)[number];
@@ -467,18 +472,81 @@ function DataSettings() {
 
 function About() {
   const { t } = useTranslation("settings");
-  const [info, setInfo] = useState<{ version: string } | null>(null);
+  const isAdmin = useAuth((s) => s.user?.role === "admin");
+  const [info, setInfo] = useState<{ version: string; commit: string | null } | null>(null);
   useEffect(() => {
     api.info().then(setInfo).catch(() => undefined);
   }, []);
   return (
-    <Group title="Chimera" description={t("about.tagline")}>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-[0.8125rem]">
-        <dt className="text-muted">{t("about.version")}</dt>
-        <dd className="font-mono text-fg">{info?.version ?? "…"}</dd>
-        <dt className="text-muted">{t("about.inference")}</dt>
-        <dd className="text-fg">{t("about.inferenceValue")}</dd>
-      </dl>
+    <>
+      <Group title="Chimera" description={t("about.tagline")}>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-[0.8125rem]">
+          <dt className="text-muted">{t("about.version")}</dt>
+          <dd className="font-mono text-fg" data-testid="about-version">{info?.version ?? "…"}</dd>
+          <dt className="text-muted">{t("about.build")}</dt>
+          <dd className="font-mono text-fg">{info ? (info.commit ?? t("about.buildLocal")) : "…"}</dd>
+          <dt className="text-muted">{t("about.inference")}</dt>
+          <dd className="text-fg">{t("about.inferenceValue")}</dd>
+          <dt className="text-muted">{t("about.license")}</dt>
+          <dd className="text-fg">{LICENSE_SPDX}</dd>
+        </dl>
+      </Group>
+      {isAdmin && <UpdateSettings />}
+    </>
+  );
+}
+
+function UpdateSettings() {
+  const { t } = useTranslation(["settings", "errors"]);
+  const [view, setView] = useState<UpdateView | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.adminUpdates().then(setView).catch(() => undefined);
+  }, []);
+  if (!view) return null;
+  const last = view.last_check;
+  return (
+    <Group title={t("updates.title")} description={t("updates.help")}>
+      <Switch
+        label={t("updates.check")}
+        description={t("updates.checkHelp")}
+        checked={view.enabled}
+        disabled={busy}
+        onChange={async (v) => {
+          setBusy(true);
+          try {
+            setView(await api.setUpdateCheck(v));
+          } catch (err) {
+            toast(errorText(err), "error");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      {view.available && (
+        <p className="rounded-lg bg-subtle px-3 py-2 text-[0.8125rem] text-fg" data-testid="about-update">
+          {t("updates.available", { version: view.available.version })}{" "}
+          <a href={view.available.url} target="_blank" rel="noopener noreferrer" className="text-accent-text hover:underline">
+            {t("updates.releaseNotes")}
+          </a>
+          {" · "}
+          <a href={UPDATE_DOCS} target="_blank" rel="noopener noreferrer" className="text-accent-text hover:underline">
+            {t("updates.howTo")}
+          </a>
+        </p>
+      )}
+      {view.enabled && (
+        <p className="text-[0.75rem] text-faint" data-testid="update-last-check">
+          {!last?.checked_at
+            ? t("updates.neverChecked")
+            : last.ok
+              ? view.available
+                ? t("updates.checkedAt", { when: relativeTime(last.checked_at) })
+                : t("updates.upToDate", { when: relativeTime(last.checked_at) })
+              : t("updates.checkFailed", { when: relativeTime(last.checked_at), reason: providerErrorText(last.error, {}, last.error ?? "") })}
+        </p>
+      )}
+      <p className="text-[0.75rem] leading-relaxed text-faint">{t("updates.never")}</p>
     </Group>
   );
 }

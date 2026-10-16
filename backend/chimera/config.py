@@ -7,6 +7,7 @@ preferences live in the database instead (see ``services/settings.py``).
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -76,6 +77,11 @@ class Config:
     # Shared connection created for the first admin (empty string disables it).
     seed_provider_url: str = "http://127.0.0.1:8080"
     log_level: str = "info"
+    log_format: str = "text"  # text | json
+    # Seconds a stopping server gives running answers to finish before marking them interrupted.
+    shutdown_grace_seconds: float = 10
+    # Update check (admins opt in, Settings → About): where releases are listed.
+    update_check_url: str = "https://api.github.com/repos/Riloative/chimera/releases"
     # --- web reading & search (initial values; administrators change them in the UI)
     web_enabled: bool = False
     web_searxng_url: str = ""
@@ -174,6 +180,9 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         http_trust_env=_bool(env.get("CHIMERA_HTTP_TRUST_ENV")),
         seed_provider_url=env.get("CHIMERA_SEED_PROVIDER_URL", "http://127.0.0.1:8080"),
         log_level=env.get("CHIMERA_LOG_LEVEL", "info").lower(),
+        log_format=(env.get("CHIMERA_LOG_FORMAT") or "text").strip().lower(),
+        shutdown_grace_seconds=float(env.get("CHIMERA_SHUTDOWN_GRACE_SECONDS", "10")),
+        update_check_url=(env.get("CHIMERA_UPDATE_CHECK_URL") or Config.update_check_url).strip(),
         web_enabled=_bool(env.get("CHIMERA_WEB_ENABLED")),
         web_searxng_url=(env.get("CHIMERA_WEB_SEARXNG_URL") or "").strip().rstrip("/"),
         web_fetch_allowlist=_list(env.get("CHIMERA_WEB_FETCH_ALLOWLIST")),
@@ -185,6 +194,67 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         browser_proxy_bind=(env.get("CHIMERA_BROWSER_PROXY_BIND") or "127.0.0.1:8701").strip(),
     )
     return cfg
+
+
+LOG_LEVELS = ("debug", "info", "warning", "error", "critical")
+
+
+def validate_config(cfg: Config) -> tuple[list[str], list[str]]:
+    """Problems that stop the server (errors) and risky settings (warnings),
+    each as an actionable sentence naming the variable."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not 1 <= cfg.port <= 65535:
+        errors.append(f"CHIMERA_PORT={cfg.port} is not a valid port (1-65535).")
+    if cfg.log_level not in LOG_LEVELS:
+        errors.append(f"CHIMERA_LOG_LEVEL={cfg.log_level!r} is invalid; use one of {', '.join(LOG_LEVELS)}.")
+    if cfg.log_format not in ("text", "json"):
+        errors.append(f"CHIMERA_LOG_FORMAT={cfg.log_format!r} is invalid; use text or json.")
+    for entry in cfg.trusted_proxies:
+        try:
+            ipaddress.ip_network(entry.strip("[]"), strict=False)
+        except ValueError:
+            errors.append(f"CHIMERA_TRUSTED_PROXIES contains {entry!r}, which is not an IP address or CIDR "
+                          "(e.g. 172.18.0.1 or 172.16.0.0/12).")
+    if cfg.encryption_key:
+        try:
+            from cryptography.fernet import Fernet
+
+            Fernet(cfg.encryption_key.encode())
+        except (ValueError, TypeError):
+            errors.append("CHIMERA_ENCRYPTION_KEY is not a valid key (32 url-safe base64-encoded bytes). "
+                          "Unset it to use the generated key in the data directory.")
+    if cfg.browser_url and len(cfg.browser_secret) < 16:
+        errors.append("CHIMERA_BROWSER_URL is set but CHIMERA_BROWSER_SECRET is missing or shorter than 16 "
+                      "characters. Set both (openssl rand -hex 32), or remove CHIMERA_BROWSER_URL.")
+    if cfg.browser_secret and not cfg.browser_url:
+        warnings.append("CHIMERA_BROWSER_SECRET is set but CHIMERA_BROWSER_URL is not: the headless browser stays off.")
+    if cfg.browser_url:
+        host, sep, port = cfg.browser_proxy_bind.rpartition(":")
+        if not sep or not port.isdigit() or not 1 <= int(port) <= 65535:
+            errors.append(f"CHIMERA_BROWSER_PROXY_BIND={cfg.browser_proxy_bind!r} must be host:port (e.g. 0.0.0.0:8701).")
+    if cfg.browser_url and not cfg.browser_url.lower().startswith(("http://", "https://")):
+        errors.append("CHIMERA_BROWSER_URL must start with http:// (e.g. http://browser:3000).")
+    if cfg.shutdown_grace_seconds < 0:
+        errors.append("CHIMERA_SHUTDOWN_GRACE_SECONDS must not be negative.")
+    if not cfg.update_check_url.startswith("https://"):
+        errors.append("CHIMERA_UPDATE_CHECK_URL must be an https:// address.")
+    # Risky combinations (the server still starts).
+    if "*" in cfg.allowed_hosts and cfg.registration_mode == "open":
+        warnings.append("CHIMERA_ALLOWED_HOSTS=* with open registration: anyone who can reach this server under any "
+                        "name can create an account. Name your hosts and use first_user_only or closed registration.")
+    elif "*" in cfg.allowed_hosts:
+        warnings.append("CHIMERA_ALLOWED_HOSTS=* disables DNS-rebinding protection; list your host names instead.")
+    if cfg.cookie_secure == "true" and not cfg.trusted_proxies:
+        warnings.append("CHIMERA_COOKIE_SECURE=true but no CHIMERA_TRUSTED_PROXIES: browsers only keep the session "
+                        "cookie over HTTPS (or localhost), so signing in over plain HTTP will fail. Put Chimera behind "
+                        "an HTTPS proxy and set CHIMERA_TRUSTED_PROXIES, or use CHIMERA_COOKIE_SECURE=auto.")
+    if cfg.host not in LOOPBACK_HOSTS and cfg.registration_mode == "open" and not cfg.setup_token:
+        warnings.append("Listening on the network with open registration: set CHIMERA_REGISTRATION_MODE=first_user_only "
+                        "or closed, or at least CHIMERA_SETUP_TOKEN.")
+    if cfg.setup_token and len(cfg.setup_token) < 12:
+        warnings.append("CHIMERA_SETUP_TOKEN is short; use a random value (openssl rand -hex 16).")
+    return errors, warnings
 
 
 def _key_file(cfg: Config, name: str, factory) -> str:

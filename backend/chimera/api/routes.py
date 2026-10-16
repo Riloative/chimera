@@ -8,6 +8,7 @@ by ``user["id"]``. Records belonging to someone else are reported as missing
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -16,8 +17,8 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
-from .. import __version__
-from ..db import dumps, is_chimera_database, new_id, now_iso
+from .. import BUILD_COMMIT, __version__
+from ..db import SCHEMA_VERSION, dumps, is_chimera_database, new_id, now_iso, schema_version_of
 from ..errors import AppError
 from ..netpolicy import url_allowed
 from ..services.conversations import conversation_out, message_out
@@ -39,13 +40,24 @@ def missing(code: str, message: str) -> AppError:
 # --------------------------------------------------------------------- system
 @router.get("/health")
 async def health():
-    # Public: intentionally reveals nothing beyond liveness.
-    return {"status": "ok"}
+    # Public liveness: the version only (no build details, paths or counts).
+    return {"status": "ok", "version": __version__}
+
+
+@router.get("/ready")
+async def ready(state: AppState = Depends(get_state)):
+    """Public readiness (used by the Compose healthcheck): migrations are
+    complete and the database accepts writes. Booleans only."""
+    checks = state.db.readiness()
+    checks["data_dir"] = os.access(state.config.data_dir, os.W_OK)
+    ok = all(checks.values())
+    return JSONResponse({"status": "ready" if ok else "not_ready", "checks": checks}, status_code=200 if ok else 503)
 
 
 @router.get("/info")
 async def info(user: dict = Depends(current_user), state: AppState = Depends(get_state)):
-    out = {"version": __version__, "telemetry": False, "registration_mode": state.auth.registration_mode()}
+    out = {"version": __version__, "commit": BUILD_COMMIT or None, "telemetry": False,
+           "registration_mode": state.auth.registration_mode()}
     if user["role"] == "admin":
         cfg = state.config
         out.update(
@@ -53,8 +65,25 @@ async def info(user: dict = Depends(current_user), state: AppState = Depends(get
             database=str(cfg.db_path),
             db_size=cfg.db_path.stat().st_size if cfg.db_path.exists() else 0,
             users=state.auth.user_count(),
+            update=state.updates.view()["available"],
         )
     return out
+
+
+@router.get("/admin/updates")
+async def admin_updates(admin: dict = Depends(require_admin), state: AppState = Depends(get_state)):
+    return state.updates.view()
+
+
+@router.patch("/admin/updates")
+async def admin_updates_set(body: schemas.UpdateSettings, admin: dict = Depends(require_admin),
+                            state: AppState = Depends(get_state)):
+    """Turn the daily update check on or off (also records that the admin was asked)."""
+    was = state.updates.settings()["enabled"]
+    state.updates.set_enabled(body.enabled)
+    if body.enabled and not was:
+        await state.updates.maybe_check()  # first check right away; then at most once a day
+    return state.updates.view()
 
 
 # ------------------------------------------------------------------ settings
@@ -690,6 +719,10 @@ async def restore(file: UploadFile = File(...), admin: dict = Depends(require_ad
         target.write_bytes(await _read_limited(file, 2 * 1024 * 1024 * 1024))
         if not is_chimera_database(target):
             raise AppError(422, "restore_invalid", "This file is not a Chimera database backup.")
+        found = schema_version_of(target) or 0
+        if found > SCHEMA_VERSION:
+            raise AppError(422, "restore_too_new", "This backup was made by a newer version of Chimera.",
+                           found=found, supported=SCHEMA_VERSION)
         state.db.replace_with(target)
         state.chat.recover_interrupted()
         state.registry.encrypt_legacy_keys()

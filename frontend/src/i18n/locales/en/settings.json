@@ -113,6 +113,28 @@
     "tagline": "A calm, local-first workspace for your own language models.",
     "version": "Version",
     "inference": "Inference",
-    "inferenceValue": "llama.cpp (llama-server), OpenAI-compatible servers, Ollama"
+    "inferenceValue": "llama.cpp (llama-server), OpenAI-compatible servers, Ollama",
+    "build": "Build",
+    "buildLocal": "local build",
+    "license": "License"
+  },
+  "updates": {
+    "title": "Updates",
+    "help": "Chimera never updates itself. Updating is a deliberate step on the server (update.sh), with a backup and automatic rollback.",
+    "check": "Check for updates",
+    "checkHelp": "Once a day, ask GitHub which Chimera releases exist and show administrators when a new one is available. Nothing about you, your users or this server is sent.",
+    "available": "Chimera {{version}} is available.",
+    "releaseNotes": "Release notes",
+    "howTo": "How to update",
+    "dismiss": "Hide until the next version",
+    "neverChecked": "Not checked yet.",
+    "upToDate": "Up to date (checked {{when}}).",
+    "checkedAt": "Checked {{when}}.",
+    "checkFailed": "The last check failed ({{when}}): {{reason}}. It is retried tomorrow; users don't see this.",
+    "never": "Nothing is ever downloaded or installed from here.",
+    "askTitle": "Check for new Chimera versions?",
+    "askBody": "Once a day, Chimera can ask GitHub which releases exist and tell administrators when a new version is out. Nothing about you, your users or this server is sent, and nothing is installed automatically. You can change this later in Settings → About.",
+    "askYes": "Check daily",
+    "askNo": "No, thanks"
   }
 }

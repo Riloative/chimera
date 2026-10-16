@@ -1,0 +1,150 @@
+# Continuous integration: every pull request and push to main. Also called by
+# release.yml, so a release only happens when all of this passes.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  checks:
+    name: Version, workflows, scripts, compose
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Version consistency
+        run: python3 scripts/check-version.py
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+      - name: shellcheck
+        run: docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 scripts/*.sh
+      - name: Compose files
+        run: |
+          set -eu
+          for files in "-f docker-compose.yml" "-f docker-compose.yml -f docker-compose.dev.yml"; do
+            for profile in "" searxng browser llama; do
+              # shellcheck disable=SC2086
+              docker compose $files ${profile:+--profile $profile} config -q
+            done
+          done
+
+  backend:
+    name: Backend tests (incl. real Chromium)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            backend/pyproject.toml
+            browser/requirements.txt
+      - name: Install backend
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -e "backend[test]"
+      - name: Install the browser service's Playwright and Chromium
+        run: |
+          python -m venv browser/.venv
+          browser/.venv/bin/pip install -r browser/requirements.txt
+          browser/.venv/bin/playwright install --with-deps chromium
+      - name: pytest
+        run: backend/.venv/bin/python -m pytest -q -rs backend/tests
+
+  frontend:
+    name: Frontend typecheck, lint, unit and i18n tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc -b
+      - run: npx eslint .
+      # Includes the i18n parity, placeholder, plural and hardcoded-string checks.
+      - run: npx vitest run
+      - name: Third-party notices are current
+        run: node scripts/notices.mjs --check
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -e "backend[test]"
+          cd frontend && npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: Build and test
+        working-directory: frontend
+        run: npx vite build && npx playwright test
+      - name: Keep traces of failures
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-traces
+          path: frontend/test-results
+          retention-days: 7
+
+  docker:
+    name: Docker build (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - image: chimera
+            context: .
+          - image: chimera-browser
+            context: browser
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          push: false
+          build-args: |
+            CHIMERA_BUILD_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

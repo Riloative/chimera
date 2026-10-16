@@ -1,7 +1,8 @@
 [project]
 name = "chimera"
-version = "0.4.1"
+version = "1.0.0-rc.1"
 description = "A minimalist, privacy-first, self-hosted AI chat workspace for local LLMs (llama.cpp / llama-server, Ollama, OpenAI-compatible servers)."
+license = "MIT"  # SPDX
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -26,7 +27,7 @@ test = ["pytest>=8"]
 chimera = "chimera.__main__:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # PEP 639 SPDX license field
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

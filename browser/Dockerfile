@@ -3,6 +3,14 @@
 # pinned to the same version as the Python package: nothing is downloaded at
 # runtime.
 FROM mcr.microsoft.com/playwright/python:v1.56.0-noble
+ARG CHIMERA_BUILD_COMMIT=""
+ARG CHIMERA_VERSION=""
+LABEL org.opencontainers.image.title="Chimera headless browser" \
+      org.opencontainers.image.description="Isolated Chromium renderer for Chimera's web reader" \
+      org.opencontainers.image.source="https://github.com/Riloative/chimera" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${CHIMERA_VERSION}" \
+      org.opencontainers.image.revision="${CHIMERA_BUILD_COMMIT}"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

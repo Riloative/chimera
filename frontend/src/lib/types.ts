@@ -481,3 +481,19 @@ export interface AdminSettings {
   provider_url_policy: "any" | "private" | "custom";
   provider_url_allowlist: string[];
 }
+
+/** A newer stable release (from the opt-in update check). */
+export interface UpdateAvailable {
+  version: string;
+  url: string;
+}
+
+/** GET /api/admin/updates */
+export interface UpdateView {
+  enabled: boolean;
+  /** The administrator has answered the first-run question. */
+  asked: boolean;
+  current: string;
+  available: UpdateAvailable | null;
+  last_check: { checked_at: string | null; ok: boolean | null; error: string | null } | null;
+}

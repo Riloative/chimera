@@ -203,3 +203,7 @@ class AdminSettings(Strict):
 class ClearData(Strict):
     scope: Literal["conversations", "all"]
     confirm: Literal["DELETE"]
+
+
+class UpdateSettings(Strict):
+    enabled: bool

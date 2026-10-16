@@ -47,8 +47,32 @@ def test_every_api_route_requires_a_session(app, anon):
 
 
 def test_health_is_public_and_minimal(anon):
+    from chimera import __version__
+
     resp = anon.get("/api/health")
-    assert resp.status_code == 200 and resp.json() == {"status": "ok"}
+    assert resp.status_code == 200 and resp.json() == {"status": "ok", "version": __version__}
+
+
+def test_readiness_is_public_and_reports_only_booleans(anon):
+    resp = anon.get("/api/ready")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ready", "checks": {"migrations": True, "writable": True, "data_dir": True}}
+
+
+def test_readiness_fails_when_the_database_is_not_writable(anon):
+    import sqlite3
+
+    db = anon.app.state.chimera.db
+    db._conn.execute("PRAGMA busy_timeout = 50")
+    other = sqlite3.connect(str(db.path), timeout=0.05)  # another process holds the write lock
+    other.execute("BEGIN IMMEDIATE")
+    try:
+        resp = anon.get("/api/ready")
+        assert resp.status_code == 503 and resp.json()["checks"]["writable"] is False
+    finally:
+        other.execute("ROLLBACK")
+        other.close()
+        db._conn.execute("PRAGMA busy_timeout = 5000")
 
 
 def test_dns_rebinding_host_rejected(tmp_path):

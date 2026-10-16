@@ -27,7 +27,7 @@ from .config import Config
 SESSION_COOKIE = "chimera_session"
 CSRF_COOKIE = "chimera_csrf"
 CSRF_HEADER = b"x-csrf-token"
-PUBLIC_API = {"/api/health", "/api/auth/status", "/api/auth/login", "/api/auth/register", "/api/auth/logout"}
+PUBLIC_API = {"/api/health", "/api/ready", "/api/auth/status", "/api/auth/login", "/api/auth/register", "/api/auth/logout"}
 # Reachable while an account must replace a temporary password.
 PASSWORD_CHANGE_PATHS = {"/api/auth/me", "/api/account/password"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}

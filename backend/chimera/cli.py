@@ -6,9 +6,18 @@
     python -m chimera.cli set-role <login> admin|user
     python -m chimera.cli enable <login> | disable <login>
     python -m chimera.cli registration open|closed|first_user_only
+    python -m chimera.cli backup <file-or-directory>
+    python -m chimera.cli restore <archive> --yes      (server stopped)
+    python -m chimera.cli version
 
+Every command is also available as ``chimera <command>``.
 It uses the same configuration as the server (``CHIMERA_DATA_DIR``, ``.env``).
-Docker: ``docker compose exec chimera python -m chimera.cli reset-password admin``
+Docker::
+
+    docker compose exec chimera chimera reset-password admin
+    docker compose exec chimera chimera backup /data/backups/
+    docker compose stop chimera
+    docker compose run --rm --no-deps chimera chimera restore /data/backups/<archive>.tar.gz --yes
 """
 
 from __future__ import annotations
@@ -16,10 +25,15 @@ from __future__ import annotations
 import argparse
 import sys
 
+from . import BUILD_COMMIT, __version__
 from .config import REGISTRATION_MODES, ensure_secrets, load_config
-from .db import Database
+from .db import SCHEMA_VERSION, Database, SchemaTooNew
 from .errors import AppError
+from .maintenance import MaintenanceError, backup, inspect_archive, restore
 from .services.auth import AuthService
+
+COMMANDS = ("list-users", "reset-password", "create-user", "set-role", "enable", "disable", "registration",
+            "backup", "restore", "version")
 
 
 def _service() -> AuthService:
@@ -53,9 +67,20 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_parser(name).add_argument("login")
     p = sub.add_parser("registration")
     p.add_argument("mode", choices=REGISTRATION_MODES)
+    p = sub.add_parser("backup", help="Write a consistent backup archive (database, uploads, keys); safe while running")
+    p.add_argument("dest", help="Archive file, or a directory for a timestamped archive")
+    p = sub.add_parser("restore", help="Restore a backup archive (Chimera must be stopped)")
+    p.add_argument("archive")
+    p.add_argument("--yes", action="store_true", help="Don't ask for confirmation")
+    sub.add_parser("version")
     args = parser.parse_args(argv)
 
-    auth = _service()
+    if args.cmd in ("backup", "restore", "version"):
+        return _maintenance(args)
+    try:
+        auth = _service()
+    except SchemaTooNew as exc:
+        sys.exit(f"Error: {exc}")
     try:
         if args.cmd == "list-users":
             for u in auth.db.all("SELECT * FROM users ORDER BY created_at"):
@@ -95,6 +120,32 @@ def main(argv: list[str] | None = None) -> int:
         sys.exit(f"Error: {exc.message}")
     finally:
         auth.db.close()
+    return 0
+
+
+def _maintenance(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    try:
+        if args.cmd == "version":
+            print(f"Chimera {__version__}" + (f" ({BUILD_COMMIT})" if BUILD_COMMIT else "") + f", database schema {SCHEMA_VERSION}")
+        elif args.cmd == "backup":
+            result = backup(cfg.data_dir, args.dest)
+            print(f"Backup written: {result['path']} (Chimera {result['chimera_version']}, schema {result['schema_version']})")
+        elif args.cmd == "restore":
+            manifest = inspect_archive(args.archive)
+            print(f"Archive from Chimera {manifest.get('chimera_version')} (schema {manifest.get('schema_version')}), "
+                  f"created {manifest.get('created_at')}.")
+            print(f"This replaces the database, uploads and keys in {cfg.data_dir}; the current ones are kept in "
+                  f"{cfg.data_dir / 'backups'}/pre-restore-<time>/.")
+            if not args.yes:
+                if not sys.stdin.isatty():
+                    sys.exit("Refusing without confirmation: add --yes.")
+                if input("Type 'restore' to continue: ").strip() != "restore":
+                    sys.exit("Cancelled.")
+            result = restore(cfg.data_dir, args.archive)
+            print(f"Restored. Previous data: {result['previous_data']}")
+    except (MaintenanceError, SchemaTooNew, OSError) as exc:
+        sys.exit(f"Error: {exc}")
     return 0
 
 

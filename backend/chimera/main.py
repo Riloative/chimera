@@ -20,19 +20,18 @@ from .api.routes import router
 from .api.web_routes import router as web_router
 from .config import Config, ensure_secrets, load_config
 from .errors import AppError
+from .maintenance import DataDirLock
 from .security import SecurityMiddleware
 from .state import AppState
 
 log = logging.getLogger("chimera")
 
 
-def configure_logging(level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
-    # Request lines can contain conversation IDs but never content; keep them.
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+def configure_logging(level: str, fmt: str = "text") -> dict:
+    """Kept for callers of earlier versions; see ``chimera.logs``."""
+    from .logs import configure_logging as configure
+
+    return configure(level, fmt)
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -41,8 +40,16 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # One server per data directory (also what makes `chimera restore` refuse while running).
+        lock = DataDirLock(config.data_dir)
+        if not lock.acquire():
+            raise RuntimeError(f"Another Chimera server is already using {config.data_dir}.")
         client = httpx.AsyncClient(trust_env=config.http_trust_env, follow_redirects=False)
-        state = AppState.build(config, client)
+        try:
+            state = AppState.build(config, client)
+        except BaseException:
+            lock.release()
+            raise
         web_client = state.web.fetcher.client
         browser = state.web.browser
         if browser is not None:
@@ -64,6 +71,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         if state.db.last_backup:
             log.warning("pre-upgrade backup: %s (restore by copying it over %s while stopped)", state.db.last_backup, config.db_path)
         app.state.chimera = state
+        state.updates.start()  # does nothing unless an administrator turned update checks on
         users = state.auth.user_count()
         log.info(
             "Chimera %s ready (data: %s, users: %d, registration: %s)",
@@ -74,13 +82,15 @@ def create_app(config: Config | None = None) -> FastAPI:
         try:
             yield
         finally:
-            await state.chat.shutdown()
+            await state.updates.stop()
+            await state.chat.shutdown(config.shutdown_grace_seconds)
             await client.aclose()
             await web_client.aclose()
             if browser is not None:
                 await browser.proxy.stop()
                 await browser.aclose()
             state.db.close()
+            lock.release()
 
     app = FastAPI(title="Chimera", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 

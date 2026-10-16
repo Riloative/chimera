@@ -15,7 +15,7 @@
 # proposes updates (see docs/DEPLOYMENT.md, "Image pinning").
 services:
   chimera:
-    image: ghcr.io/riloative/chimera:${CHIMERA_VERSION:-1.0.0-rc.1}
+    image: ghcr.io/riloative/chimera:${CHIMERA_VERSION:-1.0.0}
     container_name: chimera
     restart: unless-stopped
     ports:
@@ -131,7 +131,7 @@ services:
   # rules as Chimera's own page fetcher. Never publish its port. See docs/WEB.md.
   browser:
     profiles: ["browser"]
-    image: ghcr.io/riloative/chimera-browser:${CHIMERA_VERSION:-1.0.0-rc.1}
+    image: ghcr.io/riloative/chimera-browser:${CHIMERA_VERSION:-1.0.0}
     container_name: chimera-browser
     restart: unless-stopped
     environment:

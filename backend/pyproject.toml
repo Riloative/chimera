@@ -1,6 +1,6 @@
 [project]
 name = "chimera"
-version = "1.0.0-rc.1"
+version = "1.0.0"
 description = "A minimalist, privacy-first, self-hosted AI chat workspace for local LLMs (llama.cpp / llama-server, Ollama, OpenAI-compatible servers)."
 license = "MIT"  # SPDX
 requires-python = ">=3.11"

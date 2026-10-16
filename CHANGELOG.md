@@ -14,7 +14,7 @@ changes.
 
 Release candidate for 1.0.0; the notes are under [1.0.0] below.
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-10-16
 
 The first stable release: published images, a documented install and update
 path with backups and automatic rollback, and the release engineering behind

@@ -9,14 +9,18 @@ requires an account.
 
 ## What Chimera never does
 
-- No telemetry, analytics, crash reporting or update checks.
+- No telemetry, analytics or crash reporting. No update checks unless an
+  administrator turns them on (then one request a day to GitHub's release
+  list, with nothing about the instance; see [Updates](#updates-and-the-supply-chain)).
 - No requests to CDNs: fonts, KaTeX fonts, icons, scripts and both language
   catalogs are bundled. The Content-Security-Policy forbids loading anything
   from another origin (`default-src 'self'`).
 - No remote images in model output (replaced with a placeholder with an
   explicit *Open image* link, so a response can't make your browser contact a
   tracker or carry data out in an image URL).
-- No logging of message content, passwords, session tokens or API keys.
+- No logging of message content, passwords, session tokens or API keys, in
+  text or JSON log format (`CHIMERA_LOG_FORMAT=json`); access-log lines drop
+  query strings, and web pages are logged by domain only.
 - No email/SMTP or other cloud dependency for accounts.
 
 ## Accounts
@@ -159,25 +163,19 @@ HTTPS even on a LAN (Caddy can issue an internal certificate with `tls internal`
 Terminate TLS in a reverse proxy and keep Chimera on loopback behind it:
 
 ```bash
-CHIMERA_HOST=127.0.0.1
-CHIMERA_TRUSTED_PROXIES=127.0.0.1
 CHIMERA_ALLOWED_HOSTS=chat.example.com
-CHIMERA_COOKIE_SECURE=true
+# Native: the proxy's address (127.0.0.1). Docker: the Compose network's
+# gateway, because published-port traffic enters the container from there.
+CHIMERA_TRUSTED_PROXIES=172.30.0.1
 ```
 
-```
-# Caddyfile
-chat.example.com {
-    reverse_proxy 127.0.0.1:8700 {
-        flush_interval -1     # don't buffer streamed responses
-    }
-}
-```
-
-nginx: `proxy_buffering off;`, `proxy_read_timeout 600s;` and set
-`X-Forwarded-For`/`X-Forwarded-Proto`. Only list proxies you control in
-`CHIMERA_TRUSTED_PROXIES`; otherwise clients could forge `X-Forwarded-For` to
-dodge per-IP rate limits (Chimera ignores the header from untrusted peers).
+Complete Caddy, nginx and Cloudflare Tunnel examples, and how to find and pin
+the gateway address: [REVERSE_PROXY.md](REVERSE_PROXY.md). Only list proxies
+you control in `CHIMERA_TRUSTED_PROXIES`; otherwise clients could forge
+`X-Forwarded-For` to dodge per-IP rate limits (Chimera ignores the header from
+untrusted peers). With `CHIMERA_COOKIE_SECURE=auto` (default) the session
+cookie becomes `Secure` when the proxy reports HTTPS, and responses then carry
+`Strict-Transport-Security`.
 
 Exposing Chimera to the internet: keep registration `closed` or
 `first_user_only`, use strong passwords, and consider an extra layer (VPN such
@@ -185,9 +183,13 @@ as WireGuard/Tailscale, or proxy-level authentication). There is no 2FA yet.
 
 ### Docker
 
-The bundled `docker-compose.yml` publishes the port on `127.0.0.1` only.
-Requests reach the container from the Docker bridge network, so all clients
-share one IP for rate-limiting purposes; per-account limits still apply.
+The bundled `docker-compose.yml` publishes the port on `127.0.0.1` only
+(`CHIMERA_PUBLISH`). Requests reach the container from the Docker network's
+gateway, so without a trusted reverse proxy all clients share one IP for
+rate-limiting purposes (per-account limits still apply); with
+`CHIMERA_TRUSTED_PROXIES` set to that gateway, the real client IPs are used.
+The containers run unprivileged, read-only, without capabilities and with
+`no-new-privileges`; no container gets the Docker socket.
 
 Never publish the `browser` service's port or route a tunnel to it (e.g. a
 Cloudflare Tunnel should point at Chimera only).
@@ -212,8 +214,68 @@ network, start it with `--api-key` and store that key in the connection.
 `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy`,
 `Cross-Origin-Resource-Policy`, `Permissions-Policy`, and `no-store` caching for
-API responses. CORS is off; `CHIMERA_CORS_ORIGINS` enables it for explicit
-origins only.
+API responses. Over HTTPS (directly or through a trusted proxy) also
+`Strict-Transport-Security: max-age=31536000`. CORS is off;
+`CHIMERA_CORS_ORIGINS` enables it for explicit origins only.
+
+Session cookies are `HttpOnly`, `SameSite=Lax` and `Secure` over HTTPS; every
+state-changing request needs the CSRF token (double submit, tied to the
+session) and a same-origin `Origin`; login, registration and web requests are
+rate limited. The registration default (`first_user_only`) and the setup token
+written by the install script are suitable for internet-facing servers.
+
+## Production checklist
+
+Before exposing Chimera beyond your own machine:
+
+- [ ] **HTTPS** through a reverse proxy or tunnel ([REVERSE_PROXY.md](REVERSE_PROXY.md)); Chimera itself stays on `127.0.0.1:8700`.
+- [ ] **`CHIMERA_ALLOWED_HOSTS`** lists exactly your host names (never `*` on the internet).
+- [ ] **`CHIMERA_TRUSTED_PROXIES`** is the proxy's address as seen by the container (Docker: the network gateway), nothing broader.
+- [ ] **Registration** `first_user_only` or `closed`; the first admin account created with the **setup token**; strong passwords.
+- [ ] **Backups**: `chimera backup` on a schedule and copied off the machine; a restore tried once.
+- [ ] **Updates**: a plan for applying patch releases (`update.sh`, or the opt-in timer); security advisories watched (GitHub → Watch → Custom → Security alerts).
+- [ ] **Firewall**: only 80/443 (or none, with a tunnel) open to the internet; SSH restricted.
+- [ ] **Never publish** llama-server, SearXNG, the browser service, or the browser egress proxy (8701). If llama-server must listen on a network, use `--api-key`.
+- [ ] `docker compose exec chimera chimera --check-config` (or the startup log) shows no configuration warnings.
+- [ ] Image signatures verified (below) if you pull from a mirror or want proof of origin.
+
+## Updates and the supply chain
+
+- **Releases are built by CI only.** A tag `vX.Y.Z` triggers
+  `.github/workflows/release.yml`, which runs the full test suite, builds the
+  images for linux/amd64 and linux/arm64, scans them with Trivy (a fixable
+  critical vulnerability fails the release), pushes them with SBOM and
+  provenance attestations, and signs them with Sigstore cosign (keyless: the
+  signature is bound to the workflow's GitHub identity, no long-lived key
+  exists). Only the built-in `GITHUB_TOKEN` is used; third-party actions are
+  pinned to commit SHAs; jobs have least-privilege permissions.
+- **Release assets** (Compose file, `.env.example`, install and update
+  scripts, systemd units) are listed in `SHA256SUMS`; `install-docker.sh` and
+  `update.sh` refuse files that don't match.
+- **Updating never happens from inside Chimera.** The in-app check only
+  informs administrators; `update.sh` runs on the host, takes a backup, waits
+  for the health check and rolls back on failure. No container mounts the
+  Docker socket. Automatic updates are opt-in, patch-level by default, and
+  never cross a major version.
+
+### Verifying images
+
+With [cosign](https://docs.sigstore.dev/cosign/system_config/installation/):
+
+```bash
+cosign verify ghcr.io/riloative/chimera:1.0.0 \
+  --certificate-identity-regexp '^https://github\.com/Riloative/chimera/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+The same for `ghcr.io/riloative/chimera-browser`. A successful verification
+proves the image was built and signed by this repository's release workflow
+from a version tag. The SBOM and build provenance are attached to the image:
+
+```bash
+docker buildx imagetools inspect ghcr.io/riloative/chimera:1.0.0 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/riloative/chimera:1.0.0 --format '{{ json .Provenance }}'
+```
 
 ## Not implemented (by design for this iteration)
 
@@ -226,5 +288,5 @@ can be added without changing the data model.
 
 ## Reporting
 
-If you find a vulnerability, please open a private security advisory on the
-repository rather than a public issue.
+Please report vulnerabilities privately; see [SECURITY.md](../SECURITY.md)
+in the repository root (process and supported versions).

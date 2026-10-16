@@ -161,6 +161,51 @@ The proxy buffers responses. Caddy: `flush_interval -1`. nginx:
 Run `cd frontend && npm ci && npm run build`, or set `CHIMERA_STATIC_DIR` to the
 built `dist` directory.
 
+## Installing and updating
+
+**`update.sh` says it rolled back.** The new version didn't pass its health
+check within the timeout (or kept crashing), so the previous `.env`, Compose
+file, data and images were put back and the old version started again. Look
+at the end of `/opt/chimera/update.log` (it includes the failed container's
+last log lines) and at `docker compose logs chimera`. Common causes: not
+enough memory (`CHIMERA_MEM_LIMIT`), a configuration error the new version
+reports at startup, or a too-short `--timeout` on a slow machine. Fix the
+cause and run `update.sh` again; report a bug if the release itself fails.
+
+**"…has schema version N, but this version of Chimera only supports up to M"**
+(the container exits with code 3). An older Chimera was started on a database
+that a newer one already migrated: the downgrade guard refuses, so nothing is
+damaged. Set `CHIMERA_VERSION` in `.env` back to the newer version and
+`docker compose up -d`, or restore a backup from before that upgrade
+([DEPLOYMENT.md → Rolling back](DEPLOYMENT.md#rolling-back)).
+
+**Image pull fails** (`denied`, `manifest unknown`, `toomanyrequests`, TLS
+errors). Check `CHIMERA_VERSION` is a published release (`ghcr.io/riloative/chimera`
+tags), the server can reach `ghcr.io` (and Docker Hub for SearXNG), and the
+system clock is correct (TLS). Behind an HTTP proxy, configure it for the
+Docker daemon (`systemctl edit docker`, `HTTPS_PROXY=…`). Air-gapped: load the
+images with `docker load` ([DEPLOYMENT.md → Offline](DEPLOYMENT.md#offline-operation)).
+A failed pull during `update.sh` changes nothing.
+
+**The health check fails / the container restarts in a loop.**
+`docker compose ps` shows `unhealthy`; `curl -s http://127.0.0.1:8700/api/ready`
+shows which check fails (`migrations`, `writable`, `data_dir`). `writable:
+false`: the disk is full or the volume is read-only (`df -h`). Startup errors
+are in `docker compose logs chimera`; configuration problems are reported as
+`Configuration error: …` with the variable to fix (`chimera --check-config`
+checks without starting).
+
+**"Another Chimera server is already using /data."** Two containers (or a
+container and a native server) share one data directory. Stop the other one.
+
+**"Chimera is running and using this data directory. Stop it first."**
+`chimera restore` refuses while the server runs: `docker compose stop chimera`,
+then run the restore with `docker compose run --rm --no-deps chimera chimera restore …`.
+
+**The install script stops at "Checksum mismatch".** A downloaded file differs
+from the release's `SHA256SUMS` (a broken download or proxy, or tampering).
+Nothing was installed; try again, or download the files manually and compare.
+
 ## Headless browser
 
 **"…still showing a loading screen when the time ran out"** (`web.browser_loading`):

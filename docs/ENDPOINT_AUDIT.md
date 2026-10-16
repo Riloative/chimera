@@ -3,7 +3,9 @@
 Every route under `/api` was reviewed when accounts were introduced, again
 when web reading and search were added (version 0.3), and again for
 conversation branching, context management and the headless browser (version
-0.4: four new routes and two changed ones, marked **0.4**). The table lists every registered route with how access is enforced;
+0.4: four new routes and two changed ones, marked **0.4**), and for the 1.0
+release (one new public route, two new admin routes, three changed ones,
+marked **1.0**). The table lists every registered route with how access is enforced;
 `tests/test_security.py` enumerates the live route table, so new routes are
 covered automatically.
 
@@ -27,7 +29,8 @@ their own data · **Admin** – administrators only (404 for others).
 
 | Method | Path | Access | Ownership / scoping |
 | --- | --- | --- | --- |
-| GET | `/api/health` | Public | Returns only `{"status":"ok"}` |
+| GET | `/api/health` **1.0** | Public | Liveness: `{"status":"ok","version":"…"}`; the version only (no commit, paths or counts) |
+| GET | `/api/ready` **1.0** | Public | Readiness for health checks: `{"status","checks":{"migrations","writable","data_dir"}}`, booleans only; 503 when not ready. Takes and immediately releases the database write lock |
 | GET | `/api/auth/status` | Public | Reveals only whether setup/registration is open; sets anonymous CSRF cookie |
 | POST | `/api/auth/register` | Public | Registration policy, per-IP rate limit, CSRF (pre-session) |
 | POST | `/api/auth/login` | Public | Per-IP + per-account throttling, generic errors, CSRF (pre-session), session rotation |
@@ -46,7 +49,9 @@ their own data · **Admin** – administrators only (404 for others).
 | POST | `/api/admin/users/{uid}/reset-password` | Admin | Temporary password, forced change, sessions revoked |
 | DELETE | `/api/admin/users/{uid}` | Admin | Cannot delete self; last-admin guard |
 | GET/PATCH | `/api/admin/settings` | Admin | Registration mode, connection URL policy |
-| GET | `/api/info` | User | Paths/DB size/user count only for admins |
+| GET | `/api/info` **1.0** | User | Version and build commit for everyone; paths, DB size, user count and the available update (if the admin turned the check on) only for admins |
+| GET | `/api/admin/updates` **1.0** | Admin | Update-check setting and last result (time, ok, error code, newest release and its GitHub URL) |
+| PATCH | `/api/admin/updates` **1.0** | Admin | `{enabled}` only (strict schema); CSRF; turning it on runs one check; checks happen at most once a day through the hardened fetcher to the operator-configured `CHIMERA_UPDATE_CHECK_URL`, with no user or instance data; nothing is ever installed |
 | GET/PATCH | `/api/settings` | User | `user_settings WHERE user_id = me` (includes personal web preferences) |
 | GET | `/api/web/status` **new** | User | Instance-wide switch, whether search is available, limits; no secrets or addresses |
 | GET | `/api/web/sources/{sid}` **new** | User | `WHERE id = ? AND user_id = me` → 404; returns extracted text, never raw bytes |
@@ -85,7 +90,7 @@ their own data · **Admin** – administrators only (404 for others).
 | GET | `/api/data/export` | User | Own conversations, prompts, settings, own connections (no keys) |
 | POST | `/api/data/import` | User | Imported into the caller; IDs owned by others get fresh IDs |
 | GET | `/api/data/backup` | Admin | Whole database (all accounts) |
-| POST | `/api/data/restore` | Admin | Whole database |
+| POST | `/api/data/restore` **1.0** | Admin | Whole database; now refuses (422 `restore_too_new`) a backup with a newer schema than the running version, before touching the live database |
 | POST | `/api/data/clear` | User | Deletes only the caller's data (shared connections are kept) |
 | * | `/api/{path}` | User | Catch-all 404 (still behind the auth middleware) |
 

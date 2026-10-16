@@ -232,6 +232,28 @@ available = (window − reserved for the answer − safety margin)
 - What was done is stored on the answer (`messages.context`) and shown: a
   usage indicator, and a marker where history stops being sent.
 
+## Operations
+
+- **Version**: one source, `backend/pyproject.toml`; `chimera.__version__`
+  reads it (or the installed package metadata in the image).
+  `scripts/check-version.py` keeps `frontend/package.json`, the Compose image
+  tags, `CHANGELOG.md` and release tags consistent (CI).
+- **Startup** (`chimera/__main__.py`): validate the configuration
+  (`config.validate_config`: fatal errors exit 2, risky settings warn), refuse
+  a database whose schema is newer than the code (exit 3), then serve.
+  `chimera <command>` dispatches to the administrative CLI (`cli.py`,
+  `maintenance.py`: backup/restore archives).
+- **Lifespan**: an exclusive lock on `<data>/.chimera.lock` (one server per
+  data directory; `restore` refuses while it is held), migrations with a
+  pre-migration copy, the opt-in update checker (`services/updates.py`); on
+  shutdown running generations get `CHIMERA_SHUTDOWN_GRACE_SECONDS` and are
+  then saved as `interrupted`.
+- **Health**: `/api/health` (liveness + version) and `/api/ready` (migrations
+  complete, database writable, data directory writable) for container health
+  checks.
+- **Logs**: `chimera/logs.py` (text or JSON; uvicorn uses the same config;
+  access lines without query strings).
+
 ## Retrieval (RAG)
 
 1. Documents are extracted (text/PDF), split by paragraph → line → sentence →

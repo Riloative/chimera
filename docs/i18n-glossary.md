@@ -68,6 +68,14 @@ breaks, `el. paštas` abbreviation.
 | draft | juodraštis | |
 | headless browser | foninė naršyklė | literally "background browser" |
 | render (a page) | atvaizduoti | "Render with browser" → *Atvaizduoti naršykle* |
+| release (a published version) | leidimas | "release notes" → *pakeitimų aprašas* |
+| update (noun / verb) | atnaujinimas / atnaujinti | "Check for updates" → *Tikrinti, ar yra atnaujinimų* |
+| version | versija | "Chimera 1.1.0 is available" → *Išleista Chimera 1.1.0* |
+| changelog | pakeitimų žurnalas | the file; per-release text is *pakeitimų aprašas* |
+| build (of the software) | versijos komplektas | Settings → About; "local build" → *vietinis komplektas* |
+| license | licencija | |
+| backup / restore | atsarginė kopija / atkurti | |
+| roll back | atšaukti (atnaujinimą) | |
 
 ## Phrases that deserve native-speaker review
 
@@ -134,3 +142,20 @@ Branches, context management and the headless browser (0.4), additionally:
   1 (21 žetonas) is not inflected.
 - **Admin status lines** for the browser service ("Nesukonfigūruota. Paleiskite
   browser profilį…") mix Lithuanian with untranslated configuration names.
+
+Sources list, browser and release (0.4.1 and 1.0), additionally:
+
+- **"Baigiantis laikui puslapis vis dar rodė įkėlimo ekraną, todėl jo
+  perskaityti nepavyko."** (`web.browser_loading`) – *įkėlimo ekranas* for
+  "loading screen".
+- **"Išleista Chimera {{version}}."** for "Chimera X is available" – a
+  reviewer may prefer *Galima Chimera {{version}}* or *Yra nauja versija*.
+- **"leidimas"** for release vs. **"versija"** for version, and
+  **"pakeitimų aprašas"** for release notes (vs. *pakeitimų žurnalas* for the
+  changelog file).
+- **"Versijos komplektas" / "vietinis komplektas"** for build / local build –
+  the least natural choice; *Kompiliacija* or simply *Komitas* are alternatives.
+- **"Tikrinti, ar yra atnaujinimų"**, **"Tikrinti kasdien"**, **"Ne, ačiū"**
+  and the first-run question text (*askBody*), which carries the privacy promise.
+- **"Paskutinis tikrinimas nepavyko ({{when}}): {{reason}}. Bus bandoma rytoj;
+  naudotojai to nemato."**

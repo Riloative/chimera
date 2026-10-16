@@ -160,16 +160,19 @@ class SecurityMiddleware:
                 if not app_state.auth.csrf_valid(info.session if info else None, token, cookies.get(CSRF_COOKIE)):
                     return await _reject(send, 403, "csrf_failed", "Security token missing or expired. Reload the page.")
 
-        return await self.app(scope, receive, self._wrap(send, is_api))
+        return await self.app(scope, receive, self._wrap(send, is_api, request_is_https(scope)))
 
     @staticmethod
-    def _wrap(send, is_api: bool):
+    def _wrap(send, is_api: bool, https: bool = False):
         async def send_with_headers(message: dict[str, Any]):
             if message["type"] == "http.response.start":
                 existing = {k.lower() for k, _ in message.get("headers", [])}
                 extra = [(k, v) for k, v in SECURITY_HEADERS if k not in existing]
                 if is_api:
                     extra.append((b"cache-control", b"no-store"))
+                if https and b"strict-transport-security" not in existing:
+                    # Only over HTTPS (directly or via a trusted proxy): browsers then refuse plain HTTP for a year.
+                    extra.append((b"strict-transport-security", b"max-age=31536000"))
                 message["headers"] = list(message.get("headers", [])) + extra
             await send(message)
 

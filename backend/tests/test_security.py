@@ -113,6 +113,16 @@ def test_security_headers_present(anon):
     assert resp.headers["cache-control"] == "no-store"
 
 
+def test_hsts_only_over_https(tmp_path):
+    from chimera.main import create_app
+
+    app = create_app(make_config(tmp_path))
+    with CsrfClient(app, base_url="https://localhost") as secure:
+        assert secure.get("/api/health").headers["strict-transport-security"] == "max-age=31536000"
+    with CsrfClient(app, base_url="http://localhost") as plain:
+        assert "strict-transport-security" not in plain.get("/api/health").headers
+
+
 def test_forwarded_for_ignored_from_untrusted_peers(app, client):
     """A client can't dodge the per-IP limit by inventing X-Forwarded-For."""
     c = new_client(app)

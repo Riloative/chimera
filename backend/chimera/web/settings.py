@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 EngineKind = Literal["searxng", "brave", "tavily"]
-DEFAULT_USER_AGENT = "Chimera/0.3 (self-hosted AI assistant; fetches pages on behalf of its users)"
+DEFAULT_USER_AGENT = "Chimera/0.4 (self-hosted AI assistant; fetches pages on behalf of its users)"
 
 
 def _clean_list(values: list[str]) -> list[str]:
@@ -49,6 +49,11 @@ class WebAdminSettings(BaseModel):
     total_chars: int = Field(24_000, ge=2_000, le=800_000)
     fetches_per_hour: int = Field(300, ge=1, le=100_000)
     searches_per_hour: int = Field(60, ge=1, le=100_000)
+    # Headless browser (only when the browser service is configured)
+    browser_enabled: bool = True
+    browser_auto: bool = True  # render pages that need JavaScript automatically
+    browser_timeout_seconds: float = Field(25, ge=5, le=60)
+    browser_renders_per_hour: int = Field(60, ge=1, le=10_000)
 
     _lists = field_validator("fetch_allowlist", "domain_allowlist", "domain_denylist")(_clean_list)
 
@@ -74,15 +79,15 @@ class WebAdminSettings(BaseModel):
 class WebUserSettings(BaseModel):
     """Per-user preferences (part of the user's ``AppSettings``)."""
 
-    model_config = ConfigDict(extra="forbid")
+    # "ignore": stored settings from 0.3 may still carry ``context_tokens``,
+    # which moved to the context settings (see services/settings.py).
+    model_config = ConfigDict(extra="ignore")
 
     auto_read_links: bool = True
     search_by_default: bool = False
     keep_search_on: bool = False
     results: int = Field(5, ge=1, le=10)
     expand_steps: bool = False
-    # Used when the inference server does not report its context size.
-    context_tokens: int = Field(8192, ge=1024, le=2_000_000)
     task_provider_id: str | None = None
     task_model: str | None = Field(None, max_length=500)
     privacy_acknowledged: bool = False

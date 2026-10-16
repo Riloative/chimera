@@ -85,6 +85,10 @@
     "olderOmitted_few": "Anksčiau perskaityti {{count}} puslapiai praleisti, kad tilptų į konteksto langą",
     "olderOmitted_many": "Praleista {{count}} anksčiau perskaityto puslapio, kad tilptų į konteksto langą",
     "olderOmitted_other": "Praleista {{count}} anksčiau perskaitytų puslapių, kad tilptų į konteksto langą",
+    "historyTrimmed_one": "Kad tilptų puslapiai, praleista {{count}} ankstesnė žinutė",
+    "historyTrimmed_few": "Kad tilptų puslapiai, praleistos {{count}} ankstesnės žinutės",
+    "historyTrimmed_many": "Kad tilptų puslapiai, praleista {{count}} ankstesnės žinutės",
+    "historyTrimmed_other": "Kad tilptų puslapiai, praleista {{count}} ankstesnių žinučių",
     "stopped": "Sustabdyta",
     "failed": "Nepavyko"
   },
@@ -107,6 +111,10 @@
     "refetch": "Perskaityti iš naujo",
     "refetched": "Puslapis perskaitytas iš naujo.",
     "refetchFailed": "Perskaityti iš naujo nepavyko: {{reason}}. Paliktas ankstesnis tekstas.",
+    "renderBrowser": "Atvaizduoti naršykle",
+    "renderedWithBrowser": "Atvaizduota foninės naršyklės",
+    "browserFailed": "Foninė naršyklė taip pat nepadėjo: {{reason}}",
+    "tryBrowser": "Pabandykite „Atvaizduoti naršykle“.",
     "characters": "{{chars}} simb.",
     "failedTo": "Nepavyko perskaityti {{domain}}: {{reason}}",
     "status": {
@@ -139,8 +147,6 @@
       "results": "Kiek paieškos rezultatų skaityti",
       "resultsHelp": "Ne daugiau kaip {{max}}, kaip leidžia administratorius. Daugiau rezultatų – platesni atsakymai, bet reikia daugiau konteksto.",
       "expandSteps": "Rodyti veiksmus internete išskleistus",
-      "contextTokens": "Konteksto dydis, jei serveris jo nepraneša",
-      "contextTokensHelp": "llama-server konteksto dydį praneša pats. Kitiems serveriams nurodykite konteksto dydį (žetonais), su kuriuo veikia modelis.",
       "taskModel": "Modelis paieškos užklausoms rašyti",
       "taskModelHelp": "Užklausas gali rašyti mažesnis ir greitesnis modelis. Pagal numatymą naudojamas pokalbio modelis.",
       "taskModelDefault": "Pokalbio modelis",
@@ -208,6 +214,20 @@
       "timeout": "Puslapio laukimo laikas (sekundės)",
       "fetchesPerHour": "Puslapių vienam naudotojui per valandą",
       "searchesPerHour": "Paieškų vienam naudotojui per valandą",
+      "browserTitle": "Foninė naršyklė",
+      "browserHelp": "Atvaizduoja puslapius, kurių turinys matomas tik su JavaScript. Ji veikia atskirame izoliuotame konteineryje ir į internetą patenka tik per Chimeros filtrą, taikantį tas pačias taisykles kaip įprastas puslapių skaitymas.",
+      "browserStatus": {
+        "ready": "Naršyklės paslauga veikia.",
+        "notConfigured": "Nesukonfigūruota. Paleiskite browser profilį ir nustatykite CHIMERA_BROWSER_URL bei CHIMERA_BROWSER_SECRET (žr. docs/WEB.md).",
+        "unreachable": "Naršyklės paslauga sukonfigūruota, bet nepasiekiama. Puslapiai skaitomi be jos.",
+        "unauthorized": "Naršyklės paslauga atmetė Chimeros slaptą raktą. Patikrinkite, ar CHIMERA_BROWSER_SECRET abiejose pusėse sutampa."
+      },
+      "browserEnabled": "Naudoti foninę naršyklę",
+      "browserEnabledHelp": "Leidžia atvaizduoti puslapius naršykle iš šaltinio informacijos lango.",
+      "browserAuto": "Automatiškai atvaizduoti puslapius, kuriems reikia JavaScript",
+      "browserAutoHelp": "Kai puslapis pasirodo esąs tuščia JavaScript programėlė, jis atvaizduojamas naršykle. Lėčiau ir naudoja daugiau atminties nei įprastas skaitymas.",
+      "browserTimeout": "Atvaizdavimo laiko limitas (sekundės)",
+      "browserPerHour": "Atvaizdavimų vienam naudotojui per valandą",
       "saved": "Interneto nustatymai išsaugoti"
     }
   }

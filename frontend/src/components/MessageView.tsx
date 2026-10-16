@@ -5,6 +5,8 @@ import {
   Copy,
   FileText,
   Pencil,
+  Pin,
+  PinOff,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -17,8 +19,34 @@ import type { Attachment, Message, Source } from "@/lib/types";
 import { cn, copyText, formatBytes, formatNumber, modelLabel } from "@/lib/utils";
 import { LogoMark } from "./Logo";
 import { Markdown } from "./Markdown";
+import { BranchNav } from "./BranchNav";
 import { Button, ConfirmDialog, Dialog, IconButton, Spinner } from "./ui";
 import { citationTargets, LinkStatus, WebSourceList, WebSteps, type WebSources } from "./WebParts";
+
+/** Sibling navigation for a message that has other versions. */
+export interface BranchInfo {
+  index: number;
+  total: number;
+  onSelect: (index: number) => void;
+}
+
+function PinButton({ pinned, onToggle }: { pinned: boolean; onToggle: () => void }) {
+  const { t } = useTranslation("context");
+  return (
+    <IconButton label={pinned ? t("pin.unpin") : t("pin.pin")} size="sm" onClick={onToggle} active={pinned}>
+      {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+    </IconButton>
+  );
+}
+
+function PinnedBadge() {
+  const { t } = useTranslation("context");
+  return (
+    <span className="flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-[0.68rem] text-accent-text" title={t("pin.pinnedHelp")}>
+      <Pin className="size-3" aria-hidden /> {t("pin.pinned")}
+    </span>
+  );
+}
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const { t } = useTranslation(["chat", "common"]);
@@ -46,12 +74,18 @@ export function UserMessage({
   onEdit,
   onDelete,
   webSources = {},
+  branch,
+  deleteCount = 1,
+  onTogglePin,
 }: {
   message: Message;
   disabled: boolean;
   onEdit: (content: string) => Promise<void>;
   onDelete: () => void;
   webSources?: WebSources;
+  branch?: BranchInfo;
+  deleteCount?: number;
+  onTogglePin?: () => void;
 }) {
   const links = useMemo(
     () => Object.values(webSources).filter((s) => s.message_id === message.id && s.origin === "pasted").sort((a, b) => a.position - b.position),
@@ -124,28 +158,33 @@ export function UserMessage({
       )}
       {!editing && <LinkStatus sources={links} conversationId={message.conversation_id} />}
       {!editing && (
-        <div className="mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
-          <time className="mr-1.5 text-[0.72rem] text-faint" dateTime={message.created_at}>
-            {formatTime(message.created_at)}
-          </time>
-          <CopyButton text={message.content} />
-          {!message.id.startsWith("temp-") && (
-            <>
-              <IconButton label={t("message.edit")} size="sm" disabled={disabled} onClick={() => { setDraft(message.content); setEditing(true); }}>
-                <Pencil className="size-3.5" />
-              </IconButton>
-              <IconButton label={t("message.deleteMessage")} size="sm" disabled={disabled} onClick={() => setConfirm(true)}>
-                <Trash2 className="size-3.5" />
-              </IconButton>
-            </>
-          )}
+        <div className="mt-1 flex h-7 items-center gap-1">
+          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
+            <time className="mr-1.5 text-[0.72rem] text-faint" dateTime={message.created_at}>
+              {formatTime(message.created_at)}
+            </time>
+            <CopyButton text={message.content} />
+            {!message.id.startsWith("temp-") && (
+              <>
+                {onTogglePin && <PinButton pinned={!!message.pinned} onToggle={onTogglePin} />}
+                <IconButton label={t("message.edit")} size="sm" disabled={disabled} onClick={() => { setDraft(message.content); setEditing(true); }}>
+                  <Pencil className="size-3.5" />
+                </IconButton>
+                <IconButton label={t("message.deleteMessage")} size="sm" disabled={disabled} onClick={() => setConfirm(true)}>
+                  <Trash2 className="size-3.5" />
+                </IconButton>
+              </>
+            )}
+          </div>
+          {message.pinned && <PinnedBadge />}
+          {branch && <BranchNav kind="user" index={branch.index} total={branch.total} onSelect={branch.onSelect} />}
         </div>
       )}
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
         title={t("message.deleteMessageTitle")}
-        description={t("message.deleteMessageBody")}
+        description={t("message.deleteCount", { count: deleteCount })}
         onConfirm={onDelete}
       />
     </div>
@@ -220,6 +259,10 @@ export function AssistantMessage({
   onDelete,
   webSources = {},
   expandSteps = false,
+  branch,
+  deleteCount = 1,
+  onTogglePin,
+  contextMarker,
 }: {
   message: Message;
   isLast: boolean;
@@ -230,6 +273,11 @@ export function AssistantMessage({
   onDelete: () => void;
   webSources?: WebSources;
   expandSteps?: boolean;
+  branch?: BranchInfo;
+  deleteCount?: number;
+  onTogglePin?: () => void;
+  /** Rendered above the answer (e.g. the trimmed-history marker). */
+  contextMarker?: React.ReactNode;
 }) {
   const { t } = useTranslation(["chat", "common", "web"]);
   const [confirm, setConfirm] = useState(false);
@@ -242,6 +290,7 @@ export function AssistantMessage({
 
   return (
     <div className="group">
+      {contextMarker}
       <div className="mb-2 flex items-center gap-2 text-[0.8125rem] text-muted">
         <LogoMark className={cn("size-[18px] text-accent")} spinning={streaming} />
         <span className="truncate font-medium text-fg" title={message.model ?? undefined}>{modelLabel(message.model) || t("message.unknownModel")}</span>
@@ -304,8 +353,12 @@ export function AssistantMessage({
       )}
 
       {!streaming && (
-        <div className="mt-2 flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100 data-[last=true]:opacity-100" data-last={isLast}>
+        <div className="mt-2 flex h-7 items-center gap-1">
+        {branch && <BranchNav kind="assistant" index={branch.index} total={branch.total} onSelect={branch.onSelect} />}
+        {message.pinned && <PinnedBadge />}
+        <div className="flex min-w-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100 data-[last=true]:opacity-100" data-last={isLast}>
           {message.content && <CopyButton text={message.content} label={t("message.copyResponse")} />}
+          {onTogglePin && message.content && <PinButton pinned={!!message.pinned} onToggle={onTogglePin} />}
           <IconButton label={t("message.regenerate")} size="sm" onClick={() => onRegenerate()} disabled={busy}>
             <RotateCcw className="size-3.5" />
           </IconButton>
@@ -319,8 +372,15 @@ export function AssistantMessage({
             {m.finish_reason === "length" && <span className="text-warning">· {t("message.hitMaxTokens")}</span>}
           </span>
         </div>
+        </div>
       )}
-      <ConfirmDialog open={confirm} onOpenChange={setConfirm} title={t("message.deleteResponseTitle")} onConfirm={onDelete} />
+      <ConfirmDialog
+        open={confirm}
+        onOpenChange={setConfirm}
+        title={t("message.deleteResponseTitle")}
+        description={t("message.deleteCount", { count: deleteCount })}
+        onConfirm={onDelete}
+      />
     </div>
   );
 }

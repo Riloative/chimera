@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
@@ -24,8 +25,10 @@ from ..web.errors import WebError
 from ..web.pipeline import WebPlan, WebTurn, compose, generate_queries, read_links, run_search
 from ..web.prompting import citations, grounding_prompt, new_token
 from ..web.rank import estimate_tokens, tokens_to_chars
+from .context import ContextTooLarge, TokenCounter, Turn, Window, context_window, covers_hash, plan_context, verify_exact
 from ..web.service import WebService
 from ..web.urls import dedupe_key, find_urls
+from . import tree as message_tree
 from .conversations import ConversationStore, fallback_title, message_out
 from .files import FileStore
 from .knowledge import KnowledgeBase
@@ -38,6 +41,17 @@ PERSIST_INTERVAL = 0.5
 KEEPALIVE_SECONDS = 15
 TITLE_TIMEOUT = 45
 TERMINAL_EVENTS = {"end"}
+SUMMARY_TIMEOUT = 60
+SOURCE_HEADER_CHARS = 260  # url/title/status lines around each source block
+SUMMARY_PROMPT = """Summarize the earlier part of a conversation between a user and an assistant so the assistant can continue it without the original messages.
+
+Keep: facts, decisions, names, numbers, code identifiers, the user's goals and preferences, and open questions. Drop pleasantries. Write in the language of the conversation, as compact notes, at most {words} words. Do not add anything that is not in the text.
+
+Existing summary of even earlier messages (extend it, don't repeat it):
+{previous}
+
+Messages to summarize:
+{transcript}"""
 
 
 class ChatError(AppError):
@@ -57,6 +71,11 @@ class Generation:
     web_plan: WebPlan = field(default_factory=WebPlan)
     user_message_id: str | None = None
     turn: WebTurn | None = None
+    # context management: info for the UI, and one tighter retry on overflow
+    context_info: dict = field(default_factory=dict)
+    tighten: float = 1.0
+    window_cap: int | None = None
+    retried: bool = False
     content: str = ""
     reasoning: str = ""
     status: str = "streaming"
@@ -181,21 +200,31 @@ class ChatEngine:
         if conversation_id in self.by_conversation:
             raise ChatError("A response is already being generated in this conversation.", status=409, code="busy")
 
-    def _next_position(self, conversation_id: str) -> int:
-        row = self.db.one("SELECT COALESCE(MAX(position), -1) + 1 AS p FROM messages WHERE conversation_id = ?", (conversation_id,))
-        return int(row["p"]) if row else 0
-
-    def _insert_message(self, conn, conversation_id: str, position: int, role: str, content: str, **extra) -> str:
+    def _insert_message(self, conn, conversation_id: str, parent: dict | None, role: str, content: str, **extra) -> dict:
+        """Insert a node under ``parent`` (``None`` = a new root); returns a
+        minimal node dict usable as the parent of the next insert."""
         mid, ts = new_id(), now_iso()
+        position = parent["position"] + 1 if parent else 0
         conn.execute(
-            """INSERT INTO messages(id, conversation_id, position, role, content, status, provider_id, model,
-                   attachments, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO messages(id, conversation_id, parent_id, position, role, content, status, provider_id, model,
+                   attachments, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                mid, conversation_id, position, role, content, extra.get("status", "complete"),
-                extra.get("provider_id"), extra.get("model"), dumps(extra.get("attachments") or []), ts, ts,
+                mid, conversation_id, parent["id"] if parent else None, position, role, content,
+                extra.get("status", "complete"), extra.get("provider_id"), extra.get("model"),
+                dumps(extra.get("attachments") or []), ts, ts,
             ),
         )
-        return mid
+        return {"id": mid, "position": position}
+
+    @staticmethod
+    def _activate_chain(conn, conversation_id: str, path: list[str]) -> None:
+        """Point every node on ``path`` at its successor and make the last one the active leaf."""
+        for parent, child in zip(path, path[1:]):
+            conn.execute("UPDATE messages SET active_child_id = ? WHERE id = ?", (child, parent))
+        conn.execute("UPDATE conversations SET active_leaf_id = ? WHERE id = ?", (path[-1] if path else None, conversation_id))
+
+    def _node(self, message_id: str | None) -> dict | None:
+        return self.db.one("SELECT id, position FROM messages WHERE id = ?", (message_id,)) if message_id else None
 
     def _start(self, user: dict, conversation_id: str, message_id: str, pid: str, model: str, params: dict,
                plan: WebPlan | None = None, user_message_id: str | None = None) -> Generation:
@@ -270,13 +299,17 @@ class ChatEngine:
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
         plan = self.web_plan(user, content, urls, web_search, timezone)
         attachments = self._attachment_snapshots(user, attachment_ids, pid, mdl)
-        position = self._next_position(conversation_id)
-        first = position == 0
+        tree = message_tree.load(self.db, conversation_id)
+        path = message_tree.active_path(self.db, conversation_id, tree)
+        first = not tree.nodes
         with self.db.transaction() as conn:
-            user_id = self._insert_message(conn, conversation_id, position, "user", content, attachments=attachments)
-            asst_id = self._insert_message(
-                conn, conversation_id, position + 1, "assistant", "", status="streaming", provider_id=pid, model=mdl
-            )
+            # A new message continues the active branch.
+            user_node = self._insert_message(conn, conversation_id, self._node(path[-1] if path else None), "user", content,
+                                             attachments=attachments)
+            asst_node = self._insert_message(conn, conversation_id, user_node, "assistant", "", status="streaming",
+                                             provider_id=pid, model=mdl)
+            self._activate_chain(conn, conversation_id, [*path, user_node["id"], asst_node["id"]])
+            user_id, asst_id = user_node["id"], asst_node["id"]
             ts = now_iso()
             conn.execute(
                 "UPDATE conversations SET provider_id = ?, model = ?, updated_at = ? WHERE id = ?",
@@ -298,25 +331,22 @@ class ChatEngine:
         if not conv:
             raise ChatError("Conversation not found.", status=404, code="conversation_not_found")
         self._ensure_idle(conversation_id)
+        tree = message_tree.load(self.db, conversation_id)
         if message_id:
             target = self.conversations.message(message_id)
             if not target or target["conversation_id"] != conversation_id or target["role"] != "assistant":
                 raise ChatError("Message not found.", status=404, code="message_not_found")
-            position = target["position"]
             previous = target
+            parent_id = target["parent_id"]
         else:
-            last = self.db.one(
-                "SELECT * FROM messages WHERE conversation_id = ? ORDER BY position DESC LIMIT 1", (conversation_id,)
-            )
-            if not last:
+            path = message_tree.active_path(self.db, conversation_id, tree)
+            if not path:
                 raise ChatError("Nothing to regenerate.", code="nothing_to_regenerate")
-            position = last["position"] if last["role"] == "assistant" else last["position"] + 1
-            previous = last if last["role"] == "assistant" else None
-        prior_user = self.db.one(
-            "SELECT id, content FROM messages WHERE conversation_id = ? AND position < ? AND role = 'user' ORDER BY position DESC LIMIT 1",
-            (conversation_id, position),
-        )
-        if not prior_user:
+            last = self.conversations.message(path[-1])
+            previous = last if last and last["role"] == "assistant" else None
+            parent_id = last["parent_id"] if previous else path[-1]  # type: ignore[index]
+        prior_user = self.conversations.message(parent_id) if parent_id else None
+        if not prior_user or prior_user["role"] != "user":
             raise ChatError("Nothing to regenerate.", code="nothing_to_regenerate")
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
         # Pages read for the user message are reused (no re-fetch). Search runs
@@ -324,11 +354,18 @@ class ChatEngine:
         inherit = web_search is None
         search = bool(loads(previous["web"], {}).get("search")) if inherit and previous else bool(web_search)
         plan = self.web_plan(user, "", [], search, timezone, inherit_search=inherit)
+        # A new answer is a sibling of the old one, which stays as another
+        # branch, except an attempt that failed or was stopped before writing
+        # anything: that one is replaced so failed tries don't pile up.
+        replace = previous is not None and previous["status"] in ("error", "cancelled", "interrupted") \
+            and not (previous["content"] or "").strip() and not tree.kids(previous["id"])
+        if replace:
+            message_tree.delete_subtree(self.db, conversation_id, previous["id"])  # type: ignore[index]
+        parent_path = tree.path_to(prior_user["id"])
         with self.db.transaction() as conn:
-            conn.execute("DELETE FROM messages WHERE conversation_id = ? AND position >= ?", (conversation_id, position))
-            asst_id = self._insert_message(
-                conn, conversation_id, position, "assistant", "", status="streaming", provider_id=pid, model=mdl
-            )
+            asst_id = self._insert_message(conn, conversation_id, self._node(prior_user["id"]), "assistant", "",
+                                           status="streaming", provider_id=pid, model=mdl)["id"]
+            self._activate_chain(conn, conversation_id, [*parent_path, asst_id])
             conn.execute(
                 "UPDATE conversations SET provider_id = ?, model = ?, updated_at = ? WHERE id = ?",
                 (pid, mdl, now_iso(), conversation_id),
@@ -351,18 +388,17 @@ class ChatEngine:
             raise ChatError("Message is empty.", code="empty_message")
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
         plan = self.web_plan(user, content, urls, web_search, timezone)
+        tree = message_tree.load(self.db, conversation_id)
+        parent_path = tree.path_to(target["parent_id"]) if target["parent_id"] else []
         with self.db.transaction() as conn:
-            conn.execute(
-                "UPDATE messages SET content = ?, updated_at = ? WHERE id = ?", (content, now_iso(), message_id)
-            )
-            # The edited text decides which links are read now.
-            conn.execute("DELETE FROM web_sources WHERE message_id = ?", (message_id,))
-            conn.execute(
-                "DELETE FROM messages WHERE conversation_id = ? AND position > ?", (conversation_id, target["position"])
-            )
-            asst_id = self._insert_message(
-                conn, conversation_id, target["position"] + 1, "assistant", "", status="streaming", provider_id=pid, model=mdl
-            )
+            # The edit is a new sibling; the original message and everything
+            # after it stay intact as another branch.
+            edited = self._insert_message(conn, conversation_id, self._node(target["parent_id"]), "user", content,
+                                          attachments=loads(target["attachments"], []))
+            asst_id = self._insert_message(conn, conversation_id, edited, "assistant", "", status="streaming",
+                                           provider_id=pid, model=mdl)["id"]
+            self._activate_chain(conn, conversation_id, [*parent_path, edited["id"], asst_id])
+            message_id = edited["id"]
             conn.execute(
                 "UPDATE conversations SET provider_id = ?, model = ?, updated_at = ? WHERE id = ?",
                 (pid, mdl, now_iso(), conversation_id),
@@ -418,25 +454,37 @@ class ChatEngine:
         values = [dumps(v) if isinstance(v, (dict, list)) else v for v in fields.values()]
         self.db.execute(f"UPDATE messages SET {sets}, updated_at = ? WHERE id = ?", (*values, now_iso(), gen.message_id))
 
+    def path_rows(self, gen: Generation) -> list[dict]:
+        """Messages on the branch leading to the message being generated (only
+        this branch is ever sent to the model)."""
+        tree = message_tree.load(self.db, gen.conversation_id)
+        ids = tree.path_to(gen.message_id)[:-1] if gen.message_id in tree.nodes else []
+        if not ids:
+            return []
+        rows = {r["id"]: r for r in self.db.all(
+            f"SELECT * FROM messages WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))}
+        return [rows[i] for i in ids if i in rows]
+
     async def build_request(self, gen: Generation) -> tuple[ChatRequest, list[dict]]:
         conv = self.conversations.get(gen.conversation_id) or {}
         settings = self.settings.get(gen.user["id"])
-        rows = self.db.all(
-            "SELECT * FROM messages WHERE conversation_id = ? AND position < (SELECT position FROM messages WHERE id = ?) ORDER BY position",
-            (gen.conversation_id, gen.message_id),
-        )
+        rows = self.path_rows(gen)
         vision = self.vision_supported(gen.provider_id, gen.model)
         messages: list[ChatMessage] = []
         user_turns: list[tuple[str, ChatMessage]] = []
+        turns: list[Turn] = []
         for row in rows:
             if row["role"] == "assistant":
                 if row["status"] == "error" or not row["content"].strip():
                     continue
-                messages.append(ChatMessage(role="assistant", content=row["content"]))
+                msg = ChatMessage(role="assistant", content=row["content"])
             elif row["role"] == "user":
                 msg = self._user_message(gen.user["id"], row, vision)
-                messages.append(msg)
                 user_turns.append((row["id"], msg))
+            else:
+                continue
+            messages.append(msg)
+            turns.append(Turn(id=row["id"], msg=msg, pinned=bool(row.get("pinned"))))
         # Drop dangling consecutive user turns left by failed responses? Keep
         # them: the model should see everything the user actually said.
         system = conv.get("system_prompt")
@@ -463,24 +511,193 @@ class ChatEngine:
                     f"<sources>\n{context}\n</sources>"
                 )
                 system = f"{system}\n\n{knowledge_prompt}" if system else knowledge_prompt
-        system = self._compose_web(gen, settings, messages, user_turns, system, len(sources))
-        if system:
-            messages.insert(0, ChatMessage(role="system", content=system))
-        return ChatRequest(model=gen.model, messages=messages, params=gen.params), sources
+        # -- context window budget (services/context.py) --------------------
+        cctx = settings.context
+        strategy = conv.get("context_strategy") or cctx.strategy
+        provider = self.registry.provider(gen.user, gen.provider_id)
+        counter = TokenCounter(provider, gen.model)
+        window = context_window(self.registry.row(gen.provider_id), gen.model, cctx.fallback_window)
+        if gen.window_cap and gen.window_cap < window.size:
+            window = Window(gen.window_cap, "server", window.slots)  # what the server said in its error
+        max_tokens = gen.params.get("max_tokens")
+        reserve = max_tokens if isinstance(max_tokens, int) and max_tokens > 0 else min(cctx.reserve_tokens, max(64, window.size // 4))
+        margin = max(32, int(window.size * cctx.safety_margin_pct / 100))
+        available = int((window.size - reserve - margin) * gen.tighten)
+        # Web material for the latest message comes first; history is trimmed after it.
+        if strategy == "off":
+            web_tokens = available - estimate_tokens(system) - sum(estimate_tokens(m.content) + 8 for m in messages)
+        else:
+            web_tokens = available - await counter.count(system) - (await counter.message(turns[-1].msg) if turns else 0)
+        state = loads(conv.get("context_state"), {}) or {}
+        base_system, originals = system, [m.content for m in messages]
+        share = 1.0
+        for attempt in range(4):
+            for m, text in zip(messages, originals):
+                m.content = text  # web composition prefixes source blocks; start clean
+            self._drop_steps(gen, "budget", "older_omitted", "history_trimmed")
+            system = self._compose_web(gen, messages, user_turns, base_system, len(sources), int(web_tokens * share), window.size)
+            try:
+                plan = await plan_context(
+                    system=system, turns=turns, counter=counter, window=window, reserve=reserve, margin=margin,
+                    strategy=strategy, hysteresis=cctx.hysteresis, prev_cut=state.get("cut_id"),
+                    summarizer=lambda dropped, budget: self._summarize(gen, dropped, budget, window),
+                    cached_summary=lambda dropped: self._cached_summary(gen, dropped), tighten=gen.tighten,
+                )
+                break
+            except ContextTooLarge:
+                # Web pages are what can shrink: give them less room and try again.
+                if attempt == 3 or system == base_system and messages[-1].content == originals[-1]:
+                    raise
+                share *= 0.6
+        # One exact count of the rendered prompt (llama-server); trim more if the estimate was off.
+        for _ in range(6):
+            if strategy == "off":
+                break
+            exact = await verify_exact(plan, counter, gen.model, gen.params, window, reserve, margin)
+            if exact is None:
+                break
+            plan.info["used"], plan.info["exact"] = exact, True
+            if exact <= window.size - reserve:
+                break
+            gen.tighten *= 0.85
+            plan = await plan_context(
+                system=system, turns=turns, counter=counter, window=window, reserve=reserve, margin=margin,
+                strategy=strategy, hysteresis=cctx.hysteresis, prev_cut=None,
+                cached_summary=lambda dropped: self._cached_summary(gen, dropped), tighten=gen.tighten,
+            )
+        if plan.cut_id != state.get("cut_id"):
+            state["cut_id"] = plan.cut_id
+            self.db.execute("UPDATE conversations SET context_state = ? WHERE id = ?", (dumps(state), gen.conversation_id))
+        plan.info["window_slots"] = window.slots
+        plan.info["retried"] = gen.retried
+        gen.context_info = plan.info
+        gen.publish("context", {"message_id": gen.message_id, "context": plan.info})
+        if gen.turn and plan.info.get("dropped"):
+            gen.turn.step("history_trimmed", status="done", count=plan.info["dropped"])
+        final = ([ChatMessage(role="system", content=plan.system)] if plan.system else []) + plan.messages
+        return ChatRequest(model=gen.model, messages=final, params=gen.params), sources
+
+    @staticmethod
+    def _drop_steps(gen: Generation, *kinds: str) -> None:
+        """Remove budget notes from an earlier attempt (they are always the last steps)."""
+        if gen.turn:
+            gen.turn.state["steps"] = [s for s in gen.turn.state["steps"] if s["kind"] not in kinds]
+
+    async def estimate_context(self, user: dict, conversation_id: str) -> dict:
+        """What the next request would contain, without sending anything:
+        same budget rules as a real send, cached counts, no new summaries."""
+        conv = self.conversations.owned(user["id"], conversation_id)
+        if not conv:
+            raise ChatError("Conversation not found.", status=404, code="conversation_not_found")
+        settings = self.settings.get(user["id"])
+        cctx = settings.context
+        pid = conv.get("provider_id") or settings.default_provider_id
+        model = conv.get("model") or settings.default_model or ""
+        row = self.registry.visible(user, pid) if pid else None
+        window = context_window(row, model, cctx.fallback_window)
+        strategy = conv.get("context_strategy") or cctx.strategy
+        out: dict[str, Any] = {"window": window.size, "window_source": window.source, "window_slots": window.slots,
+                               "strategy": strategy, "exact": False}
+        tree = message_tree.load(self.db, conversation_id)
+        ids = message_tree.active_path(self.db, conversation_id, tree)
+        rows = {r["id"]: r for r in self.db.all(
+            f"SELECT * FROM messages WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))} if ids else {}
+        vision = self.vision_supported(pid, model) if pid else False
+        turns: list[Turn] = []
+        for mid in ids:
+            r = rows.get(mid)
+            if not r or r["status"] in ("error", "streaming") or (r["role"] == "assistant" and not r["content"].strip()):
+                continue
+            msg = self._user_message(user["id"], r, vision) if r["role"] == "user" else ChatMessage(role="assistant", content=r["content"])
+            turns.append(Turn(id=r["id"], msg=msg, pinned=bool(r.get("pinned"))))
+        turns.append(Turn(id=None, msg=ChatMessage(role="user", content="")))  # the next message (drafted in the browser)
+        system = (conv.get("system_prompt") or settings.default_system_prompt or "").strip()
+        provider = None
+        if row and row["enabled"]:
+            try:
+                provider = self.registry.provider(user, pid)  # type: ignore[arg-type]
+            except ProviderError:
+                provider = None
+        counter = TokenCounter(provider, model)
+        reserve = min(cctx.reserve_tokens, max(64, window.size // 4))
+        params = self._params(user, conv, None)
+        if isinstance(params.get("max_tokens"), int):
+            reserve = params["max_tokens"]
+        margin = max(32, int(window.size * cctx.safety_margin_pct / 100))
+        state = loads(conv.get("context_state"), {}) or {}
+        try:
+            plan = await plan_context(
+                system=system, turns=turns, counter=counter, window=window, reserve=reserve, margin=margin,
+                strategy=strategy, hysteresis=cctx.hysteresis, prev_cut=state.get("cut_id"),
+                cached_summary=lambda dropped: self._cached_summary_for(user["id"], conversation_id, dropped),
+            )
+        except ContextTooLarge as exc:
+            out.update(used=exc.params.get("needed"), too_large=True)
+            return out
+        out.update(plan.info)
+        return out
+
+    def _cached_summary_for(self, user_id: str, conversation_id: str, dropped: list[Turn]) -> str | None:
+        row = self.db.one(
+            "SELECT content FROM context_summaries WHERE conversation_id = ? AND user_id = ? AND covers_hash = ?",
+            (conversation_id, user_id, covers_hash(dropped)),
+        )
+        return row["content"] if row else None
+
+    # -- context: summaries of older turns ---------------------------------------
+    def _cached_summary(self, gen: Generation, dropped: list[Turn]) -> str | None:
+        return self._cached_summary_for(gen.user["id"], gen.conversation_id, dropped)
+
+    async def _summarize(self, gen: Generation, dropped: list[Turn], budget: int, window: Window) -> str | None:
+        """Summarize the dropped part of this branch (incrementally when an
+        earlier summary of a prefix exists). ``None`` on any failure."""
+        if budget < 64:
+            return None
+        ids = [t.id for t in dropped]
+        base, rest = None, dropped
+        for row in self.db.all(
+            "SELECT * FROM context_summaries WHERE conversation_id = ? AND user_id = ? ORDER BY created_at DESC",
+            (gen.conversation_id, gen.user["id"]),
+        ):
+            if row["last_message_id"] in ids:
+                k = ids.index(row["last_message_id"])
+                if covers_hash(dropped[: k + 1]) == row["covers_hash"]:
+                    base, rest = row["content"], dropped[k + 1 :]
+                    break
+        limit = int(window.size * 0.5 * 3.5)
+        parts, size = [], 0
+        for t in reversed(rest):  # newest first until the input budget is used
+            text = f"{'User' if t.msg.role == 'user' else 'Assistant'}: {t.msg.content[:6000]}"
+            if size + len(text) > limit and parts:
+                break
+            parts.append(text)
+            size += len(text)
+        transcript = "\n\n".join(reversed(parts))
+        prompt = SUMMARY_PROMPT.format(words=max(40, int(budget * 0.6)), previous=base or "(none)", transcript=transcript or "(none)")
+        settings = self.settings.get(gen.user["id"]).context
+        provider, model = self.registry.provider(gen.user, gen.provider_id), gen.model
+        if settings.summary_provider_id and settings.summary_model and self.registry.visible(gen.user, settings.summary_provider_id):
+            provider, model = self.registry.provider(gen.user, settings.summary_provider_id), settings.summary_model
+        request = ChatRequest(model=model, messages=[ChatMessage(role="user", content=prompt)],
+                              params={"temperature": 0.2, "max_tokens": budget})
+        try:
+            raw = await asyncio.wait_for(provider.complete(request), timeout=SUMMARY_TIMEOUT)
+        except (ProviderError, asyncio.TimeoutError) as exc:
+            log.info("summary failed (%s); falling back to the sliding window", type(exc).__name__)
+            return None
+        text = re.sub(r"<think>[\s\S]*?(</think>|$)", "", raw or "").strip()
+        if not text:
+            return None
+        self.db.execute(
+            """INSERT INTO context_summaries(id, user_id, conversation_id, covers_hash, last_message_id, message_count,
+                   content, model, created_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+            (new_id(), gen.user["id"], gen.conversation_id, covers_hash(dropped), ids[-1], len(ids), text, model, now_iso()),
+        )
+        return text
 
     # -- web ------------------------------------------------------------------
-    def context_tokens(self, gen: Generation, settings) -> int:
-        """The model's context window: what llama-server reports (/props),
-        else the per-model value, else the user's configured fallback."""
-        row = self.registry.row(gen.provider_id) or {}
-        n = loads(row.get("capabilities"), {}).get("n_ctx")
-        if not isinstance(n, int) or n <= 0:
-            for m in loads(row.get("cached_models"), []):
-                if m.get("id") == gen.model and isinstance((m.get("meta") or {}).get("n_ctx"), int):
-                    n = m["meta"]["n_ctx"]
-        return n if isinstance(n, int) and n > 0 else settings.web.context_tokens
-
-    def _compose_web(self, gen: Generation, settings, messages: list[ChatMessage], user_turns, system: str, knowledge_count: int) -> str:
+    def _compose_web(self, gen: Generation, messages: list[ChatMessage], user_turns, system: str, knowledge_count: int,
+                     budget_tokens: int, window: int) -> str:
         if not self.web:
             return system
         rows = self.db.all(
@@ -499,11 +716,9 @@ class ChatEngine:
         token = new_token()
         grounding = grounding_prompt(admin.grounding_prompt, token, gen.web_plan.timezone)
         system = f"{system}\n\n{grounding}" if system else grounding
-        n_ctx = self.context_tokens(gen, settings)
-        used = estimate_tokens(system) + sum(estimate_tokens(m.content) + 8 + 600 * len(m.images) for m in messages)
-        max_tokens = gen.params.get("max_tokens")
-        reserve = max_tokens if isinstance(max_tokens, int) and max_tokens > 0 else min(2048, max(512, n_ctx // 4))
-        budget = min(admin.total_chars, tokens_to_chars(n_ctx - used - reserve - 256))
+        # Room left for page text: minus the grounding prompt and each source block's header lines.
+        blocks = sum(len(v) for v in by_message.values()) + len(search_rows)
+        budget = min(admin.total_chars, int(tokens_to_chars(budget_tokens - estimate_tokens(grounding)) * 0.9) - SOURCE_HEADER_CHARS * blocks)
         last_user = user_turns[-1][1].content if user_turns else ""
         query = "\n".join([*(gen.turn.state["queries"] if gen.turn else []), last_user])
         result = compose(
@@ -514,7 +729,7 @@ class ChatEngine:
             # Pages from earlier turns only: still record the citation map.
             gen.turn = WebTurn(self.db, gen.message_id, gen.publish, WebPlan())
         gen.turn.state["refs"] = result.refs
-        gen.turn.state["context_tokens"] = n_ctx
+        gen.turn.state["context_tokens"] = window
         if result.total_current and result.used_current < result.total_current:
             gen.turn.step("budget", status="done", used=result.used_current, total=result.total_current)
         elif result.omitted_older:
@@ -537,9 +752,7 @@ class ChatEngine:
             turn.add_sources(self.web.store(uid, gen.conversation_id, gen.user_message_id, "pasted", data))
         if plan.search:
             settings = self.settings.get(uid)
-            history = [(r["role"], r["content"]) for r in self.db.all(
-                "SELECT role, content FROM messages WHERE conversation_id = ? AND position < (SELECT position FROM messages WHERE id = ?) "
-                "AND status != 'error' ORDER BY position", (gen.conversation_id, gen.message_id))]
+            history = [(r["role"], r["content"]) for r in self.path_rows(gen) if r["status"] != "error"]
             message = next((text for role, text in reversed(history) if role == "user"), "")
             step = turn.step("queries")
             provider, model = self.registry.provider(gen.user, gen.provider_id), gen.model
@@ -604,38 +817,53 @@ class ChatEngine:
         try:
             if gen.web_plan.active and self.web:
                 await self._web_phase(gen)
-            request, sources = await self.build_request(gen)
-            if sources:
-                self._persist(gen, sources=sources)
-                gen.publish("sources", {"sources": sources})
             provider = self.registry.provider(gen.user, gen.provider_id)
             stream = self.settings.get(gen.user["id"]).stream
-            async for event in provider.stream_chat(request):
-                if event.type in ("content", "reasoning"):
-                    if first_token is None:
-                        first_token = time.perf_counter()
-                    if event.type == "content":
-                        gen.content += event.text
-                    else:
-                        gen.reasoning += event.text
-                    if stream:
-                        gen.publish("delta", {event.type: event.text})
-                elif event.type == "usage":
-                    metrics.update(event.usage)
-                elif event.type == "done":
-                    metrics["finish_reason"] = event.finish_reason
-                now = time.perf_counter()
-                if now - last_persist >= PERSIST_INTERVAL:
-                    last_persist = now
-                    self._persist(gen)
+            while True:
+                request, sources = await self.build_request(gen)
+                if sources:
+                    self._persist(gen, sources=sources)
+                    gen.publish("sources", {"sources": sources})
+                try:
+                    async for event in provider.stream_chat(request):
+                        if event.type in ("content", "reasoning"):
+                            if first_token is None:
+                                first_token = time.perf_counter()
+                            if event.type == "content":
+                                gen.content += event.text
+                            else:
+                                gen.reasoning += event.text
+                            if stream:
+                                gen.publish("delta", {event.type: event.text})
+                        elif event.type == "usage":
+                            metrics.update(event.usage)
+                        elif event.type == "done":
+                            metrics["finish_reason"] = event.finish_reason
+                        now = time.perf_counter()
+                        if now - last_persist >= PERSIST_INTERVAL:
+                            last_persist = now
+                            self._persist(gen)
+                except ProviderError as exc:
+                    # The server measured the prompt as too long (estimate error,
+                    # different template, changed -c): retry once, tighter.
+                    if (exc.code == "context_exceeded" and not gen.retried and not gen.content and not gen.reasoning
+                            and gen.context_info.get("strategy") != "off"):
+                        gen.retried = True
+                        gen.tighten = 0.7
+                        if isinstance(exc.params.get("n_ctx"), int):
+                            gen.window_cap = exc.params["n_ctx"]
+                        log.info("generation=%s context exceeded; retrying once with less history", gen.id)
+                        continue
+                    raise
+                break
             if not stream and (gen.content or gen.reasoning):
                 gen.publish("delta", {"content": gen.content, "reasoning": gen.reasoning})
             self.registry.mark_ok(gen.provider_id)
         except asyncio.CancelledError:
             final_status = "cancelled"
-        except WebError as exc:
+        except (WebError, ContextTooLarge) as exc:
             final_status, error, error_code, error_params = "error", exc.message, exc.code, exc.params
-            log.info("generation=%s web error code=%s", gen.id, exc.code)
+            log.info("generation=%s not sent: %s", gen.id, exc.code)
         except ProviderError as exc:
             final_status, error, error_code, error_params = "error", exc.message, exc.code, exc.params
             self.registry.mark_error(gen.provider_id, exc)
@@ -649,7 +877,8 @@ class ChatEngine:
                 metrics["ttft_ms"] = round((first_token - started) * 1000)
             gen.status = final_status
             self._finish_web(gen, final_status, len(sources))
-            self._persist(gen, status=final_status, error=error, error_code=error_code, error_params=error_params, metrics=metrics)
+            self._persist(gen, status=final_status, error=error, error_code=error_code, error_params=error_params, metrics=metrics,
+                          context=gen.context_info)
             self.db.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now_iso(), gen.conversation_id))
             self.by_conversation.pop(gen.conversation_id, None)
             row = self.conversations.message(gen.message_id)
@@ -677,10 +906,8 @@ class ChatEngine:
         conv = self.conversations.get(gen.conversation_id)
         if not conv or conv["title_source"] != "fallback" or not self.settings.get(gen.user["id"]).auto_title:
             return None
-        first = self.db.one(
-            "SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY position LIMIT 1",
-            (gen.conversation_id,),
-        )
+        # The first exchange of this branch (titles are generated once, not per branch).
+        first = next((r for r in self.path_rows(gen) if r["role"] == "user"), None)
         if not first or not first["content"].strip():
             return None
         prompt = (

@@ -148,6 +148,8 @@ surface used, multi-server setups, embeddings and vision.
 | Area | What works today |
 | --- | --- |
 | **Chat** | Token streaming, stop, regenerate, edit & resubmit, retry failed responses, delete messages, copy message / code, reasoning ("thinking") display, per-message tokens/s, smart autoscroll with *jump to latest* |
+| **Branching** | Editing a message or regenerating an answer keeps the old version as a branch; an inline `‹ 2 / 3 ›` navigator switches between versions, the chosen path is stored per conversation, search jumps to the branch a hit is on, export/import keeps the whole tree |
+| **Context window** | Window size read from llama-server per slot (or set per connection); exact token counts via `/tokenize`; system prompt → latest message (with pages) → pinned messages → recent history in whole exchanges; leave-out (default), summarize or off; prompt-cache-friendly trimming; one tighter retry when the server still rejects; a usage indicator, a marker where history stops being sent, and pinning |
 | **Rendering** | GitHub-flavored Markdown, tables, task lists, syntax highlighting, KaTeX math (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`), safe links; raw HTML and remote images are never rendered |
 | **Models** | Multiple connections (llama-server, OpenAI-compatible, Ollama), live discovery, cached last-known list, manual model IDs, per-connection timeout / API key / custom auth header / API path, honest status (*Not tested / Connected / Unreachable*), diagnostics view |
 | **Resilience** | Generations run server-side: closing or reloading the tab doesn't lose an answer, the UI re-attaches to the live stream. Interrupted generations are marked as such after a restart; nothing stays stuck "loading" |
@@ -155,7 +157,7 @@ surface used, multi-server setups, embeddings and vision.
 | **Parameters** | Temperature, top-p, top-k, min-p, max tokens, stop sequences, repeat / presence / frequency penalty, seed: as global defaults and per conversation. Only parameters the connection supports are sent |
 | **Attachments** | Text, Markdown, source code, JSON/CSV, PDF (text extraction). Images for vision-capable models only. Size limits, type sniffing, truncation notice, preview of what the model receives |
 | **Knowledge (RAG)** | Local collections, chunking, SQLite FTS5 keyword search out of the box, optional local embeddings for hybrid semantic search, retrieval test bench, sources shown under answers |
-| **Web** | Off by default. Pasted links are read (HTML → clean Markdown, PDF, JSON, CSV, RSS, GitHub raw files) with per-link status; per-message web search via SearXNG, Brave or Tavily with live steps, inline citations and a sources list; BM25 passage selection within the model's context budget; SSRF-hardened fetcher, prompt-injection delimiting, per-user quotas. See [docs/WEB.md](docs/WEB.md) |
+| **Web** | Off by default. Pasted links are read (HTML → clean Markdown, PDF, JSON, CSV, RSS, GitHub raw files) with per-link status; per-message web search via SearXNG, Brave or Tavily with live steps, inline citations and a sources list; BM25 passage selection within the model's context budget; SSRF-hardened fetcher, prompt-injection delimiting, per-user quotas; optional isolated headless browser for JavaScript pages (automatic or "Render with browser"). See [docs/WEB.md](docs/WEB.md) |
 | **Prompts** | Library with categories, insert into composer, use as a conversation's system prompt |
 | **Settings** | Light / dark / system theme, font size, conversation width, reduced motion, sidebar, Enter-to-send, streaming, auto titles, default system prompt & parameters, attachment limits, embedding model |
 | **Data** | JSON export / import, one-click SQLite backup / restore, delete all conversations or all data |
@@ -240,6 +242,17 @@ realistic and hostile pages, failures, SearXNG/Brave/Tavily-compatible
 engines), including a table of hostile URLs for the SSRF validator, DNS
 rebinding, redirects to internal addresses, size and decompression limits,
 prompt-injection fixtures, cancellation at every stage and cross-user isolation.
+Branching tests cover the migration of linear history, edit/regenerate
+siblings, switching while streaming, subtree deletion, search and export/import
+of trees. Context tests drive the mock's `/props`, `/tokenize`,
+`/apply-template` and exact overflow errors (window discovery, exact counting,
+budget order, hysteresis, summaries, retries). The headless browser is tested
+through its egress proxy (SSRF table, DNS pinning, credentials, limits) with a
+fake service, and — when a Python with Playwright is available
+(`browser/.venv`, see [browser/README.md](browser/README.md)) — with the real
+service and real Chromium (rendering, internal targets from page scripts,
+redirects, downloads, clean profiles, timeouts, cancellation without orphaned
+processes).
 Localization tests check catalog parity (keys, plural forms, placeholders),
 Lithuanian plurals, `Intl` formatting, localized error codes, instant language
 switching and a scan for hardcoded strings; an end-to-end test covers register →
@@ -251,13 +264,15 @@ switch to Lithuanian → reload → sign out → sign in → streaming chat.
 backend/
   chimera/
     providers/     provider abstraction + llama.cpp, OpenAI-compatible, Ollama adapters, SSE parser
-    web/           hardened fetcher, extraction, search engines, ranking, web-grounded pipeline
+    web/           hardened fetcher, extraction, search engines, ranking, web-grounded pipeline,
+                   browser client and its egress filter proxy
     services/      chat engine (streaming, cancel, reattach), conversations, files, knowledge, settings
     api/           HTTP routes and request schemas
     security.py    access control, CSRF / rebinding protection, sessions, CSP
     db.py          SQLite + migrations
   tests/           pytest suite, the mock llama-server and the mock web
 deploy/searxng/    minimal SearXNG configuration for the optional Compose profile
+browser/           optional headless browser service (Playwright/Chromium) for the Compose profile
 frontend/
   src/components/  composer, messages, markdown, model picker, sidebar, primitives
   src/pages/       chat, models, knowledge, prompts, settings
@@ -272,11 +287,18 @@ Implemented and tested: everything in the [feature table](#features).
 
 Known limitations and planned work:
 
-- **Linear history.** Editing a message or regenerating replaces the later turns;
-  alternative branches are not kept.
-- **No automatic context management.** The full conversation is sent each turn. If
-  it exceeds the server's context window, llama-server's error is shown; start a
-  new chat or raise `-c`. Token counting/truncation is planned.
+- **Branches are navigated inline only.** There is no tree overview or branch
+  naming, and branches can't be merged or compared side by side.
+- **Context management trims, it doesn't remember.** Left-out messages are not
+  retrieved again when they become relevant (no long-term memory), summaries are
+  plain text written by a model and can miss details, and counts for servers
+  other than llama-server are estimates (≈3.5 characters per token; the safety
+  margin absorbs the error). Images count as a fixed 768 tokens.
+- **Headless browser:** text only (no screenshots, images or PDFs rendered in
+  the browser), no logins or cookies, no interaction (clicking, scrolling to load
+  more), and it doesn't use `CHIMERA_WEB_PROXY`. Pages that detect headless
+  browsers may still refuse it. Chromium's own sandbox is off (Playwright's
+  default in containers); isolation comes from the container (see docs/WEB.md).
 - **PDF extraction is text-only.** Scanned PDFs (images) are rejected with a clear
   message; there's no OCR.
 - **Knowledge ingestion is synchronous.** Very large documents block the upload
@@ -292,8 +314,8 @@ Known limitations and planned work:
   limits still apply).
 - **Lithuanian translation** was written without native-speaker review; see
   [docs/i18n-glossary.md](docs/i18n-glossary.md).
-- **Web:** no headless browser for JavaScript-only pages, no model-driven
-  ("agentic") search yet, no video transcripts; see [docs/WEB.md](docs/WEB.md).
+- **Web:** no model-driven ("agentic") search yet, no video transcripts; see
+  [docs/WEB.md](docs/WEB.md).
 - **No image generation.**
 - Remote (cloud) providers can be added as *OpenAI-compatible* connections, but
   none is configured by default.

@@ -55,7 +55,6 @@
   "authNone": "nėra",
   "timeout": "Laukimo laikas",
   "context": "Kontekstas",
-  "contextTokens": "{{value}} žetonų",
   "slots": "Lizdai",
   "vision": "Vaizdai",
   "visionYes": "palaikomi",

@@ -1,5 +1,5 @@
 /** Web reading & search in messages: progress steps, sources, link status. */
-import { AlertTriangle, Check, ChevronRight, ExternalLink, FileText, Globe, Link2, Loader2, RotateCw, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, AppWindow, Check, ChevronRight, ExternalLink, FileText, Globe, Link2, Loader2, RotateCw, Search, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
@@ -9,6 +9,7 @@ import type { Message, WebRef, WebSource, WebStep } from "@/lib/types";
 import { displayDomain } from "@/lib/urls";
 import { cn, formatNumber } from "@/lib/utils";
 import { useChat } from "@/stores/chat";
+import { useWeb } from "@/stores/web";
 import { toast } from "@/stores/ui";
 import type { CitationTarget } from "./Markdown";
 import { Markdown } from "./Markdown";
@@ -30,6 +31,12 @@ export function citationTargets(message: Message, sources: WebSources): Record<n
 
 function sourceReason(s: WebSource): string {
   return providerErrorText(s.error_code, s.error_params, s.error_code ?? "");
+}
+
+/** Why the headless browser didn't help with a page that needs JavaScript (if it was tried). */
+function browserReason(s: WebSource): string | null {
+  const code = s.error_params?.browser;
+  return typeof code === "string" ? providerErrorText(code, {}, code) : null;
 }
 
 /* -------------------------------------------------------------- steps */
@@ -67,6 +74,8 @@ function useStepText() {
         return t("steps.budget", { used: p.used ?? 0, count: p.total ?? 0 });
       case "older_omitted":
         return t("steps.olderOmitted", { count: p.count ?? 0 });
+      case "history_trimmed":
+        return t("steps.historyTrimmed", { count: p.count ?? 0 });
       default:
         return "";
     }
@@ -230,7 +239,8 @@ function SourceDialog({ source, onClose, conversationId }: { source: WebSource |
   const { t } = useTranslation(["web", "common"]);
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<null | "auto" | "browser">(null);
+  const browserAvailable = useWeb((st) => !!st.status?.browser_available);
   const live = useChat((s) => (source ? s.convs[conversationId]?.webSources[source.id] : undefined)) ?? source;
 
   useEffect(() => {
@@ -243,11 +253,11 @@ function SourceDialog({ source, onClose, conversationId }: { source: WebSource |
       .catch((e) => setError(errorText(e)));
   }, [source]);
 
-  const refetch = async () => {
+  const refetch = async (loader: "auto" | "browser") => {
     if (!source) return;
-    setBusy(true);
+    setBusy(loader);
     try {
-      const r = await api.refetchWebSource(source.id);
+      const r = await api.refetchWebSource(source.id, loader);
       useChat.getState().updateWebSource(conversationId, r.source);
       if (r.ok) {
         const fresh = await api.webSource(source.id);
@@ -259,7 +269,7 @@ function SourceDialog({ source, onClose, conversationId }: { source: WebSource |
     } catch (err) {
       toast(errorText(err), "error");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -278,7 +288,12 @@ function SourceDialog({ source, onClose, conversationId }: { source: WebSource |
             <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="mr-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg">
               <ExternalLink className="size-3.5" /> {t("sources.open")}
             </a>
-            <Button variant="outline" icon={<RotateCw className="size-3.5" />} loading={busy} onClick={refetch}>
+            {browserAvailable && (
+              <Button variant="outline" icon={<AppWindow className="size-3.5" />} loading={busy === "browser"} disabled={!!busy} onClick={() => refetch("browser")}>
+                {t("sources.renderBrowser")}
+              </Button>
+            )}
+            <Button variant="outline" icon={<RotateCw className="size-3.5" />} loading={busy === "auto"} disabled={!!busy} onClick={() => refetch("auto")}>
               {t("sources.refetch")}
             </Button>
           </>
@@ -293,10 +308,13 @@ function SourceDialog({ source, onClose, conversationId }: { source: WebSource |
             {s.fetched_at && <span title={formatDateTime(s.fetched_at)}>{t("sources.retrieved", { when: relativeTime(s.fetched_at) })}</span>}
             {s.published && <span>{t("sources.published", { date: s.published })}</span>}
             {s.chars > 0 && <span>{t("sources.characters", { chars: formatNumber(s.chars) })}</span>}
+            {s.loader === "browser" && <span>{t("sources.renderedWithBrowser")}</span>}
           </p>
           {s.status === "error" && (
             <p role="alert" className="mb-3 rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-[0.8125rem] text-fg">
               {t("sources.failedTo", { domain: s.domain, reason: sourceReason(s) })}
+              {browserReason(s) && <> {t("sources.browserFailed", { reason: browserReason(s) })}</>}
+              {!browserReason(s) && s.error_code === "web.needs_javascript" && browserAvailable && <> {t("sources.tryBrowser")}</>}
             </p>
           )}
           {s.status === "snippet" && <p className="mb-3 text-[0.8125rem] text-muted">{t("sources.snippetOnly")}</p>}

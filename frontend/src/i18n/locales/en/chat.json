@@ -78,11 +78,12 @@
     "copyResponse": "Copy response",
     "edit": "Edit",
     "editLabel": "Edit message",
-    "editWarning": "Later messages will be replaced.",
+    "editWarning": "Your edit becomes a new branch; the original stays available.",
     "saveSubmit": "Save and resubmit",
     "deleteMessage": "Delete message",
     "deleteMessageTitle": "Delete this message?",
-    "deleteMessageBody": "Only this message is removed; the rest of the conversation stays.",
+    "deleteCount_one": "This removes {{count}} message.",
+    "deleteCount_other": "This removes {{count}} messages: this one and everything that continues from it, on every branch.",
     "deleteResponse": "Delete response",
     "deleteResponseTitle": "Delete this response?",
     "regenerate": "Regenerate",
@@ -149,5 +150,13 @@
     "frequency_penalty": { "label": "Frequency penalty", "hint": "Discourage frequent tokens." },
     "seed": { "label": "Seed", "hint": "Fixed seed for reproducible output (-1 = random)." },
     "stop": { "label": "Stop sequences", "hint": "One per line (up to 8). Generation stops when any of them appears." }
+  },
+  "branch": {
+    "versionOf": "Version {{n}} of {{total}}",
+    "responseOf": "Response {{n}} of {{total}}",
+    "previousVersion": "Previous version",
+    "nextVersion": "Next version",
+    "previousResponse": "Previous response",
+    "nextResponse": "Next response"
   }
 }

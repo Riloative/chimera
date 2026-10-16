@@ -7,12 +7,16 @@ import type { Collection, GenerationParams, Prompt } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/stores/settings";
 import { cleanParams, ParamsEditor } from "./ParamsEditor";
-import { Button, Dialog, SegmentedControl, Spinner, Textarea } from "./ui";
+import { Button, Dialog, SegmentedControl, Spinner, Textarea, Field, Select } from "./ui";
+
+export type ContextStrategy = "sliding" | "summarize" | "off";
 
 export interface ConversationSettingsValue {
   systemPrompt: string | null;
   params: GenerationParams;
   collectionIds: string[];
+  /** null = the user's default strategy. */
+  contextStrategy?: ContextStrategy | null;
 }
 
 type Tab = "prompt" | "params" | "knowledge";
@@ -32,8 +36,9 @@ export function ConversationSettings({
   supportedParams?: string[];
   initialTab?: Tab;
 }) {
-  const { t } = useTranslation(["chat", "common", "knowledge"]);
+  const { t } = useTranslation(["chat", "common", "knowledge", "context"]);
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [strategy, setStrategy] = useState<ContextStrategy | "">("");
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [useDefault, setUseDefault] = useState(true);
   const [params, setParams] = useState<GenerationParams>({});
@@ -50,6 +55,7 @@ export function ConversationSettings({
     setSystemPrompt(value.systemPrompt ?? "");
     setParams(value.params ?? {});
     setCollectionIds(value.collectionIds ?? []);
+    setStrategy(value.contextStrategy ?? "");
     api.collections().then(setCollections).catch(() => setCollections([]));
     api.prompts().then(setPrompts).catch(() => setPrompts([]));
   }, [open, value, initialTab]);
@@ -57,7 +63,7 @@ export function ConversationSettings({
   const save = async () => {
     setSaving(true);
     try {
-      await onSave({ systemPrompt: useDefault ? null : systemPrompt, params: cleanParams(params), collectionIds });
+      await onSave({ systemPrompt: useDefault ? null : systemPrompt, params: cleanParams(params), collectionIds, contextStrategy: strategy || null });
       onOpenChange(false);
     } finally {
       setSaving(false);
@@ -135,7 +141,20 @@ export function ConversationSettings({
         </div>
       )}
 
-      {tab === "params" && <ParamsEditor value={params} onChange={setParams} supported={supportedParams} inherited={settings?.params} />}
+      {tab === "params" && (
+        <div className="space-y-5 pb-2">
+          <ParamsEditor value={params} onChange={setParams} supported={supportedParams} inherited={settings?.params} />
+          <Field label={t("context:strategy.label")} htmlFor="cs-strategy" hint={t("context:strategy.help")}>
+            <Select id="cs-strategy" value={strategy} onChange={(e) => setStrategy(e.target.value as ContextStrategy | "")}>
+              <option value="">{t("context:strategy.inherit", { name: t(`context:strategy.${settings?.context?.strategy ?? "sliding"}`) })}</option>
+              <option value="sliding">{t("context:strategy.sliding")}</option>
+              <option value="summarize">{t("context:strategy.summarize")}</option>
+              <option value="off">{t("context:strategy.off")}</option>
+            </Select>
+          </Field>
+          {strategy && <p className="-mt-3 text-xs leading-relaxed text-muted">{t(`context:strategy.${strategy}Help`)}</p>}
+        </div>
+      )}
 
       {tab === "knowledge" && (
         <div className="pb-2">

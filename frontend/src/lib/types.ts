@@ -24,6 +24,8 @@ export interface Provider {
   checked_at: string | null;
   models_fetched_at: string | null;
   capabilities: Capabilities;
+  /** Manual context size; null = what the server reports. */
+  context_override: number | null;
   supported_params: string[];
   created_at: string;
   updated_at: string;
@@ -108,10 +110,13 @@ export interface Conversation {
   params: GenerationParams;
   collection_ids: string[];
   pinned: boolean;
+  active_leaf_id?: string | null;
+  context_strategy?: "sliding" | "summarize" | "off" | null;
   created_at: string;
   updated_at: string;
   generating?: boolean;
   snippet?: string;
+  match_message_id?: string | null;
 }
 
 export type MessageStatus = "complete" | "streaming" | "error" | "cancelled" | "interrupted";
@@ -149,6 +154,9 @@ export interface MessageMetrics {
 export interface Message {
   id: string;
   conversation_id: string;
+  /** Parent in the message tree (null for a first message). */
+  parent_id: string | null;
+  /** Depth in the tree. */
   position: number;
   role: "user" | "assistant" | "system";
   content: string;
@@ -163,18 +171,44 @@ export interface Message {
   sources: Source[];
   metrics: MessageMetrics;
   web?: WebState;
+  pinned?: boolean;
+  context?: MessageContext;
   created_at: string;
   updated_at: string;
 }
 
+/** How the model's context was built for an answer (see services/context.py). */
+export interface MessageContext {
+  window?: number;
+  window_source?: "server" | "manual" | "default";
+  exact?: boolean;
+  strategy?: "sliding" | "summarize" | "off";
+  used?: number;
+  breakdown?: { system: number; summary: number; latest: number; pinned: number; history: number; reserved: number };
+  dropped?: number;
+  cut_before?: string | null;
+  summary?: string | null;
+  summary_failed?: boolean;
+  retried?: boolean;
+}
+
+/** GET /api/conversations/{id}/context: what the next request would contain. */
+export interface ContextEstimate extends MessageContext {
+  window: number;
+  window_source: "server" | "manual" | "default";
+  window_slots?: number | null;
+  too_large?: boolean;
+}
+
 export interface ConversationDetail extends Conversation {
   messages: Message[];
+  active_path: string[];
   web_sources: WebSource[];
   generation_id: string | null;
 }
 
 /* ------------------------------------------------------------------ web */
-export type WebStepKind = "read_links" | "queries" | "search" | "read_results" | "budget" | "older_omitted";
+export type WebStepKind = "read_links" | "queries" | "search" | "read_results" | "budget" | "older_omitted" | "history_trimmed";
 export type WebStepStatus = "running" | "done" | "error" | "cancelled";
 
 export interface WebStep {
@@ -233,6 +267,8 @@ export interface WebSource {
   query: string | null;
   snippet: string | null;
   rank: number | null;
+  /** How the page was read: plain HTTP or the headless browser. */
+  loader?: "static" | "browser";
   fetched_at: string | null;
 }
 
@@ -243,6 +279,8 @@ export interface WebStatus {
   max_urls_per_message: number;
   max_results: number;
   is_admin: boolean;
+  /** The headless browser can render pages (configured, on and reachable). */
+  browser_available?: boolean;
 }
 
 export type WebEngineKind = "searxng" | "brave" | "tavily";
@@ -253,7 +291,6 @@ export interface WebUserSettings {
   keep_search_on: boolean;
   results: number;
   expand_steps: boolean;
-  context_tokens: number;
   task_provider_id: string | null;
   task_model: string | null;
   privacy_acknowledged: boolean;
@@ -281,6 +318,20 @@ export interface WebAdminSettings {
   total_chars: number;
   fetches_per_hour: number;
   searches_per_hour: number;
+  browser_enabled: boolean;
+  browser_auto: boolean;
+  browser_timeout_seconds: number;
+  browser_renders_per_hour: number;
+}
+
+/** State of the optional headless browser service (admin view). */
+export interface WebBrowserStatus {
+  configured: boolean;
+  reachable: boolean;
+  error?: string;
+  version?: string;
+  active?: number;
+  proxy?: boolean;
 }
 
 export interface WebEngineTest {
@@ -296,6 +347,7 @@ export interface WebAdminView {
   settings: WebAdminSettings;
   engines: { kind: WebEngineKind; configured: boolean; has_key: boolean; status: WebEngineTest | null }[];
   defaults: { query_prompt: string; grounding_prompt: string };
+  browser?: WebBrowserStatus;
 }
 
 export interface KnowledgeSettings {
@@ -324,6 +376,17 @@ export interface AppSettings {
   max_attachment_chars: number;
   knowledge: KnowledgeSettings;
   web: WebUserSettings;
+  context: ContextSettings;
+}
+
+export interface ContextSettings {
+  strategy: "sliding" | "summarize" | "off";
+  fallback_window: number;
+  hysteresis: number;
+  safety_margin_pct: number;
+  reserve_tokens: number;
+  summary_provider_id: string | null;
+  summary_model: string | null;
 }
 
 export interface Prompt {

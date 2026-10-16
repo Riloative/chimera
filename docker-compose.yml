@@ -3,6 +3,8 @@
 #   docker compose up -d                   # Chimera only (llama-server runs on your host)
 #   docker compose --profile llama up -d   # also run llama-server in a container
 #   docker compose --profile searxng up -d # also run SearXNG for web search (see docs/WEB.md)
+#   docker compose --profile browser up -d # also run the headless browser for JavaScript pages
+#                                          # (set CHIMERA_BROWSER_URL and CHIMERA_BROWSER_SECRET in .env first)
 #
 # Open http://localhost:8700
 services:
@@ -29,10 +31,17 @@ services:
       CHIMERA_REGISTRATION_MODE: ${CHIMERA_REGISTRATION_MODE:-first_user_only}
       # First-run connection: llama-server on the Docker host.
       CHIMERA_SEED_PROVIDER_URL: ${CHIMERA_SEED_PROVIDER_URL:-http://host.docker.internal:8080}
+      # Egress filter proxy for the headless browser (only used when
+      # CHIMERA_BROWSER_URL is set). Not published; it accepts only the
+      # single-use credentials Chimera issues for each render.
+      CHIMERA_BROWSER_PROXY_BIND: 0.0.0.0:8701
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - chimera-data:/data
+    networks:
+      - default
+      - browser-net
 
   # Optional: llama.cpp's server in a container (CPU build). Put a GGUF file in
   # ./models and set LLAMA_MODEL to its file name. In Chimera, add a connection
@@ -75,6 +84,44 @@ services:
       - CHOWN
       - SETGID
       - SETUID
+
+  # Optional: headless Chromium that renders pages needing JavaScript. It sits
+  # on an internal network with no route to the internet or the host; its
+  # only way out is Chimera's egress filter proxy, which applies the same
+  # rules as Chimera's own page fetcher. Never publish its port. See docs/WEB.md.
+  browser:
+    profiles: ["browser"]
+    build: ./browser
+    image: chimera-browser:latest
+    container_name: chimera-browser
+    restart: unless-stopped
+    environment:
+      # Empty → the service refuses to start (fails closed).
+      BROWSER_SECRET: ${CHIMERA_BROWSER_SECRET:-}
+      BROWSER_PROXY_SERVER: http://chimera:8701
+      BROWSER_MAX_PAGES: ${BROWSER_MAX_PAGES:-2}
+    networks:
+      - browser-net
+    expose:
+      - "3000"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+      - /home/pwuser:size=64m,uid=1001,gid=1001
+    shm_size: 512m
+    mem_limit: 1536m
+    pids_limit: 512
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  default:
+  # internal: no gateway, so nothing on it can reach the internet or the host.
+  browser-net:
+    internal: true
 
 volumes:
   chimera-data:

@@ -31,7 +31,7 @@ from ..providers import (
 
 log = logging.getLogger("chimera.providers")
 
-EDITABLE = ("name", "kind", "base_url", "api_path", "api_key", "auth_header", "timeout", "enabled", "vision", "manual_models", "shared")
+EDITABLE = ("name", "kind", "base_url", "api_path", "api_key", "auth_header", "timeout", "enabled", "vision", "manual_models", "shared", "context_override")
 HEALTH_CODES = ("connection", "connect_timeout", "connection_closed", "timeout", "unavailable", "auth", "config")
 
 
@@ -94,6 +94,8 @@ class ProviderRegistry:
             "checked_at": row["checked_at"],
             "models_fetched_at": row["models_fetched_at"],
             "capabilities": loads(row["capabilities"], {}),
+            # Manual context size; null = use what the server reports (see services/context.py).
+            "context_override": row.get("context_override"),
             "supported_params": list(cls.supported_params) if cls else [],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -108,8 +110,8 @@ class ProviderRegistry:
         position = (self.db.one("SELECT COALESCE(MAX(position), 0) + 1 AS p FROM providers") or {"p": 1})["p"]
         self.db.execute(
             """INSERT INTO providers (id, user_id, shared, name, kind, base_url, api_path, api_key, auth_header, timeout,
-                   enabled, vision, manual_models, position, created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   enabled, vision, manual_models, position, context_override, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 pid,
                 user_id,
@@ -125,6 +127,7 @@ class ProviderRegistry:
                 data.get("vision") or "auto",
                 dumps(data.get("manual_models") or []),
                 position,
+                data.get("context_override"),
                 ts,
                 ts,
             ),

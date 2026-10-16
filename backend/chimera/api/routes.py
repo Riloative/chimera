@@ -22,6 +22,7 @@ from ..errors import AppError
 from ..netpolicy import url_allowed
 from ..services.conversations import conversation_out, message_out
 from ..services.documents import ExtractionError, extract, safe_filename
+from ..services import tree as message_tree
 from ..services.files import file_out
 from ..web.service import source_meta
 from . import schemas
@@ -205,6 +206,7 @@ async def get_conversation(cid: str, user: dict = Depends(current_user), state: 
     gen = state.chat.active_for(user["id"], cid)
     out = conversation_out(row)
     out["messages"] = state.conversations.messages(cid)
+    out["active_path"] = message_tree.active_path(state.db, cid)
     out["web_sources"] = state.web.for_conversation(user["id"], cid)
     out["generation_id"] = gen.id if gen else None
     if gen:  # expose the freshest partial text
@@ -249,8 +251,9 @@ def _stream(state: AppState, gen, initial) -> StreamingResponse:
 
 def _start_payload(state: AppState, gen, extra: dict) -> list:
     row = state.conversations.message(gen.message_id)
+    path = message_tree.active_path(state.db, gen.conversation_id)
     return [("start", {"generation_id": gen.id, "conversation_id": gen.conversation_id,
-                       "assistant_message": message_out(row), **extra})]  # type: ignore[arg-type]
+                       "assistant_message": message_out(row), "active_path": path, **extra})]  # type: ignore[arg-type]
 
 
 @router.post("/conversations/{cid}/messages")
@@ -299,15 +302,47 @@ async def cancel_generation(gid: str, user: dict = Depends(current_user), state:
     return {"cancelled": state.chat.cancel(user["id"], gid)}
 
 
-@router.delete("/messages/{mid}", status_code=204)
+@router.get("/conversations/{cid}/context")
+async def context_estimate(cid: str, user: dict = Depends(current_user), state: AppState = Depends(get_state)):
+    """Estimated context usage of the next request on the active branch."""
+    _owned_conversation(state, user, cid)
+    return await state.chat.estimate_context(user, cid)
+
+
+@router.post("/conversations/{cid}/active")
+async def set_active_branch(
+    cid: str, body: schemas.ActiveBranch, user: dict = Depends(current_user), state: AppState = Depends(get_state)
+):
+    """Show the branch through ``message_id`` (its latest continuation)."""
+    _owned_conversation(state, user, cid)
+    tree = message_tree.load(state.db, cid)
+    if body.message_id not in tree.nodes:
+        raise missing("branch.not_found", "Message not found in this conversation")
+    path = message_tree.activate(state.db, cid, body.message_id, tree=tree)
+    return {"active_leaf_id": path[-1], "active_path": path}
+
+
+@router.delete("/messages/{mid}")
 async def delete_message(mid: str, user: dict = Depends(current_user), state: AppState = Depends(get_state)):
+    """Delete a message and everything that branches from it."""
     row = state.conversations.owned_message(user["id"], mid)
     if not row:
         raise missing("message_not_found", "Message not found")
-    if row["status"] == "streaming":
+    tree = message_tree.load(state.db, row["conversation_id"])
+    if any(tree.nodes[n]["status"] == "streaming" for n in tree.subtree(mid)):
         raise AppError(409, "message_streaming", "Stop the response before deleting it.")
-    state.db.execute("DELETE FROM messages WHERE id = ?", (mid,))
-    return Response(status_code=204)
+    deleted, path = message_tree.delete_subtree(state.db, row["conversation_id"], mid)
+    return {"deleted": deleted, "active_path": path}
+
+
+@router.patch("/messages/{mid}")
+async def update_message(mid: str, body: schemas.MessageUpdate, user: dict = Depends(current_user), state: AppState = Depends(get_state)):
+    """Pin a message to the model's context (always included when it fits)."""
+    row = state.conversations.owned_message(user["id"], mid)
+    if not row:
+        raise missing("message_not_found", "Message not found")
+    state.db.execute("UPDATE messages SET pinned = ? WHERE id = ?", (1 if body.pinned else 0, mid))
+    return message_out(state.conversations.message(mid))  # type: ignore[arg-type]
 
 
 # --------------------------------------------------------------------- files
@@ -494,7 +529,7 @@ async def search_collection(
 
 
 # ---------------------------------------------------------------------- data
-EXPORT_VERSION = 2
+EXPORT_VERSION = 3  # 3: messages carry parent_id; conversations carry active_leaf_id
 
 
 def export_payload(state: AppState, user: dict) -> dict:
@@ -567,22 +602,53 @@ async def import_data(file: UploadFile = File(...), user: dict = Depends(current
                 ),
             )
             imported["conversations"] += 1
-            for i, msg in enumerate(conv.get("messages") or []):
-                if not isinstance(msg, dict) or msg.get("role") not in ("user", "assistant", "system"):
-                    continue
-                status = msg.get("status") if msg.get("status") in ("complete", "error", "cancelled", "interrupted") else "complete"
-                conn.execute(
-                    """INSERT INTO messages(id, conversation_id, position, role, content, reasoning, status, error,
-                           provider_id, model, attachments, sources, metrics, created_at, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        new_id(), cid, int(msg.get("position", i)), msg["role"], str(msg.get("content") or ""),
-                        str(msg.get("reasoning") or ""), status, msg.get("error"), None, msg.get("model"),
-                        "[]", dumps(msg.get("sources") or []), dumps(msg.get("metrics") or {}),
-                        msg.get("created_at") or ts, msg.get("updated_at") or ts,
-                    ),
-                )
-                imported["messages"] += 1
+            messages = [m for m in conv.get("messages") or []
+                        if isinstance(m, dict) and m.get("role") in ("user", "assistant", "system")]
+            # Tree exports (0.4+) carry parent_id; older exports are linear and
+            # become a single chain in their listed order.
+            is_tree = any("parent_id" in m for m in messages)
+            if not is_tree:
+                messages.sort(key=lambda m: (int(m.get("position") or 0) if str(m.get("position", "")).lstrip("-").isdigit() else 0))
+            ids: dict[str, str] = {}
+            depth: dict[str, int] = {}
+            pending = list(messages)
+            previous: str | None = None
+            while pending:  # parents first (exports are ordered by depth, but don't rely on it)
+                progressed = False
+                for msg in list(pending):
+                    old_parent = msg.get("parent_id") if is_tree else previous
+                    if is_tree and old_parent and old_parent not in ids:
+                        if any(str(m.get("id")) == str(old_parent) for m in pending):
+                            continue
+                        old_parent = None  # parent missing from the file: becomes a root
+                    parent = ids.get(str(old_parent)) if (is_tree and old_parent) else old_parent
+                    mid = new_id()
+                    status = msg.get("status") if msg.get("status") in ("complete", "error", "cancelled", "interrupted") else "complete"
+                    conn.execute(
+                        """INSERT INTO messages(id, conversation_id, parent_id, position, role, content, reasoning, status,
+                               error, provider_id, model, attachments, sources, metrics, pinned, created_at, updated_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            mid, cid, parent, depth[parent] + 1 if parent else 0, msg["role"],
+                            str(msg.get("content") or ""), str(msg.get("reasoning") or ""), status, msg.get("error"),
+                            None, msg.get("model"), "[]", dumps(msg.get("sources") or []), dumps(msg.get("metrics") or {}),
+                            1 if msg.get("pinned") else 0, msg.get("created_at") or ts, msg.get("updated_at") or ts,
+                        ),
+                    )
+                    depth[mid] = depth[parent] + 1 if parent else 0
+                    if msg.get("id") is not None:
+                        ids[str(msg["id"])] = mid
+                    previous = mid
+                    pending.remove(msg)
+                    progressed = True
+                    imported["messages"] += 1
+                if not progressed:  # cycles in a hand-edited file: import the rest as roots
+                    for msg in pending:
+                        msg["parent_id"] = None
+            leaf = ids.get(str(conv.get("active_leaf_id"))) if is_tree else previous
+            tree = message_tree.load(state.db, cid)
+            if leaf or tree.kids(None):
+                message_tree.activate(state.db, cid, leaf or tree.kids(None)[-1], conn=conn, tree=tree)
         for p in payload.get("prompts") or []:
             if not isinstance(p, dict) or not p.get("title") or not p.get("content"):
                 continue

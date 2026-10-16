@@ -25,8 +25,8 @@ export function errorText(err: unknown): string {
 /** Text for a provider failure stored on a message or connection. */
 export function providerErrorText(code: string | null | undefined, params: Params, fallback: string | null | undefined): string {
   if (!code) return fallback ?? "";
-  // Web errors (``web.*``) have their own section; the rest are provider failures.
-  if (code.startsWith("web.")) return translate(`errors:${code}`, params, fallback ?? code);
+  // Web (``web.*``), context (``context.*``) and branch errors have their own sections; the rest are provider failures.
+  if (/^(web|context|branch)\./.test(code)) return translate(`errors:${code}`, params, fallback ?? code);
   return translate(`errors:provider.${code}`, params, fallback ?? code);
 }
 

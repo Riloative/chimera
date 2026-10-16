@@ -95,7 +95,8 @@
     "disabled": "The connection “{{name}}” is disabled.",
     "provider_missing": "The connection no longer exists.",
     "interrupted": "The server restarted before this response finished.",
-    "provider_error": "The model server reported a problem."
+    "provider_error": "The model server reported a problem.",
+    "context_exceeded": "The model server rejected the request as too long for its context window ({{n_prompt_tokens}} of {{n_ctx}} tokens), even after sending less history. Shorten the message, remove attachments, choose a model with a larger context, or restart llama-server with a larger -c."
   },
   "web": {
     "disabled": "Web access is turned off on this server.",
@@ -145,6 +146,19 @@
     "no_query": "There is nothing to search for in this message.",
     "tool_invalid": "The model's tool call had invalid arguments.",
     "tool_unknown": "The model asked for an unknown tool.",
-    "tool_limit": "The model made too many tool calls."
+    "tool_limit": "The model made too many tool calls.",
+    "browser_unavailable": "The headless browser is not available right now.",
+    "browser_timeout": "The page took too long to render in the headless browser.",
+    "browser_blocked": "The page, or a page it redirected to, is not allowed (private or blocked address, download, or other unsafe action).",
+    "browser_limit": "The headless browser is busy or you have reached its hourly limit. Try again later.",
+    "browser_failed": "The headless browser could not render the page."
+  },
+  "branch": {
+    "not_found": "That message is no longer in this conversation."
+  },
+  "context": {
+    "too_large": "Your message is too long for this model's context window: it needs about {{needed}} tokens, but only {{available}} are available. Shorten the message, remove attachments or web pages, choose a model with a larger context, or restart llama-server with a larger -c.",
+    "summary_failed": "The earlier messages could not be summarized.",
+    "window_unknown": "The model's context size is unknown; set it for this connection under Models."
   }
 }

@@ -36,6 +36,7 @@ class ProviderCreate(Strict):
     vision: Literal["auto", "on", "off"] = "auto"
     manual_models: list[str] = Field(default_factory=list, max_length=200)
     shared: bool = False
+    context_override: int | None = Field(None, ge=256, le=4_000_000)
 
     _url = field_validator("base_url")(_validate_url)
 
@@ -52,6 +53,7 @@ class ProviderUpdate(Strict):
     vision: Literal["auto", "on", "off"] | None = None
     manual_models: list[str] | None = Field(None, max_length=200)
     shared: bool | None = None
+    context_override: int | None = Field(None, ge=256, le=4_000_000)
 
     _url = field_validator("base_url")(_validate_url)
 
@@ -69,6 +71,7 @@ class ConversationCreate(Strict):
     system_prompt: str | None = Field(None, max_length=100_000)
     params: GenerationParams | None = None
     collection_ids: list[str] = Field(default_factory=list, max_length=20)
+    context_strategy: Literal["sliding", "summarize", "off"] | None = None
 
 
 class ConversationUpdate(Strict):
@@ -79,6 +82,8 @@ class ConversationUpdate(Strict):
     params: GenerationParams | None = None
     collection_ids: list[str] | None = Field(None, max_length=20)
     pinned: bool | None = None
+    # null = the user's default strategy
+    context_strategy: Literal["sliding", "summarize", "off"] | None = None
 
 
 class Target(Strict):
@@ -109,6 +114,14 @@ class Regenerate(Target):
 
 class EditMessage(WebOptions):
     content: str = Field(max_length=1_000_000)
+
+
+class ActiveBranch(Strict):
+    message_id: str = Field(min_length=1, max_length=64)
+
+
+class MessageUpdate(Strict):
+    pinned: bool
 
 
 class PromptBody(Strict):

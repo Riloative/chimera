@@ -3,7 +3,7 @@ import time
 
 from chimera.main import create_app
 
-from .conftest import CsrfClient, login, read_sse, register
+from .conftest import CsrfClient, active_messages, login, read_sse, register
 
 SLOW_WORDS = 150
 
@@ -88,8 +88,10 @@ def test_upstream_error_is_recorded_and_retry_works(client, conversation):
     with client.stream("POST", f"/api/conversations/{conversation['id']}/messages/{msgs[0]['id']}/edit", json={"content": "fine now"}) as resp:
         events = read_sse(resp)
     assert next(d for e, d in events if e == "done")["message"]["content"] == "You said: fine now"
-    msgs = client.get(f"/api/conversations/{conversation['id']}").json()["messages"]
+    detail = client.get(f"/api/conversations/{conversation['id']}").json()
+    msgs = active_messages(detail)
     assert len(msgs) == 2 and msgs[1]["status"] == "complete"
+    assert len(detail["messages"]) == 4  # the failed attempt stays as another branch
 
 
 def test_midstream_error_keeps_partial_content(client, conversation):
@@ -119,24 +121,28 @@ def test_reasoning_is_stored_separately(client, conversation):
     assert done["message"]["content"] == "You said: q [reasoning]"
 
 
-def test_regenerate_replaces_last_answer(client, conversation, mock):
+def test_regenerate_adds_a_sibling_answer(client, conversation, mock):
     send(client, conversation["id"], "one")
     msgs = client.get(f"/api/conversations/{conversation['id']}").json()["messages"]
     with client.stream("POST", f"/api/conversations/{conversation['id']}/regenerate", json={"message_id": msgs[1]["id"]}) as resp:
         events = read_sse(resp)
     assert "done" in names(events)
-    after = client.get(f"/api/conversations/{conversation['id']}").json()["messages"]
+    detail = client.get(f"/api/conversations/{conversation['id']}").json()
+    after = active_messages(detail)
     assert len(after) == 2 and after[1]["id"] != msgs[1]["id"]
+    assert after[1]["parent_id"] == msgs[0]["id"]
+    assert msgs[1]["id"] in {m["id"] for m in detail["messages"]}  # the previous answer is kept
 
 
-def test_edit_truncates_following_messages(client, conversation):
+def test_edit_creates_a_branch_and_keeps_the_original(client, conversation):
     send(client, conversation["id"], "one")
     send(client, conversation["id"], "two")
     msgs = client.get(f"/api/conversations/{conversation['id']}").json()["messages"]
     with client.stream("POST", f"/api/conversations/{conversation['id']}/messages/{msgs[0]['id']}/edit", json={"content": "uno"}) as resp:
         read_sse(resp)
-    after = client.get(f"/api/conversations/{conversation['id']}").json()["messages"]
-    assert [m["content"] for m in after] == ["uno", "You said: uno"]
+    detail = client.get(f"/api/conversations/{conversation['id']}").json()
+    assert [m["content"] for m in active_messages(detail)] == ["uno", "You said: uno"]
+    assert len(detail["messages"]) == 6  # one, answer, two, answer + the edited branch
 
 
 def test_cancel_stops_generation_and_keeps_partial(client, conversation, mock):
@@ -270,7 +276,8 @@ def test_conversation_crud_and_search(client, conversation):
     assert client.get("/api/conversations/search", params={"q": "Rotations"}).json()[0]["id"] == cid
     assert client.get("/api/conversations/search", params={"q": "100%_"}).json() == []
     msgs = client.get(f"/api/conversations/{cid}").json()["messages"]
-    assert client.delete(f"/api/messages/{msgs[1]['id']}").status_code == 204
+    resp = client.delete(f"/api/messages/{msgs[1]['id']}")
+    assert resp.status_code == 200 and resp.json()["deleted"] == 1
     assert len(client.get(f"/api/conversations/{cid}").json()["messages"]) == 1
     assert client.delete(f"/api/conversations/{cid}").status_code == 204
     assert client.get(f"/api/conversations/{cid}").status_code == 404

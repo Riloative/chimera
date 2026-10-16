@@ -100,6 +100,37 @@ In short:
   This limits — but cannot eliminate — prompt injection with local models.
 - Search-engine API keys are write-only and encrypted like connection keys.
 
+### Headless browser (optional)
+
+Running a real browser on pages chosen by users (or by search results) is the
+riskiest web feature, so it is isolated in layers
+([details](WEB.md#how-it-is-isolated)):
+
+- separate container on an `internal: true` network (no route to the
+  internet, host or LAN), no published port, shared-secret API;
+- its only egress is Chimera's filter proxy, which applies the fetcher's rules
+  (public addresses only, pinned DNS, ports, domain lists) to **every**
+  connection the page makes, including redirects, scripts and `fetch()`;
+  per-render credentials are revoked and tunnels closed when the render ends;
+- loopback forced through the proxy, no local DNS, WebRTC disabled, service
+  workers, downloads, popups and WebSockets blocked, a fresh profile per
+  render, request/size/time limits and per-user quotas;
+- non-root, read-only, capability-less container with memory/process limits.
+  Chromium's internal sandbox is **off** (Playwright's default in containers),
+  so a Chromium exploit would land in that container: keep the pinned image
+  current, and leave the profile off if you don't need it.
+
+The proxy listens on port 8701 inside Chimera's container (Compose) or
+`127.0.0.1:8701` (native). Don't publish or forward it; without valid
+per-render credentials it answers `407` to everything.
+
+On `browser-net` the browser container can open TCP connections to exactly
+one other container: Chimera, on 8700 (the normal API: every route needs a
+session) and 8701 (the proxy: per-render credentials). Page scripts can't even
+do that — their requests go through the proxy, which refuses single-label
+names like `chimera`. Verified with the Compose stack: no route to the internet
+or the Docker host from the browser container.
+
 ## Deployment modes
 
 Don't assume something is safe because it's on `localhost`: any website you
@@ -157,6 +188,9 @@ as WireGuard/Tailscale, or proxy-level authentication). There is no 2FA yet.
 The bundled `docker-compose.yml` publishes the port on `127.0.0.1` only.
 Requests reach the container from the Docker bridge network, so all clients
 share one IP for rate-limiting purposes; per-account limits still apply.
+
+Never publish the `browser` service's port or route a tunnel to it (e.g. a
+Cloudflare Tunnel should point at Chimera only).
 
 ### Don't expose the inference server
 

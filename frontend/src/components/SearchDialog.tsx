@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { useChat } from "@/stores/chat";
 import { formatTime } from "@/lib/time";
 import type { Conversation } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -53,8 +54,17 @@ export function SearchDialog() {
 
   const items = results ?? recent.slice(0, 12);
 
-  const go = (c: Conversation) => {
+  const go = async (c: Conversation) => {
     setOpen(false);
+    // A hit may be on another branch: make that branch the one shown.
+    if (c.match_message_id) {
+      try {
+        await api.activateBranch(c.id, c.match_message_id);
+        useChat.getState().forget(c.id);
+      } catch {
+        /* still open the conversation */
+      }
+    }
     navigate(`/c/${c.id}`);
   };
 

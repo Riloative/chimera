@@ -12,6 +12,7 @@ import type { AppSettings, GenerationParams } from "@/lib/types";
 import { cn, downloadUrl, formatBytes } from "@/lib/utils";
 import { AccountSettings } from "@/pages/settings/AccountSettings";
 import { AdminUsers } from "@/pages/settings/AdminUsers";
+import { ContextSettingsGroup } from "@/pages/settings/ContextSettings";
 import { WebSettings } from "@/pages/settings/WebSettings";
 import { useAuth } from "@/stores/auth";
 import { useConversations } from "@/stores/conversations";
@@ -198,6 +199,7 @@ function ChatSettings({ settings }: { settings: AppSettings }) {
           supported={provider?.supported_params}
         />
       </Group>
+      <ContextSettingsGroup settings={settings} />
       <div className="sticky bottom-0 -mx-1 flex justify-end gap-2 bg-bg px-1 py-3">
         <Button
           variant="primary"

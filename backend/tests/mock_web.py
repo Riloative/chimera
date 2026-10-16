@@ -94,6 +94,44 @@ JS_SHELL = """<!doctype html><html><head><title>Dashboard App</title>
 <body><noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div>
 <script>window.__INITIAL_STATE__ = {};</script></body></html>"""
 
+# A single-page app: the text exists only after its script runs. The fake
+# browser (tests/mock_browser.py) and real Chromium both "run" the inline script.
+SPA_TEXT = ("<article><h1>Rendered dashboard</h1><p>This text was produced by JavaScript in the browser. "
+            "The quarterly figures show 42 new members and a steady growth of the community garden project, "
+            "with volunteers meeting every Saturday morning near the old mill to plant, water and harvest.</p></article>")
+SPA = """<!doctype html><html><head><title>Garden App</title>
+<script src="/static/js/main.js"></script><script src="/static/js/vendor.js"></script></head>
+<body><noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div>
+<script>document.getElementById("root").innerHTML = %s;</script></body></html>""" % json.dumps(SPA_TEXT)
+
+# Tries everything the browser must not allow and writes what happened into the page.
+SPA_PROBE = """<!doctype html><html><head><title>Probe</title></head><body>
+<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div>
+<img src="/image.png?probe=1" alt=""><script src="/static/js/a.js"></script>
+<script>
+(async () => {
+  const out = [];
+  const show = () => { document.getElementById("root").setAttribute("data-progress", out.join(" ")); };
+  out.push("rtc:" + typeof window.RTCPeerConnection);
+  let popup = "error"; try { popup = String(window.open("/article")); } catch (e) { popup = "threw"; }
+  out.push("popup:" + popup); show();
+  let sw = "missing";
+  if (navigator.serviceWorker) { try { await navigator.serviceWorker.register("/sw.js"); sw = "registered"; } catch (e) { sw = "blocked"; } }
+  out.push("sw:" + sw); show();
+  for (const [name, url] of LOCAL_TARGETS) {
+    let r = "blocked";
+    try { const resp = await fetch(url, {mode: "no-cors"}); r = "reached"; } catch (e) {}
+    out.push(name + ":" + r); show();
+  }
+  let ws = "blocked";
+  try { await new Promise((ok, fail) => { const s = new WebSocket("ws://news.example.org/socket"); s.onopen = ok; s.onerror = fail; s.onclose = fail; setTimeout(fail, 700); }); ws = "open"; } catch (e) {}
+  out.push("ws:" + ws);
+  document.getElementById("root").innerHTML = "<article><h1>Probe results</h1><p>" + out.join(" ") +
+    " This paragraph is long enough to be treated as the main content of the page by the extractor, " +
+    "which needs a couple of sentences of real text before it accepts a page as readable content.</p></article>";
+})();
+</script></body></html>"""
+
 INJECTION = """<!doctype html><html><head><title>Totally normal recipe</title></head><body><main>
 <h1>Pancake recipe</h1>
 <p>Mix 200 g flour, 2 eggs and 300 ml milk. Fry thin pancakes in a hot buttered pan for one minute per side.</p>
@@ -200,6 +238,42 @@ def create_web_app(self_links: bool = False) -> FastAPI:
     @app.get("/js-shell")
     async def js_shell():
         return html(JS_SHELL)
+
+    @app.get("/spa")
+    async def spa():
+        return html(SPA)
+
+    @app.get("/spa-probe")
+    async def spa_probe(local: str = ""):
+        targets = [["private", "http://10.11.12.13/"], ["loopback", "http://127.0.0.1/"]] + ([["service", local]] if local else [])
+        return html(SPA_PROBE.replace("LOCAL_TARGETS", json.dumps(targets)))
+
+    @app.get("/sw.js")
+    async def service_worker():
+        return Response("self.addEventListener('fetch', () => {});", media_type="text/javascript")
+
+    @app.get("/download")
+    async def download():
+        return Response(b"\x00binary" * 100, media_type="application/octet-stream",
+                        headers={"Content-Disposition": 'attachment; filename="file.bin"'})
+
+    @app.get("/state/{action}")
+    async def browser_state(action: str):
+        # set: leaves a cookie and local storage behind; show: reports what a new page sees.
+        script = ("localStorage.setItem('k', 'leftover'); document.cookie = 'js=leftover; path=/';" if action == "set" else "")
+        body = f"""<!doctype html><html><head><title>State</title></head><body><div id="root"></div><script>
+{script}
+document.getElementById("root").innerHTML = "<article><p>cookie=[" + document.cookie + "] storage=[" +
+  (localStorage.getItem('k') || '') + "]. This sentence pads the page so that the extractor keeps it as real content, " +
+  "since very short pages are treated as empty shells by the reader.</p></article>";
+</script></body></html>"""
+        headers = {"Set-Cookie": "srv=leftover; Path=/"} if action == "set" else {}
+        return HTMLResponse(body, headers=headers)
+
+    @app.get("/hang")
+    async def hang():
+        await asyncio.sleep(60)
+        return html(ARTICLE)
 
     @app.get("/injection")
     async def injection():

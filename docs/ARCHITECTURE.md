@@ -118,10 +118,11 @@ see [I18N.md](I18N.md).
 
 | event | data |
 | --- | --- |
-| `start` | `generation_id`, `assistant_message`, `user_message` (send/edit) |
+| `start` | `generation_id`, `assistant_message`, `user_message` (send/edit), `active_path` (the branch now shown) |
 | `snapshot` | (reattach only) current partial `message` |
 | `sources` | retrieved knowledge excerpts |
 | `web` | `message_id`, full current `web` state (steps, queries, citation map) and source metadata; sent on every change and replayed on reattach |
+| `context` | `message_id`, how the request was built (window and its source, tokens used per part, messages left out, where history starts, summary); sent before the first token |
 | `delta` | `{content}` and/or `{reasoning}` |
 | `done` / `error` | final persisted `message`, `error` text |
 | `title` | generated conversation title |
@@ -138,11 +139,16 @@ providers(id, name, kind, base_url, api_path, api_key, auth_header, timeout, ena
           manual_models, cached_models, models_fetched_at, status, last_error, latency_ms,
           checked_at, capabilities, ...)
 conversations(id, title, title_source, provider_id, model, system_prompt, params,
-              collection_ids, pinned, created_at, updated_at)
-messages(id, conversation_id → conversations, position, role, content, reasoning, status,
-         error, provider_id, model, attachments, sources, metrics, web, created_at, updated_at)
+              collection_ids, pinned, active_leaf_id, context_strategy, context_state,
+              created_at, updated_at)
+messages(id, conversation_id → conversations, parent_id, active_child_id, position (= depth),
+         role, content, reasoning, status, error, provider_id, model, attachments, sources,
+         metrics, web, pinned, context, created_at, updated_at)
+context_summaries(id, user_id, conversation_id, covers_hash, last_message_id, message_count,
+                  content, model, created_at)
 web_sources(id, user_id, conversation_id, message_id → messages, origin pasted|search, url,
-            final_url, title, published, status ok|snippet|error, error_code, content, rank, ...)
+            final_url, title, published, status ok|snippet|error, error_code, content, rank,
+            loader static|browser, ...)
 files(id, filename, mime, size, kind, text, truncated, storage_name, created_at)
 prompts(id, title, description, category, content, ...)
 settings(key, value)                     -- JSON values validated by AppSettings
@@ -160,6 +166,71 @@ renamed (a model title never overwrites a user's).
 Generation parameters merge in order: global defaults → conversation → request;
 `null` means "server default", and only parameters in the provider's
 `supported_params` are sent.
+
+## Conversation tree
+
+Messages form a tree (`parent_id`; the first message has none). Editing a
+message adds a **sibling** user message (with a copy of its attachments) and a
+new answer under it; regenerating adds a sibling answer under the same user
+message. Nothing is overwritten. Each node remembers its `active_child_id`, and
+the conversation its `active_leaf_id`; the **active path** (root → leaf) is
+what is shown and what is sent to the model. Switching a branch
+(`POST /api/conversations/{id}/active`) activates the newest leaf below the
+chosen message and is allowed while another branch streams (the stream keeps
+writing to its own node).
+
+- `parent_id` deliberately has no foreign-key cascade: SQLite's recursive
+  trigger depth (~1000) would cap conversation length. Deleting a message
+  deletes its subtree explicitly in one transaction (refused while any node in
+  it streams) and repairs the active path to the parent's newest remaining
+  branch.
+- Migration 4 turned linear histories into chains (ordered by position, time,
+  rowid) after the usual pre-migration backup.
+- Titles come from the first exchange only, search covers all branches (a hit
+  activates its branch), and export version 3 writes the tree; version 1–2
+  (linear) files still import as chains.
+
+## Context management
+
+`backend/chimera/services/context.py`. For each request:
+
+```
+available = (window − reserved for the answer − safety margin)
+```
+
+- **Window**: per-connection override → what the server reports
+  (llama-server `/props` → `default_generation_settings.n_ctx`, which is the
+  *per-slot* size, `-c ÷ --parallel`) → the user's fallback (default 4096).
+- **Reserve**: `max_tokens` when set, else `min(reserve_tokens, window/4)`
+  (default 1024). **Margin**: 5 % of the window.
+- **Counting**: llama-server's `/tokenize` (exact; cached per text and model,
+  LRU) plus the chat template's per-message overhead measured once with
+  `/apply-template`; the final request is verified with one exact count of the
+  rendered prompt and tightened if needed. Other servers: ≈3.5 characters per
+  token plus a fixed overhead; images count 768 tokens.
+- **Priority**: system prompt (plus summary) → the latest user message with its
+  attachments, knowledge excerpts and web pages → pinned exchanges → recent
+  history newest first, in **whole exchanges** (a user message and its
+  answers). If system + latest don't fit: `context.too_large`, nothing sent.
+- **Hysteresis**: when history must be cut, it is cut to 75 % of its budget
+  and the cut point (`conversations.context_state.cut_id`) is kept while
+  everything after it still fits, so the prompt prefix stays identical and
+  llama-server's prompt cache is reused; the cut only moves when needed again.
+- **Strategies**: `sliding` (default) leaves out older exchanges; `summarize`
+  replaces them with a model-written summary (≤ 20 % of the history budget,
+  cached in `context_summaries` by the hash of the covered message ids and
+  extended incrementally; on failure it falls back to sliding and says so);
+  `off` sends the whole branch. Per user (Settings → Chat), overridable per
+  conversation.
+- **Server overflow**: if llama-server still answers
+  `exceed_context_size_error` before any token, the request is rebuilt once
+  against the size in the error and 70 % of the budget; a second rejection is
+  shown (`context_exceeded`). Never retried with `off`.
+- **Web** text is part of the latest message: the pipeline composes it for the
+  room left after the system prompt, and history is trimmed before sources are
+  dropped (`history_trimmed` step).
+- What was done is stored on the answer (`messages.context`) and shown: a
+  usage indicator, and a marker where history stops being sent.
 
 ## Retrieval (RAG)
 

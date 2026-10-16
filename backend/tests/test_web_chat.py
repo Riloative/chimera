@@ -135,8 +135,11 @@ def test_edit_reads_the_new_links(client, conversation, web):
     with client.stream("POST", f"/api/conversations/{conversation['id']}/messages/{user['id']}/edit",
                        json={"content": "Read http://docs.example.org/docs instead"}) as resp:
         read_sse(resp)
-    sources = detail(client, conversation["id"])["web_sources"]
-    assert [s["url"] for s in sources] == ["http://docs.example.org/docs"]
+    conv = detail(client, conversation["id"])
+    edited = conv["active_path"][0]
+    sources = {s["message_id"]: s["url"] for s in conv["web_sources"]}
+    # The edit is a new branch: it reads its own links; the original keeps its page.
+    assert sources == {edited: "http://docs.example.org/docs", user["id"]: ARTICLE}
 
 
 # --------------------------------------------------------------------- search

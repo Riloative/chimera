@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import i18n from "@/i18n";
 import { providerErrorText } from "@/lib/errors";
 import type { AppSettings, Message, WebSource, WebStatus, WebUserSettings } from "@/lib/types";
+import { useChat } from "@/stores/chat";
 import { useSettings } from "@/stores/settings";
 import { useWeb } from "@/stores/web";
 import { Composer } from "./Composer";
@@ -17,7 +18,6 @@ const PREFS: WebUserSettings = {
   keep_search_on: false,
   results: 5,
   expand_steps: false,
-  context_tokens: 8192,
   task_provider_id: null,
   task_model: null,
   privacy_acknowledged: true,
@@ -151,6 +151,7 @@ const SOURCES = { s1: SOURCE("s1", 1), s2: SOURCE("s2", 2, { status: "snippet", 
 const MESSAGE = {
   id: "a1",
   conversation_id: "c1",
+  parent_id: "u1",
   position: 1,
   role: "assistant",
   content: "Fact [1] and [2]. Unknown [7]. Code `[1]`.",
@@ -244,6 +245,60 @@ describe("web steps and sources", () => {
     expect(links[1]).toHaveTextContent("Summary only");
     expect(links[2]).toHaveTextContent("Left out because of the model's context limit.");
     expect(list.querySelector("img")).toBeNull(); // no favicons: no third-party requests
+  });
+});
+
+describe("headless browser", () => {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    await act(() => i18n.changeLanguage("en"));
+  });
+
+  function openShell(available: boolean, extra: Partial<WebSource> = {}) {
+    const shell = SOURCE("s9", 1, { origin: "pasted", status: "error", error_code: "web.needs_javascript", chars: 0, ...extra });
+    useWeb.setState({ status: { ...STATUS, browser_available: available }, search: {} });
+    useChat.setState({ convs: {} });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/refetch")) {
+        expect(JSON.parse(String(init?.body))).toEqual({ loader: "browser" });
+        return json({ ok: true, source: { ...shell, status: "ok", error_code: null, loader: "browser", chars: 300 } });
+      }
+      return json({ ...shell, content: url.includes("s9") && fetchMock.mock.calls.length > 1 ? "Rendered text" : "" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    wrap(<WebSourceList refs={[{ n: 1, source_id: "s9", included: true }]} sources={{ s9: shell }} conversationId="c1" />);
+    return fetchMock;
+  }
+
+  it("offers to render a JavaScript page with the browser and marks the result", async () => {
+    const fetchMock = openShell(true);
+    await userEvent.click(screen.getByRole("button", { name: /View the text that was read/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("needs JavaScript");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Try “Render with browser”.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Render with browser" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/web/sources/s9/refetch", expect.objectContaining({ method: "POST" }));
+    expect(await within(dialog).findByText("Rendered with the headless browser")).toBeInTheDocument();
+  });
+
+  it("hides the action when no browser is available and explains a failed render", async () => {
+    openShell(false, { error_params: { browser: "web.browser_unavailable" } });
+    await userEvent.click(screen.getByRole("button", { name: /View the text that was read/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("button", { name: "Render with browser" })).toBeNull();
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("The headless browser couldn't help either: The headless browser is not available right now.");
+  });
+
+  it("is translated", async () => {
+    await act(() => i18n.changeLanguage("lt"));
+    openShell(true);
+    await userEvent.click(screen.getByRole("button", { name: /Peržiūrėti|tekst/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Atvaizduoti naršykle" })).toBeInTheDocument();
+    expect(providerErrorText("web.browser_limit", {}, "x")).toContain("valandinį limitą");
+    expect(providerErrorText("web.browser_blocked", {}, "x")).toContain("neleidžiamas");
   });
 });
 

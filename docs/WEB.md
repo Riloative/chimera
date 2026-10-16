@@ -133,9 +133,9 @@ the last result is remembered (*"Last tested …"*).
 ### Limits
 
 - **JavaScript-only pages** (single-page apps) usually have no text in their
-  HTML. Chimera detects this and says *"This page needs JavaScript"*. A
-  headless-browser loader is **not implemented** (planned, optional; it would
-  add ~300 MB of Chromium and must go through the same network checks).
+  HTML. Chimera detects this and says *"This page needs JavaScript"* — or,
+  with the optional [headless browser](#headless-browser-optional), renders the
+  page instead.
 - **Paywalls and logins**: Chimera never sends your cookies, so it reads what
   an anonymous visitor sees.
 - **robots.txt** is respected for automatically fetched *search results*
@@ -178,13 +178,17 @@ and **Answer without search**. **Stop** cancels whichever stage is running.
 
 Local models often run with 4k–32k tokens of context, so web text is budgeted:
 
-- The context size comes from llama-server (`/props`, the per-slot `n_ctx`);
-  for other servers set *Context size if the server doesn't report it*
-  (default 8192).
-- Chimera reserves room for the system prompt, the conversation and the answer
-  (`max_tokens`, or a quarter of the context), and gives the rest to web text,
-  capped by *Characters of web text per answer* (default 24,000) and
-  *Characters per source* (default 8,000).
+- Web text is part of the **one context budget** described in
+  [ARCHITECTURE.md](ARCHITECTURE.md#context-management): it belongs to the
+  latest message, which comes right after the system prompt in priority, so
+  older conversation history is trimmed first (the steps say *"3 earlier
+  messages were left out to make room for the pages"*). The window size comes
+  from llama-server (`/props`, per slot), a per-connection override, or the
+  fallback in Settings → Chat → Context window.
+- Web text is further capped by *Characters of web text per answer* (default
+  24,000) and *Characters per source* (default 8,000). If even the pages alone
+  don't fit next to the system prompt and the answer reserve, fewer sources are
+  used (retried with a smaller share) before the message is refused.
 - Long pages are split into passages and scored against the queries and your
   question with **BM25** (no embedding model needed). Pasted links use *full*
   mode (the whole page if it fits, otherwise its opening plus the most relevant
@@ -302,6 +306,109 @@ with the same care as the pages themselves.
   robots policy, limits and prompts. Turning web access off is enforced by the
   server (`web.disabled`), not just hidden in the UI.
 
+## Headless browser (optional)
+
+Some pages only produce their text with JavaScript. Chimera can render them in
+a headless Chromium that runs as a **separate, isolated service**. It is off
+unless you start it.
+
+### Enabling it
+
+```sh
+# .env (next to docker-compose.yml)
+CHIMERA_BROWSER_URL=http://browser:3000
+CHIMERA_BROWSER_SECRET=<openssl rand -hex 32>
+
+docker compose --profile browser up -d --build
+```
+
+Then, as an administrator, check **Settings → Web → Headless browser**: it
+shows whether the service is reachable and has the switches:
+
+| Setting | Default | |
+| --- | --- | --- |
+| Use the headless browser | on | Off disables it completely (including "Render with browser"). |
+| Render pages that need JavaScript automatically | on | When static reading finds an empty JavaScript app, the page is rendered instead. |
+| Render timeout | 25 s | Per page (5–60). |
+| Renders per user per hour | 60 | Separate from the page-read quota; over it: `web.browser_limit`. |
+
+Users see **Render with browser** in a source's details (next to *Read
+again*) whenever the browser is available, and *Rendered with the headless
+browser* on sources it read. Sources record which loader read them
+(`loader`: `static` or `browser`).
+
+Without Docker: run `browser/chimera_browser.py` with Playwright 1.56 and set
+`BROWSER_SECRET` and `BROWSER_PROXY_SERVER=http://127.0.0.1:8701` for it, and
+`CHIMERA_BROWSER_URL=http://127.0.0.1:3000`, `CHIMERA_BROWSER_SECRET` for
+Chimera. Without network isolation the egress proxy and Chromium's flags are
+the only guard — prefer the container.
+
+### How it is isolated
+
+```
+ browser container ──(internal network, no gateway)──▶ Chimera :8701 egress filter proxy ──▶ internet
+       ▲                                                        (netguard rules, pinned DNS)
+       └── POST /render (Bearer secret) ── Chimera
+```
+
+- **Network.** The browser container is only on `browser-net`, a Compose
+  network marked `internal: true` (no route to the internet, the host or your
+  LAN). Its port is not published and not reachable through a Cloudflare
+  Tunnel or any reverse proxy pointed at Chimera.
+- **Egress filter proxy.** Chromium's only way out is an HTTP proxy that runs
+  inside Chimera (`backend/chimera/web/egress.py`). Every connection — the
+  page, each redirect, every script, stylesheet, `fetch()` or WebSocket the
+  page tries — is a separate CONNECT or proxied request, validated with the
+  same rules as the static fetcher: http/https only, allowed ports, the
+  administrator's domain allow/deny lists, the name resolved by Chimera and
+  every address required to be public, then a connection to that exact address
+  (DNS pinning). Plain-HTTP connections are closed after one response, so a
+  kept-alive connection can't carry a request for another host.
+- **Credentials per render.** The proxy only accepts credentials Chimera
+  issues for one render; they're revoked, and any open tunnel is closed, when
+  the render finishes, fails or is cancelled. Other containers on the network
+  can't use the proxy.
+- **Chromium flags.** Loopback traffic is forced through the proxy (Chromium
+  normally bypasses proxies for `localhost`), host-name resolution inside the
+  browser is disabled except for the proxy, and WebRTC is limited to proxied
+  traffic and removed from pages.
+- **Per page:** a fresh incognito context (no cookies, storage or cache shared
+  between renders or users), service workers blocked, downloads refused
+  (`web.browser_blocked`), popups closed, WebSockets closed, non-http(s)
+  requests aborted, images/media/fonts not loaded, at most 250 requests per
+  page and 5 MB of HTML returned.
+- **Limits.** 2 pages at once and 8 waiting (`BROWSER_MAX_PAGES`,
+  `BROWSER_MAX_QUEUE`), per-render timeout, per-user hourly quota. Pressing
+  **Stop** cancels the render: Chimera drops the request, the service closes
+  the page, and the proxy credentials stop working (tested: no renderer
+  process is left behind).
+- **Container.** Non-root (`pwuser`), read-only root filesystem with small
+  tmpfs mounts, all capabilities dropped, `no-new-privileges`, memory and
+  process limits, `init` to reap processes. Chromium's own sandbox is off
+  (Playwright's default inside containers), so the container is the boundary;
+  keep the image updated by bumping the pinned Playwright version.
+- **Nothing downloaded at runtime.** Chromium comes with the pinned
+  `mcr.microsoft.com/playwright/python:v1.56.0-noble` image.
+
+### What it can't do
+
+Text only (no screenshots); no logins, cookies or interaction (clicking
+"load more", scrolling); it doesn't use `CHIMERA_WEB_PROXY` (connections go
+directly from Chimera); sites that block headless browsers still refuse it.
+Pages rendered this way take seconds and ~100–300 MB of memory each.
+
+### Errors
+
+| Code | Meaning |
+| --- | --- |
+| `web.browser_unavailable` | Not configured, switched off, or the service can't be reached (static reading continues). |
+| `web.browser_timeout` | The page didn't finish within the render timeout. |
+| `web.browser_blocked` | The page or a redirect pointed to a forbidden address, or it started a download. |
+| `web.browser_limit` | The service is busy, or the user's hourly render quota is used up. |
+
+When automatic rendering fails, the source keeps *"This page needs
+JavaScript"* and adds why the browser didn't help.
+
 ## Optional: "let the model decide when to search"
 
 **Status: planned — not available in the UI.** The interface exists
@@ -320,9 +427,10 @@ which works with every model — is the supported path.
 Implemented: link reading (HTML, text, Markdown, JSON, CSV, RSS/Atom, PDF,
 GitHub, YouTube metadata), SearXNG/Brave/Tavily, query writing with fallback,
 BM25 passage selection and context budgeting, live steps, citations and
-sources, per-user quotas and caching, admin controls, English and Lithuanian.
+sources, per-user quotas and caching, admin controls, the optional headless
+browser for JavaScript pages, English and Lithuanian.
 
-Planned: headless-browser loader for JavaScript pages, model-driven tool
+Planned: model-driven tool
 search, embedding-based reranking (using a knowledge-base embedding model),
 video transcripts, image search, a "deep research" multi-step mode, more
 engines (Google PSE, Kagi, Serper, Mojeek).
@@ -340,7 +448,10 @@ engines (Google PSE, Kagi, Serper, Mojeek).
 | *The search returned no results* | Rephrase; check the domain allow-list isn't too narrow. |
 | *This address points to a private or local network* | Intended. To read an internal site, add its host or network to *Internal hosts that may be read*. |
 | *Connections to port … are not allowed* | Add the port under *Allowed ports*, or allow-list the host. |
-| *This page needs JavaScript* | The site renders in the browser; no headless loader yet. Paste the text or a PDF instead. |
+| *This page needs JavaScript* | The site renders in the browser. Enable the [headless browser](#headless-browser-optional), or paste the text or a PDF instead. |
+| *The headless browser is not available* | `CHIMERA_BROWSER_URL`/`CHIMERA_BROWSER_SECRET` not set, the `browser` profile not running, or the secrets differ (Settings → Web → Headless browser shows which). `docker compose logs browser`. |
+| *The page, or a page it redirected to, is not allowed* | The page (or a redirect) points to a private address or starts a download. Intended; allow-list an internal host if you really need it. |
+| *took too long to render* | Raise *Render timeout*; heavy pages may need 30–45 s. |
 | *No readable text was found* | The page is mostly images or forms. |
 | *The site took too long to respond* | Raise *Page timeout* in Settings → Web → Limits. |
 | *You've reached the hourly limit* | Per-user quota; an administrator can raise it under Limits. |

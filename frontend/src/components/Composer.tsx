@@ -88,6 +88,12 @@ export function Composer({
   const shownLinks = webEnabled ? detected.urls.slice(0, maxLinks) : [];
   const linkSelected = (url: string) => linkChoice[dedupeKey(url)] ?? autoRead;
 
+  const setDraftChars = useUI((s) => s.setDraftChars);
+  useEffect(() => {
+    const id = setTimeout(() => setDraftChars(text.length), 250);
+    return () => clearTimeout(id);
+  }, [text, setDraftChars]);
+
   // Auto-grow the textarea up to a comfortable maximum.
   useLayoutEffect(() => {
     const ta = textareaRef.current;

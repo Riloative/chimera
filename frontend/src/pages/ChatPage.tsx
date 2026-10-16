@@ -1,9 +1,10 @@
 import { AlertTriangle, ArrowDown, Download, Menu, MoreHorizontal, Pencil, Pin, PinOff, SlidersHorizontal, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { errorText, providerErrorText } from "@/lib/errors";
 import { Composer, type WebChoice } from "@/components/Composer";
+import { ContextIndicator, ContextMarker } from "@/components/ContextIndicator";
 import { ConversationSettings, type ConversationSettingsValue } from "@/components/ConversationSettings";
 import { LogoMark } from "@/components/Logo";
 import { AssistantMessage, UserMessage } from "@/components/MessageView";
@@ -14,7 +15,7 @@ import { useActiveModel } from "@/lib/hooks";
 import { greetingKey } from "@/lib/time";
 import type { Attachment, Conversation, Message, ModelRef } from "@/lib/types";
 import { cn, modelLabel } from "@/lib/utils";
-import { useChat } from "@/stores/chat";
+import { pathMessages, siblingsOf, subtreeIds, useChat } from "@/stores/chat";
 import { useConversations } from "@/stores/conversations";
 import { findProvider, modelSupportsVision, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
@@ -30,7 +31,7 @@ export function ChatPage() {
   const conv = useConversations((s) => s.items.find((c) => c.id === id));
   const convsLoaded = useConversations((s) => s.loaded);
   const chat = useChat((s) => (id ? s.convs[id] : undefined));
-  const { load, send, regenerate, edit, stop, deleteMessage, clearSendError } = useChat.getState();
+  const { load, send, regenerate, edit, stop, deleteMessage, clearSendError, switchBranch, setPinned } = useChat.getState();
   const entries = useModels((s) => s.entries);
   const modelsLoaded = useModels((s) => s.loaded);
   const settings = useSettings((s) => s.settings);
@@ -39,6 +40,7 @@ export function ChatPage() {
   const setDraft = useUI((s) => s.setDraft);
   const resetDraft = useUI((s) => s.resetDraft);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"prompt" | "params" | "knowledge">("prompt");
 
   const model = useActiveModel(conv);
   const provider = findProvider(entries, model?.providerId);
@@ -80,6 +82,7 @@ export function ChatPage() {
           system_prompt: draft.systemPrompt,
           params: draft.params,
           collection_ids: draft.collectionIds,
+          context_strategy: draft.contextStrategy ?? null,
         })
         .catch((err) => {
           toast(errorText(err), "error");
@@ -99,12 +102,17 @@ export function ChatPage() {
   };
 
   const settingsValue: ConversationSettingsValue = conv
-    ? { systemPrompt: conv.system_prompt, params: conv.params, collectionIds: conv.collection_ids }
+    ? { systemPrompt: conv.system_prompt, params: conv.params, collectionIds: conv.collection_ids, contextStrategy: conv.context_strategy ?? null }
     : draft;
   const saveSettings = async (v: ConversationSettingsValue) => {
     if (id && conv) {
       try {
-        await useConversations.getState().patch(id, { system_prompt: v.systemPrompt, params: v.params, collection_ids: v.collectionIds });
+        await useConversations.getState().patch(id, {
+          system_prompt: v.systemPrompt,
+          params: v.params,
+          collection_ids: v.collectionIds,
+          context_strategy: v.contextStrategy ?? null,
+        });
         toast(t("settings.saved"));
       } catch (err) {
         toast(errorText(err), "error");
@@ -125,7 +133,10 @@ export function ChatPage() {
       model={model}
       onModelChange={onModelChange}
       visionSupported={vision}
-      onOpenSettings={() => setSettingsOpen(true)}
+      onOpenSettings={() => {
+        setSettingsTab("prompt");
+        setSettingsOpen(true);
+      }}
       settingsActive={customized}
       knowledgeCount={knowledgeCount}
       autoFocus
@@ -139,6 +150,7 @@ export function ChatPage() {
       onOpenChange={setSettingsOpen}
       value={settingsValue}
       onSave={saveSettings}
+      initialTab={settingsTab}
       supportedParams={provider?.supported_params}
     />
   );
@@ -191,15 +203,23 @@ export function ChatPage() {
     );
   }
 
-  const messages = chat?.messages ?? [];
+  const messages = pathMessages(chat);
+  const tree = chat?.messages ?? [];
   const busy = !!chat?.streaming;
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar conversation={conv} model={model} onOpenSettings={() => setSettingsOpen(true)} messages={messages} />
+      <TopBar conversation={conv} model={model} onOpenSettings={() => { setSettingsTab("prompt"); setSettingsOpen(true); }} messages={messages} />
       <MessageList
         key={id}
         messages={messages}
+        tree={tree}
+        onSwitch={(mid) => switchBranch(id, mid).catch((e) => toast(errorText(e), "error"))}
+        onTogglePin={(m) => setPinned(id, m.id, !m.pinned).catch((e) => toast(errorText(e), "error"))}
+        onChangeStrategy={() => {
+          setSettingsTab("params");
+          setSettingsOpen(true);
+        }}
         loading={!chat?.loaded}
         busy={busy}
         showReasoning={settings?.show_reasoning ?? true}
@@ -374,6 +394,8 @@ function TopBar({
             </MenuContent>
           </MenuRoot>
           {model && <span className="hidden truncate text-[0.8125rem] text-faint sm:inline">· {modelLabel(model.model)}</span>}
+          <div className="ml-auto" />
+          <ContextIndicator conversationId={conversation.id} />
         </div>
       )}
       <Dialog
@@ -434,6 +456,10 @@ function MessageList({
   showReasoning,
   expandSteps,
   webSources,
+  tree,
+  onSwitch,
+  onTogglePin,
+  onChangeStrategy,
   onRegenerate,
   onEdit,
   onDelete,
@@ -445,6 +471,10 @@ function MessageList({
   showReasoning: boolean;
   expandSteps: boolean;
   webSources: WebSources;
+  tree: Message[];
+  onSwitch: (messageId: string) => void;
+  onTogglePin: (message: Message) => void;
+  onChangeStrategy: () => void;
   onRegenerate: (messageId?: string, webSearch?: boolean) => void;
   onEdit: (messageId: string, content: string) => Promise<void> | void;
   onDelete: (messageId: string) => void;
@@ -493,6 +523,14 @@ function MessageList({
   };
 
   const lastAssistant = messages.findLast((m) => m.role === "assistant")?.id;
+  // Where the most recent request stopped including history (if it was trimmed).
+  const lastContext = messages.findLast((m) => m.role === "assistant" && !!m.context?.window)?.context;
+  const cutBefore = lastContext && (lastContext.dropped ?? 0) > 0 ? lastContext.cut_before : null;
+  const branchInfo = (m: Message) => {
+    const siblings = siblingsOf(tree, m);
+    const index = siblings.findIndex((s) => s.id === m.id);
+    return siblings.length > 1 && index >= 0 ? { index, total: siblings.length, onSelect: (i: number) => onSwitch(siblings[i].id) } : undefined;
+  };
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -505,12 +543,27 @@ function MessageList({
           ) : (
             <ol className="space-y-8" aria-label={t("messages")}>
               {messages.map((m) => (
-                <li key={m.id} className={cn("animate-fade-in", m.role === "assistant" && "pr-1")}>
+                <Fragment key={m.id}>
+                {m.id === cutBefore && lastContext && (
+                  <li>
+                    <ContextMarker
+                      dropped={lastContext.dropped ?? 0}
+                      summary={lastContext.summary}
+                      summaryFailed={lastContext.summary_failed}
+                      retried={lastContext.retried}
+                      onChangeStrategy={onChangeStrategy}
+                    />
+                  </li>
+                )}
+                <li className={cn("animate-fade-in", m.role === "assistant" && "pr-1")}>
                   {m.role === "user" ? (
                     <UserMessage
                       message={m}
                       disabled={busy}
                       webSources={webSources}
+                      branch={branchInfo(m)}
+                      deleteCount={subtreeIds(tree, m.id).length}
+                      onTogglePin={() => onTogglePin(m)}
                       onEdit={async (c) => void (await onEdit(m.id, c))}
                       onDelete={() => onDelete(m.id)}
                     />
@@ -522,11 +575,15 @@ function MessageList({
                       showReasoning={showReasoning}
                       webSources={webSources}
                       expandSteps={expandSteps}
+                      branch={branchInfo(m)}
+                      deleteCount={subtreeIds(tree, m.id).length}
+                      onTogglePin={() => onTogglePin(m)}
                       onRegenerate={(webSearch) => onRegenerate(m.id, webSearch)}
                       onDelete={() => onDelete(m.id)}
                     />
                   ) : null}
                 </li>
+                </Fragment>
               ))}
             </ol>
           )}

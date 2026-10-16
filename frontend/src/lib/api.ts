@@ -6,6 +6,8 @@ import type {
   Collection,
   Conversation,
   ConversationDetail,
+  ContextEstimate,
+  Message,
   GenerationParams,
   KnowledgeDocument,
   Prompt,
@@ -173,9 +175,10 @@ export const api = {
 
   webStatus: () => request<WebStatus>("/api/web/status"),
   webSource: (id: string) => request<WebSource & { content: string }>(`/api/web/sources/${id}`),
-  refetchWebSource: (id: string) =>
+  refetchWebSource: (id: string, loader: "auto" | "static" | "browser" = "auto") =>
     request<{ ok: boolean; source: WebSource; error_code?: string | null; error_params?: Record<string, unknown> }>(`/api/web/sources/${id}/refetch`, {
       method: "POST",
+      json: { loader },
     }),
   adminWeb: () => request<WebAdminView>("/api/admin/web"),
   adminUpdateWeb: (data: { settings?: Partial<WebAdminSettings>; engine_keys?: Partial<Record<WebEngineKind, string | null>> }) =>
@@ -203,7 +206,14 @@ export const api = {
   updateConversation: (id: string, data: Record<string, unknown>) =>
     request<Conversation>(`/api/conversations/${id}`, { method: "PATCH", json: data }),
   deleteConversation: (id: string) => request<void>(`/api/conversations/${id}`, { method: "DELETE" }),
-  deleteMessage: (id: string) => request<void>(`/api/messages/${id}`, { method: "DELETE" }),
+  deleteMessage: (id: string) => request<{ deleted: number; active_path: string[] }>(`/api/messages/${id}`, { method: "DELETE" }),
+  updateMessage: (id: string, data: { pinned: boolean }) => request<Message>(`/api/messages/${id}`, { method: "PATCH", json: data }),
+  contextEstimate: (conversationId: string) => request<ContextEstimate>(`/api/conversations/${conversationId}/context`),
+  activateBranch: (conversationId: string, messageId: string) =>
+    request<{ active_leaf_id: string; active_path: string[] }>(`/api/conversations/${conversationId}/active`, {
+      method: "POST",
+      json: { message_id: messageId },
+    }),
   cancelGeneration: (id: string) => request<{ cancelled: boolean }>(`/api/generations/${id}/cancel`, { method: "POST" }),
 
   uploadFile: async (file: File) => {

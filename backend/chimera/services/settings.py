@@ -37,6 +37,23 @@ class KnowledgeSettings(BaseModel):
     top_k: int = Field(5, ge=1, le=20)
 
 
+class ContextSettings(BaseModel):
+    """Automatic context management (see services/context.py)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: Literal["sliding", "summarize", "off"] = "sliding"
+    # Used when neither the connection nor the server tells us the window.
+    fallback_window: int = Field(4096, ge=512, le=2_000_000)
+    # When history must be cut, cut down to this share of the history budget,
+    # then keep the prompt prefix stable (llama-server prompt cache).
+    hysteresis: float = Field(0.75, ge=0.3, le=0.95)
+    safety_margin_pct: float = Field(5, ge=0, le=30)
+    reserve_tokens: int = Field(1024, ge=64, le=65_536)
+    summary_provider_id: str | None = None
+    summary_model: str | None = Field(None, max_length=500)
+
+
 class AppSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -61,6 +78,7 @@ class AppSettings(BaseModel):
     knowledge: KnowledgeSettings = Field(default_factory=KnowledgeSettings)
     # Web reading & search (the instance-wide switch and limits are admin settings)
     web: WebUserSettings = Field(default_factory=WebUserSettings)
+    context: ContextSettings = Field(default_factory=ContextSettings)
 
 
 class SettingsStore:
@@ -76,6 +94,10 @@ class SettingsStore:
         ):
             stored[row["key"]] = loads(row["value"])
         known = {k: v for k, v in stored.items() if k in AppSettings.model_fields}
+        # 0.3 kept the fallback context size under web settings.
+        legacy = (known.get("web") or {}).get("context_tokens") if isinstance(known.get("web"), dict) else None
+        if isinstance(legacy, int) and "context" not in known:
+            known["context"] = {"fallback_window": max(512, legacy)}
         try:
             return AppSettings.model_validate(known)
         except Exception:  # noqa: BLE001 - corrupted values fall back field by field

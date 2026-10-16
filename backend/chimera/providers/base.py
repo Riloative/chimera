@@ -185,6 +185,16 @@ class Provider(abc.ABC):
     async def embed(self, model: str, texts: list[str]) -> list[list[float]]:
         raise ProviderError("This provider does not support embeddings.", code="unsupported")
 
+    # -- optional token counting (context management) --------------------
+    async def tokenize_count(self, text: str) -> int | None:
+        """Exact token count of ``text`` with the model's tokenizer, or ``None``
+        when the server can't tell us (the caller then estimates)."""
+        return None
+
+    async def prompt_tokens(self, request: ChatRequest) -> int | None:
+        """Exact token count of the whole rendered chat prompt, or ``None``."""
+        return None
+
 
 def translate_http_error(exc: Exception, provider_name: str) -> ProviderError:
     """Map transport exceptions to friendly, actionable messages."""
@@ -224,6 +234,14 @@ def error_from_response(status: int, body: bytes | str, provider_name: str) -> P
     except (ValueError, AttributeError):
         message = text.strip()[:300]
     code = "http"
+    err_obj = None
+    try:
+        parsed = json.loads(text)
+        err_obj = parsed.get("error", parsed) if isinstance(parsed, dict) else None
+    except (ValueError, AttributeError):
+        pass
+    if is_context_overflow(err_obj, message):
+        return context_overflow_error(err_obj if isinstance(err_obj, dict) else {}, provider_name, message)
     if status in (401, 403):
         code = "auth"
         message = message or "Authentication failed — check the API key."
@@ -236,3 +254,27 @@ def error_from_response(status: int, body: bytes | str, provider_name: str) -> P
     return ProviderError(
         f"{prefix}: {message}" if message else prefix, code=code, status=status, name=provider_name, detail=message or None
     )
+
+
+def is_context_overflow(err: object, message: str = "") -> bool:
+    """llama-server answers ``exceed_context_size_error`` (HTTP 400) when the
+    prompt doesn't fit the slot's context; other servers use similar wording."""
+    if isinstance(err, dict) and err.get("type") in ("exceed_context_size_error", "context_length_exceeded"):
+        return True
+    if isinstance(err, dict) and err.get("code") == "context_length_exceeded":
+        return True
+    text = (message or "").lower()
+    return any(p in text for p in ("exceeds the available context size", "larger than the max context size",
+                                    "maximum context length", "context length exceeded", "context window"))
+
+
+def context_overflow_error(err: dict, provider_name: str, message: str = "") -> ProviderError:
+    detail = str(err.get("message") or message or "")
+    exc = ProviderError(
+        f"{provider_name}: the request is too long for the model's context window.",
+        code="context_exceeded", status=400, name=provider_name, detail=detail or None,
+    )
+    for key in ("n_prompt_tokens", "n_ctx"):
+        if isinstance(err.get(key), int):
+            exc.params[key] = err[key]
+    return exc

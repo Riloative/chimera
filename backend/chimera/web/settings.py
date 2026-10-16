@@ -74,15 +74,15 @@ class WebAdminSettings(BaseModel):
 class WebUserSettings(BaseModel):
     """Per-user preferences (part of the user's ``AppSettings``)."""
 
-    model_config = ConfigDict(extra="forbid")
+    # "ignore": stored settings from 0.3 may still carry ``context_tokens``,
+    # which moved to the context settings (see services/settings.py).
+    model_config = ConfigDict(extra="ignore")
 
     auto_read_links: bool = True
     search_by_default: bool = False
     keep_search_on: bool = False
     results: int = Field(5, ge=1, le=10)
     expand_steps: bool = False
-    # Used when the inference server does not report its context size.
-    context_tokens: int = Field(8192, ge=1024, le=2_000_000)
     task_provider_id: str | None = None
     task_model: str | None = Field(None, max_length=500)
     privacy_acknowledged: bool = False

@@ -302,6 +302,13 @@ async def cancel_generation(gid: str, user: dict = Depends(current_user), state:
     return {"cancelled": state.chat.cancel(user["id"], gid)}
 
 
+@router.get("/conversations/{cid}/context")
+async def context_estimate(cid: str, user: dict = Depends(current_user), state: AppState = Depends(get_state)):
+    """Estimated context usage of the next request on the active branch."""
+    _owned_conversation(state, user, cid)
+    return await state.chat.estimate_context(user, cid)
+
+
 @router.post("/conversations/{cid}/active")
 async def set_active_branch(
     cid: str, body: schemas.ActiveBranch, user: dict = Depends(current_user), state: AppState = Depends(get_state)

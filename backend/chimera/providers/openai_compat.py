@@ -31,7 +31,9 @@ from .base import (
     Provider,
     ProviderError,
     StreamEvent,
+    context_overflow_error,
     error_from_response,
+    is_context_overflow,
     translate_http_error,
 )
 from .sse import iter_sse
@@ -39,6 +41,11 @@ from .sse import iter_sse
 log = logging.getLogger("chimera.providers")
 
 MAX_MALFORMED_EVENTS = 20
+IMAGE_TOKENS = 768  # rough cost of one image in multimodal models (not reported by /tokenize)
+# Optional endpoints a server lacks, remembered for a while (re-checked after
+# UNSUPPORTED_TTL so an upgraded llama-server is noticed without a restart).
+_UNSUPPORTED: dict[tuple[str, str], float] = {}
+UNSUPPORTED_TTL = 600.0
 
 
 def _display_name(model_id: str) -> str:
@@ -344,6 +351,8 @@ class OpenAICompatibleProvider(Provider):
             if sse.event == "error" or payload.get("error"):
                 err = payload.get("error", payload)
                 msg = err.get("message") if isinstance(err, dict) else str(err)
+                if is_context_overflow(err, msg or ""):
+                    raise context_overflow_error(err if isinstance(err, dict) else {}, self.config.name, msg or "")
                 raise ProviderError(
                     f"{self.config.name}: {msg or 'stream error'}", code="server", name=self.config.name, detail=msg or None
                 )
@@ -408,3 +417,42 @@ class LlamaCppProvider(OpenAICompatibleProvider):
     )
     has_health_endpoint = True
     has_props_endpoint = True
+
+    # -- exact token counting (/tokenize, /apply-template) ----------------------
+    async def _post_json(self, path: str, body: dict) -> object | None:
+        """POST to an optional llama-server endpoint; ``None`` if this build
+        doesn't have it (remembered per server, so it isn't retried every turn)."""
+        key = (self.root_url, path)
+        if _UNSUPPORTED.get(key, 0) > time.monotonic():
+            return None
+        try:
+            resp = await self.client.post(f"{self.root_url}{path}", json=body, headers={**self.headers(), "Content-Type": "application/json"},
+                                          timeout=self.timeout(read=30))
+        except Exception:  # noqa: BLE001 - counting is best effort
+            return None
+        if resp.status_code in (404, 405, 501):
+            _UNSUPPORTED[key] = time.monotonic() + UNSUPPORTED_TTL
+            return None
+        if resp.status_code != 200:
+            return None
+        try:
+            return resp.json()
+        except ValueError:
+            return None
+
+    async def tokenize_count(self, text: str) -> int | None:
+        data = await self._post_json("/tokenize", {"content": text, "add_special": False})
+        tokens = data.get("tokens") if isinstance(data, dict) else None
+        return len(tokens) if isinstance(tokens, list) else None
+
+    async def prompt_tokens(self, request: ChatRequest) -> int | None:
+        data = await self._post_json("/apply-template", {"messages": encode_messages(request.messages, False)})
+        prompt = data.get("prompt") if isinstance(data, dict) else None
+        if not isinstance(prompt, str):
+            return None
+        counted = await self._post_json("/tokenize", {"content": prompt, "add_special": True})
+        tokens = counted.get("tokens") if isinstance(counted, dict) else None
+        if not isinstance(tokens, list):
+            return None
+        # Images are not part of the rendered text; count them conservatively.
+        return len(tokens) + IMAGE_TOKENS * sum(len(m.images) for m in request.messages)

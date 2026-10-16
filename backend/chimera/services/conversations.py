@@ -105,7 +105,7 @@ class ConversationStore:
     def update(self, cid: str, data: dict[str, Any], touch: bool = False) -> dict | None:
         sets: list[str] = []
         values: list[Any] = []
-        for key in ("title", "provider_id", "model", "system_prompt", "pinned", "params", "collection_ids"):
+        for key in ("title", "provider_id", "model", "system_prompt", "pinned", "params", "collection_ids", "context_strategy"):
             if key not in data:
                 continue
             value = data[key]

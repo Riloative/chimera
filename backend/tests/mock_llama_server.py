@@ -96,6 +96,34 @@ def mock_grounded_answer(text: str) -> str:
     return "\n\n".join(parts) or "No sources were provided."
 
 
+def mock_tokens(text: str) -> int:
+    """Deterministic "tokenizer": words and punctuation marks (deliberately not
+    the 3.5-characters estimate, so tests can tell exact counts apart)."""
+    return len(re.findall(r"\w+|[^\w\s]", text))
+
+
+def render_template(messages: list[dict]) -> str:
+    parts = []
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, list):
+            content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+        parts.append(f"<|im_start|>{m.get('role')}\n{content}<|im_end|>")
+    return "\n".join(parts) + "\n<|im_start|>assistant\n"
+
+
+def configure_context(app, n_ctx: int = 8192, slots: int = 1) -> None:
+    app.state.n_ctx = n_ctx  # total; /props reports n_ctx // slots like llama-server
+    app.state.slots = slots
+    app.state.enforce_ctx = None  # enforce a different size than reported (estimate errors)
+    app.state.n_ctx_error = None  # n_ctx claimed in the overflow error (default: the enforced size)
+    app.state.tokenize_supported = True
+    app.state.tokenize_calls = 0
+    app.state.prompt_sizes = []
+    app.state.summaries = 0
+    app.state.summary_fail = False
+
+
 def embed_text(text: str, dims: int = 64) -> list[float]:
     vec = [0.0] * dims
     for word in re.findall(r"\w+", text.lower()):
@@ -119,6 +147,7 @@ def create_mock_app(
     app.state.loading = loading
     app.state.vision = vision
     app.state.api_key = api_key
+    configure_context(app)
 
     def unauthorized(request: Request) -> JSONResponse | None:
         if app.state.api_key and request.headers.get("authorization") != f"Bearer {app.state.api_key}":
@@ -133,9 +162,10 @@ def create_mock_app(
 
     @app.get("/props")
     async def props():
+        # Like llama-server: n_ctx here is the per-slot context (n_ctx / --parallel).
         return {
-            "default_generation_settings": {"n_ctx": 8192, "params": {"temperature": 0.8, "top_k": 40}},
-            "total_slots": 1,
+            "default_generation_settings": {"n_ctx": app.state.n_ctx // app.state.slots, "params": {"temperature": 0.8, "top_k": 40}},
+            "total_slots": app.state.slots,
             "model_path": f"/models/{app.state.models[0]}",
             "chat_template": "{{ messages }}",
             "modalities": {"vision": app.state.vision, "audio": False},
@@ -174,6 +204,21 @@ def create_mock_app(
             "usage": {"prompt_tokens": 0, "total_tokens": 0},
         }
 
+    @app.post("/tokenize")
+    async def tokenize_endpoint(request: Request):
+        if not app.state.tokenize_supported:
+            return JSONResponse({"error": {"code": 404, "message": "File Not Found"}}, 404)
+        body = await request.json()
+        app.state.tokenize_calls += 1
+        return {"tokens": list(range(mock_tokens(str(body.get("content", "")))))}
+
+    @app.post("/apply-template")
+    async def apply_template(request: Request):
+        if not app.state.tokenize_supported:
+            return JSONResponse({"error": {"code": 404, "message": "File Not Found"}}, 404)
+        body = await request.json()
+        return {"prompt": render_template(body.get("messages") or [])}
+
     @app.post("/v1/chat/completions")
     async def chat(request: Request):
         if (resp := unauthorized(request)) is not None:
@@ -182,6 +227,16 @@ def create_mock_app(
         app.state.requests.append(body)
         if body.get("model") not in app.state.models:
             return JSONResponse({"error": {"code": 400, "message": f"model '{body.get('model')}' not found"}}, 400)
+        n_prompt = mock_tokens(render_template(body.get("messages") or []))
+        app.state.prompt_sizes.append(n_prompt)
+        limit = (app.state.enforce_ctx or app.state.n_ctx) // app.state.slots
+        if n_prompt >= limit:
+            # Exactly what llama-server sends (tools/server/server-context.cpp).
+            return JSONResponse({"error": {
+                "code": 400, "type": "exceed_context_size_error", "n_prompt_tokens": n_prompt,
+                "n_ctx": app.state.n_ctx_error or limit,
+                "message": f"request ({n_prompt} tokens) exceeds the available context size ({limit} tokens), try increasing it",
+            }}, 400)
         messages = body.get("messages") or []
         last = messages[-1] if messages else {"content": ""}
         content = last.get("content")
@@ -196,6 +251,12 @@ def create_mock_app(
 
         if "Write a short, specific title" in text:
             answer = "Mock Conversation Title"
+        elif "Summarize the earlier part of a conversation" in text:
+            if app.state.summary_fail:
+                return JSONResponse({"error": {"code": 500, "message": "summary failed"}}, 500)
+            app.state.summaries += 1
+            words = re.findall(r"text\d+|\w+", text.rsplit("Messages to summarize:", 1)[-1])
+            answer = f"SUMMARY#{app.state.summaries}: " + " ".join(words[:12])
         elif "Write web search queries" in text:
             answer = mock_queries(text)
             if "[slowquery]" in text:

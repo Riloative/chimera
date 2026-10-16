@@ -52,6 +52,9 @@ class MockServer(LiveServer):
         super().__init__(create_mock_app(**kwargs))
 
     def reset(self) -> None:
+        from tests.mock_llama_server import configure_context
+
+        configure_context(self.app)
         self.app.state.requests.clear()
         self.app.state.cancelled = 0
         self.app.state.completed = 0

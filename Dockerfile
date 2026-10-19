@@ -4,7 +4,7 @@
 # Multi-architecture (linux/amd64, linux/arm64): the web UI is built once on
 # the build machine's own platform; only the Python stage is per-architecture.
 
-FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:26-alpine AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund

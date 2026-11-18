@@ -12,6 +12,7 @@ import { useAuth } from "@/stores/auth";
 import { useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { toast } from "@/stores/ui";
+import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 
 const KINDS: { value: ProviderKind; url: string; path: string }[] = [
   { value: "llamacpp", url: "http://127.0.0.1:8080", path: "/v1" },
@@ -63,7 +64,7 @@ export function ModelsPage() {
         description={t("description")}
         actions={
           <>
-            <Button variant="ghost" icon={<RefreshCw className={cn("size-4", refreshing && "animate-spin")} />} onClick={() => load(true)} disabled={refreshing}>
+            <Button variant="ghost" icon={refreshing ? <ThinkingIndicator className="text-base" /> : <RefreshCw className="size-4" />} onClick={() => load(true)} disabled={refreshing}>
               {t("refresh")}
             </Button>
             <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing("new")}>

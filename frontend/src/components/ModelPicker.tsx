@@ -8,6 +8,7 @@ import type { ModelRef } from "@/lib/types";
 import { cn, compactNumber, modelLabel } from "@/lib/utils";
 import { findProvider, useModels } from "@/stores/models";
 import { Spinner, StatusDot } from "./ui";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 export function ModelPicker({
   value,
@@ -93,7 +94,7 @@ export function ModelPicker({
               title={t("refreshModels")}
               className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-fg"
             >
-              <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+              {refreshing ? <ThinkingIndicator className="text-[0.875rem]" /> : <RefreshCw className="size-3.5" />}
             </button>
           </div>
 

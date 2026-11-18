@@ -688,7 +688,7 @@ class ChatEngine:
         if settings.summary_provider_id and settings.summary_model and self.registry.visible(gen.user, settings.summary_provider_id):
             provider, model = self.registry.provider(gen.user, settings.summary_provider_id), settings.summary_model
         request = ChatRequest(model=model, messages=[ChatMessage(role="user", content=prompt)],
-                              params={"temperature": 0.2, "max_tokens": budget})
+                              params={"temperature": 0.2, "max_tokens": budget}, quick=True)
         try:
             raw = await asyncio.wait_for(provider.complete(request), timeout=SUMMARY_TIMEOUT)
         except (ProviderError, asyncio.TimeoutError) as exc:
@@ -932,7 +932,9 @@ class ChatEngine:
         request = ChatRequest(
             model=gen.model,
             messages=[ChatMessage(role="user", content=prompt)],
-            params={"temperature": 0.3, "max_tokens": 48},
+            # Room for a short reasoning preamble on servers that can't turn it off.
+            params={"temperature": 0.3, "max_tokens": 256},
+            quick=True,
         )
         try:
             raw = await asyncio.wait_for(provider.complete(request), timeout=TITLE_TIMEOUT)

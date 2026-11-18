@@ -2,10 +2,11 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { Loader2, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { forwardRef, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 import type { ProviderStatus } from "@/lib/types";
 
 /* ---------------------------------------------------------------- Button */
@@ -31,7 +32,7 @@ export const Button = forwardRef<
     )}
     {...props}
   >
-    {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : icon}
+    {loading ? <ThinkingIndicator className="text-base" /> : icon}
     {children}
   </button>
 ));
@@ -219,7 +220,12 @@ export function StatusDot({ status, withLabel, className }: { status: ProviderSt
 
 export function Spinner({ className }: { className?: string }) {
   const { t } = useTranslation();
-  return <Loader2 className={cn("size-4 animate-spin text-muted", className)} aria-label={t("loading")} />;
+  return (
+    <span role="status" className={cn("inline-flex items-center text-base", className)}>
+      <ThinkingIndicator />
+      <span className="sr-only">{t("loading")}</span>
+    </span>
+  );
 }
 
 export function Kbd({ children }: { children: ReactNode }) {

@@ -208,7 +208,7 @@ export function ChatPage() {
   const busy = !!chat?.streaming;
 
   return (
-    <div className="flex h-full flex-col">
+    <main className="flex h-full flex-col">
       <TopBar conversation={conv} model={model} onOpenSettings={() => { setSettingsTab("prompt"); setSettingsOpen(true); }} messages={messages} />
       <MessageList
         key={id}
@@ -250,7 +250,7 @@ export function ChatPage() {
         </div>
       </MessageList>
       {settingsDialog}
-    </div>
+    </main>
   );
 }
 
@@ -364,7 +364,9 @@ function TopBar({
                 type="button"
                 className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm transition-colors hover:bg-hover data-[state=open]:bg-hover"
               >
-                <span className="truncate font-medium text-fg">{conversation.title}</span>
+                <span key={conversation.title} className="animate-title-in truncate font-medium text-fg" data-testid="conversation-title">
+                  {conversation.title}
+                </span>
                 <MoreHorizontal className="size-4 shrink-0 text-faint" />
               </button>
             </MenuTrigger>

@@ -112,6 +112,10 @@ class ChatRequest:
     model: str
     messages: list[ChatMessage]
     params: dict[str, Any] = field(default_factory=dict)
+    # A short utility answer (a title, search queries, a summary): ask the
+    # model not to reason first where the server supports it. Reasoning models
+    # otherwise spend the whole small token budget thinking and answer nothing.
+    quick: bool = False
 
 
 @dataclass
@@ -160,6 +164,10 @@ class Provider(abc.ABC):
         if self.config.vision == "off":
             return False
         return None
+
+    def quick_body(self) -> dict[str, Any]:
+        """Extra request fields for ``ChatRequest.quick`` (none by default)."""
+        return {}
 
     def filter_params(self, params: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in params.items() if k in self.supported_params and v is not None and v != []}

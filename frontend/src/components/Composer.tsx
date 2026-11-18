@@ -1,5 +1,5 @@
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowUp, BookOpen, FileText, Globe, Image as ImageIcon, Library, Link2, Loader2, Paperclip, SlidersHorizontal, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, FileText, Globe, Image as ImageIcon, Library, Link2, Paperclip, SlidersHorizontal, Square, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -13,6 +13,7 @@ import { useUI } from "@/stores/ui";
 import { useWeb } from "@/stores/web";
 import { ModelPicker } from "./ModelPicker";
 import { Button, Dialog, IconButton, Tooltip } from "./ui";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 interface PendingFile {
   key: string;
@@ -307,7 +308,11 @@ export function Composer({
               onClick={onStop}
               className="ml-1 size-8 rounded-lg bg-fg text-bg hover:bg-fg hover:text-bg hover:opacity-85"
             >
-              <Square className="size-3 fill-current" />
+              {/* Generating: the shared indicator orbits the stop square. */}
+              <span className="relative flex size-full items-center justify-center">
+                <ThinkingIndicator core={false} className="absolute text-[1.375rem]" />
+                <Square className="size-3 fill-current" />
+              </span>
             </IconButton>
           ) : (
             <IconButton
@@ -320,7 +325,7 @@ export function Composer({
                 canSend ? "bg-accent text-on-accent hover:bg-accent-hover hover:text-on-accent" : "bg-subtle text-faint",
               )}
             >
-              {submitting ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
+              {submitting ? <ThinkingIndicator className="text-base" /> : <ArrowUp className="size-[18px]" strokeWidth={2.25} />}
             </IconButton>
           )}
         </div>
@@ -460,7 +465,7 @@ function AttachmentChip({ file, visionSupported, onRemove }: { file: PendingFile
     >
       <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-subtle text-muted">
         {file.status === "uploading" ? (
-          <Loader2 className="size-4 animate-spin" />
+          <ThinkingIndicator className="text-base" />
         ) : file.previewUrl ? (
           <img src={file.previewUrl} alt="" className="size-full object-cover" />
         ) : isImage ? (

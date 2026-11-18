@@ -42,6 +42,34 @@ def test_title_is_generated_by_model(client, conversation):
     assert client.get(f"/api/conversations/{conversation['id']}").json()["title"] == "Mock Conversation Title"
 
 
+def test_start_event_carries_the_title_the_conversation_now_has(client, conversation):
+    """The first message replaces "New conversation" with a fallback title at
+    once; clients learn it from the start event, not only after a reload."""
+    events = send(client, conversation["id"], "Testas-testas?")
+    start = next(d for e, d in events if e == "start")
+    assert start["conversation"] == {"id": conversation["id"], "title": "Testas-testas?", "title_source": "fallback"}
+    # A later message reports the current (model) title, and a user's own title is never changed.
+    start2 = next(d for e, d in send(client, conversation["id"], "more") if e == "start")
+    assert start2["conversation"]["title"] == "Mock Conversation Title" and start2["conversation"]["title_source"] == "model"
+
+
+def test_reasoning_models_still_get_a_title(client, conversation, mock):
+    """Reasoning models (e.g. Qwen3) spent the whole title budget thinking, so
+    no title was ever generated. Titles now ask the template not to think and
+    leave room for an answer."""
+    mock.app.state.think_titles = True
+    events = send(client, conversation["id"], "How do I reverse a list in Python?")
+    assert ("title", {"conversation_id": conversation["id"], "title": "Mock Conversation Title"}) in events
+    title_req = next(r for r in mock.app.state.requests if "Write a short, specific title" in str(r["messages"][-1]["content"]))
+    assert title_req["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_title_comes_before_end_and_is_replayed_on_reattach(client, conversation):
+    events = send(client, conversation["id"], "order please")
+    order = names(events)
+    assert order.index("done") < order.index("title") < order.index("end")
+
+
 def test_fallback_title_when_disabled(client, conversation):
     client.patch("/api/settings", json={"auto_title": False})
     send(client, conversation["id"], "Explain the borrow checker in Rust please")

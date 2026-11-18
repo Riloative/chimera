@@ -1,4 +1,5 @@
-import { CheckCircle2, Loader2, Search, XCircle } from "lucide-react";
+import { CheckCircle2, Search, XCircle } from "lucide-react";
+import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Group } from "@/components/Page";
@@ -263,7 +264,7 @@ function EngineSettings({ view, save }: { view: WebAdminView; save: Save }) {
           {t("settings.admin.saveEngine")}
         </Button>
         {engine && (
-          <Button variant="outline" icon={testing ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />} onClick={test} disabled={testing}>
+          <Button variant="outline" icon={testing ? <ThinkingIndicator className="text-[0.875rem]" /> : <Search className="size-3.5" />} onClick={test} disabled={testing}>
             {t("settings.admin.test")}
           </Button>
         )}

@@ -11,6 +11,7 @@ import type { Collection, KnowledgeDocument, SearchHit } from "@/lib/types";
 import { cn, formatBytes, formatNumber, modelLabel } from "@/lib/utils";
 import { useSettings } from "@/stores/settings";
 import { toast } from "@/stores/ui";
+import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 
 export function KnowledgePage() {
   const { id } = useParams();
@@ -370,7 +371,7 @@ function DocumentRow({ doc, onChanged }: { doc: KnowledgeDocument; onChanged: ()
           }
         }}
       >
-        <RefreshCw className={cn("size-3.5", busy && "animate-spin")} />
+        {busy ? <ThinkingIndicator className="text-[0.875rem]" /> : <RefreshCw className="size-3.5" />}
       </IconButton>
       <IconButton label={t("removeDocument")} size="sm" onClick={() => setConfirm(true)}>
         <Trash2 className="size-3.5" />

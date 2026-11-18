@@ -43,6 +43,31 @@ test("send, stream, persist, title and restore after reload", async ({ page }) =
   await expect(page.getByText("Hello from the end-to-end test", { exact: true })).toBeVisible();
 });
 
+test("the title updates live in the sidebar, top bar and tab, also with a reasoning model", async ({ page, request }) => {
+  // Like Qwen3: the model thinks before writing a title (the bug left "New conversation" until a reload).
+  await request.post("http://127.0.0.1:18080/__mock/think-titles", { data: { enabled: true } });
+  try {
+    await newChat(page);
+    await page.evaluate(() => ((window as unknown as { __sameDocument: boolean }).__sameDocument = true));
+    await composer(page).fill("[slow] Testas-testas?");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/c\/[0-9a-f]+$/);
+    // This conversation's entry in the sidebar (other tests leave chats with the same titles).
+    const entry = page.locator(`a[href="${new URL(page.url()).pathname}"]`);
+    // While the answer streams, the fallback title from the first message is already shown.
+    await expect(entry).toHaveText("[slow] Testas-testas?");
+    await expect(page.getByTestId("conversation-title")).toHaveText("[slow] Testas-testas?");
+    // Then the model's title replaces it everywhere.
+    await expect(entry).toHaveText("Mock Conversation Title", { timeout: 15_000 });
+    await expect(page.getByTestId("conversation-title")).toHaveText("Mock Conversation Title");
+    await expect(page).toHaveTitle("Mock Conversation Title · Chimera");
+    // No reload happened.
+    expect(await page.evaluate(() => (window as unknown as { __sameDocument?: boolean }).__sameDocument)).toBe(true);
+  } finally {
+    await request.post("http://127.0.0.1:18080/__mock/think-titles", { data: { enabled: false } });
+  }
+});
+
 test("stop generation keeps partial output and the chat stays usable", async ({ page }) => {
   await newChat(page);
   await composer(page).fill("go [slow]");
@@ -63,7 +88,7 @@ test("upstream errors are shown, and editing a message resubmits it", async ({ p
   await expect(page.getByRole("alert").filter({ hasText: "the mock server exploded" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 
-  const userMsg = page.getByText("please fail [error]", { exact: true });
+  const userMsg = page.getByRole("main").getByRole("list").getByText("please fail [error]", { exact: true });
   await userMsg.hover();
   await page.getByRole("button", { name: "Edit" }).first().click();
   const editor = page.getByLabel("Edit message");
@@ -130,4 +155,41 @@ test("search finds conversations by content", async ({ page }) => {
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Search conversations" }).fill("pelican");
   await expect(page.getByRole("option").first()).toContainText("pelican");
+});
+
+test("waiting indicator: orbits smoothly, calms down with reduced motion, and the answer doesn't jump", async ({ page }) => {
+  await newChat(page);
+  await composer(page).fill("[waitfirst] short answer");
+  await page.keyboard.press("Enter");
+  const waiting = page.getByRole("status", { name: "Waiting for the model" });
+  await expect(waiting).toBeVisible();
+  const indicator = waiting.getByTestId("thinking-indicator");
+  await expect(indicator).toHaveAttribute("aria-hidden", "true");
+  const orbit = indicator.locator(".thinking-orbit");
+  // Compositor-friendly: only transform animates.
+  expect(await orbit.evaluate((el) => getComputedStyle(el).animationName)).toBe("thinking-orbit");
+  expect(await orbit.evaluate((el) => getComputedStyle(el).willChange)).toBe("transform");
+  const before = await waiting.boundingBox();
+
+  // The first line of the answer takes the indicator's place: same top, same line height.
+  const paragraph = page.getByText("You said: [waitfirst] short answer");
+  await expect(paragraph).toBeVisible({ timeout: 10_000 });
+  const after = await paragraph.boundingBox();
+  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(1);
+  expect(Math.abs((after?.height ?? 0) - (before?.height ?? 0))).toBeLessThanOrEqual(1);
+
+  // Reduced motion (system setting): the arc stops and the core breathes slowly instead.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const probe = await page.evaluate(() => {
+    const el = document.createElement("span");
+    el.className = "thinking-indicator";
+    el.innerHTML = '<span class="thinking-orbit"></span><span class="thinking-core"></span>';
+    document.body.append(el);
+    const orbitStyle = getComputedStyle(el.children[0]);
+    const coreStyle = getComputedStyle(el.children[1]);
+    const out = { orbit: orbitStyle.animationName, core: coreStyle.animationName, coreDuration: coreStyle.animationDuration };
+    el.remove();
+    return out;
+  });
+  expect(probe).toEqual({ orbit: "none", core: "thinking-pulse", coreDuration: "2.4s" });
 });

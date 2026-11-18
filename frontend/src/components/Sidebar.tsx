@@ -30,6 +30,7 @@ import { useSettings } from "@/stores/settings";
 import { toast, useUI } from "@/stores/ui";
 import { Logo, LogoMark } from "./Logo";
 import { ConfirmDialog, IconButton, Kbd, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, StatusDot, Tooltip } from "./ui";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 export function Sidebar() {
   const { t } = useTranslation(["sidebar", "common"]);
@@ -251,8 +252,16 @@ function ConversationItem({ conversation: c }: { conversation: Conversation }) {
           )}
           onDoubleClick={() => setRenaming(true)}
         >
-          <span className="truncate">{c.title}</span>
-          {(streaming || c.generating) && <span className="animate-breathe ml-auto size-1.5 shrink-0 rounded-full bg-accent" aria-label={t("generating")} />}
+          {/* Keyed by the title: a new title (e.g. generated live) fades in. */}
+          <span key={c.title} className="animate-title-in truncate">
+            {c.title}
+          </span>
+          {(streaming || c.generating) && (
+            <span className="ml-auto inline-flex shrink-0">
+              <ThinkingIndicator size="sm" />
+              <span className="sr-only">{t("generating")}</span>
+            </span>
+          )}
         </NavLink>
       )}
       {!renaming && (

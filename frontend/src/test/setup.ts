@@ -22,6 +22,8 @@ if (!("ResizeObserver" in window)) {
   };
 }
 
+if (!Element.prototype.scrollTo) Element.prototype.scrollTo = function () {};
+
 // Tests run in English unless they switch explicitly.
 import i18n from "@/i18n";
 void i18n.changeLanguage("en");

@@ -98,3 +98,46 @@ describe("live conversation titles", () => {
     expect(title()).toBe("Mine");
   });
 });
+
+describe("conversation list edge cases", () => {
+  it("ignores a model title that arrives after the user renamed the chat", async () => {
+    useConversations.setState({ items: [{ ...CONV, title: "My trip", title_source: "user" }] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sse([
+          ["start", { generation_id: "g1", conversation_id: "c1", assistant_message: assistant, active_path: ["u1", "a1"] }],
+          ["done", { message: { ...assistant, status: "complete" } }],
+          ["title", { conversation_id: "c1", title: "Generated title" }],
+          ["end", {}],
+        ]),
+      ),
+    );
+    await useChat.getState().send("c1", { content: "hello" } as never);
+    expect(title()).toBe("My trip");
+  });
+
+  it("doesn't add an empty row for a live update of a conversation that isn't listed", () => {
+    useConversations.getState().upsert({ id: "elsewhere", generating: true });
+    useConversations.getState().upsert({ id: "elsewhere", title: "Only a title" });
+    expect(useConversations.getState().items.map((c) => c.id)).toEqual(["c1"]);
+  });
+
+  it("loads older conversations page by page", async () => {
+    const page = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ ...CONV, id: `p${from + i}` }));
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return json(url.includes("offset=500") ? page(500, 20) : page(0, 500));
+      }),
+    );
+    await useConversations.getState().load();
+    expect(useConversations.getState().hasMore).toBe(true);
+    await useConversations.getState().loadMore();
+    expect(calls.at(-1)).toContain("/api/conversations?offset=500");
+    expect(useConversations.getState().items).toHaveLength(520);
+    expect(useConversations.getState().hasMore).toBe(false);
+  });
+});

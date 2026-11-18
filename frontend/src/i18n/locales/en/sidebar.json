@@ -13,6 +13,7 @@
   "settings": "Settings",
   "conversations": "Conversations",
   "empty": "No conversations yet.",
+  "showOlder": "Show older conversations",
   "groups": {
     "pinned": "Pinned",
     "today": "Today",

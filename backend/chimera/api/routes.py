@@ -202,8 +202,14 @@ def _owned_conversation(state: AppState, user: dict, cid: str) -> dict:
 
 
 @router.get("/conversations")
-async def list_conversations(user: dict = Depends(current_user), state: AppState = Depends(get_state)):
-    items = state.conversations.list(user["id"])
+async def list_conversations(
+    limit: int = Query(500, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(current_user),
+    state: AppState = Depends(get_state),
+):
+    """Newest first (pinned on top), in pages of ``limit``: a full page means there may be more."""
+    items = state.conversations.list(user["id"], limit, offset)
     for item in items:
         item["generating"] = state.chat.active_for(user["id"], item["id"]) is not None
     return items

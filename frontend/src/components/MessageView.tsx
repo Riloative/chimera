@@ -367,11 +367,12 @@ export function AssistantMessage({
           <IconButton label={t("message.deleteResponse")} size="sm" onClick={() => setConfirm(true)} disabled={busy}>
             <Trash2 className="size-3.5" />
           </IconButton>
-          <span className="ml-2 flex min-w-0 items-center gap-2 truncate font-mono text-[0.7rem] text-faint">
+          {/* One line that ends in an ellipsis when narrow; the speed is left out on phones. */}
+          <span className="ml-2 min-w-0 truncate font-mono text-[0.7rem] text-faint" data-testid="message-meta">
             <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
-            {m.tokens_per_second ? <span>· {t("message.tokensPerSecond", { value: formatNumber(Number(m.tokens_per_second.toFixed(1))) })}</span> : null}
-            {m.completion_tokens ? <span>· {t("message.tokens", { count: m.completion_tokens })}</span> : null}
-            {m.finish_reason === "length" && <span className="text-warning">· {t("message.hitMaxTokens")}</span>}
+            {m.tokens_per_second ? <span className="ml-2 max-sm:hidden">· {t("message.tokensPerSecond", { value: formatNumber(Number(m.tokens_per_second.toFixed(1))) })}</span> : null}
+            {m.completion_tokens ? <span className="ml-2">· {t("message.tokens", { count: m.completion_tokens })}</span> : null}
+            {m.finish_reason === "length" && <span className="ml-2 text-warning">· {t("message.hitMaxTokens")}</span>}
           </span>
         </div>
         </div>

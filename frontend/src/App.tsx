@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { LegacyNotice } from "@/components/LegacyNotice";
@@ -9,17 +9,29 @@ import { Toaster } from "@/components/Toaster";
 import { Spinner, TooltipProvider } from "@/components/ui";
 import { onAuthEvent } from "@/lib/api";
 import { ChangePasswordScreen, LoginPage, RegisterPage } from "@/pages/AuthPages";
-import { ChatPage } from "@/pages/ChatPage";
-import { KnowledgePage } from "@/pages/KnowledgePage";
-import { ModelsPage } from "@/pages/ModelsPage";
-import { PromptsPage } from "@/pages/PromptsPage";
-import { SettingsPage } from "@/pages/SettingsPage";
 import { useAuth } from "@/stores/auth";
 import { useConversations } from "@/stores/conversations";
 import { useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { useWeb } from "@/stores/web";
 import { useUI } from "@/stores/ui";
+
+// Pages load on demand: the sign-in page doesn't download the whole app. The chat
+// page brings the Markdown renderer (KaTeX, highlight.js) with it, so answers
+// never show an unformatted placeholder.
+const ChatPage = lazy(() => import("@/pages/ChatPage").then((m) => ({ default: m.ChatPage })));
+const ModelsPage = lazy(() => import("@/pages/ModelsPage").then((m) => ({ default: m.ModelsPage })));
+const KnowledgePage = lazy(() => import("@/pages/KnowledgePage").then((m) => ({ default: m.KnowledgePage })));
+const PromptsPage = lazy(() => import("@/pages/PromptsPage").then((m) => ({ default: m.PromptsPage })));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+
+function PageFallback() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <Spinner />
+    </div>
+  );
+}
 
 function Shortcuts() {
   const navigate = useNavigate();
@@ -66,7 +78,9 @@ function AppLayout() {
         <LegacyNotice />
         <UpdateNotice />
         <div className="min-h-0 flex-1">
-          <Outlet />
+          <Suspense fallback={<PageFallback />}>
+            <Outlet />
+          </Suspense>
         </div>
       </div>
       <SearchDialog />

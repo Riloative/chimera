@@ -64,7 +64,7 @@ their own data · **Admin** – administrators only (404 for others).
 | POST | `/api/providers/test` | User | URL policy; stored key reused only if the caller may edit that connection |
 | POST | `/api/providers/{id}/test` | User | Visible connections only |
 | GET | `/api/models` | User | Discovery over own + shared connections; cache holds server facts only |
-| GET/POST | `/api/conversations` | User | `WHERE user_id = me`; provider/collection references filtered to visible/owned |
+| GET/POST | `/api/conversations` | User | `WHERE user_id = me`; provider/collection references filtered to visible/owned; GET pages with optional `limit` (1–500) and `offset` |
 | GET | `/api/conversations/search` | User | `WHERE c.user_id = me` (titles and message content) |
 | GET/PATCH/DELETE | `/api/conversations/{cid}` | User | `owned()` → 404; `context_strategy` validated (`sliding\|summarize\|off\|null`) |
 | GET | `/api/conversations/{cid}/context` **0.4** | User | Owned conversation → 404. Dry run of the next request on the active branch: counts tokens (llama-server `/tokenize` on a *visible* connection) and uses cached summaries only — never calls the model |

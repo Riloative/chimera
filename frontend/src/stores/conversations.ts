@@ -7,11 +7,18 @@ interface ConversationsState {
   items: Conversation[];
   loaded: boolean;
   error: string | null;
+  /** The server may have older conversations than the ones loaded. */
+  hasMore: boolean;
+  loadingMore: boolean;
   load: () => Promise<void>;
+  loadMore: () => Promise<void>;
   upsert: (c: Partial<Conversation> & { id: string }) => void;
   patch: (id: string, data: Partial<Conversation>) => Promise<Conversation>;
   remove: (id: string) => Promise<void>;
 }
+
+/** The server's page size (GET /api/conversations). */
+export const PAGE_SIZE = 500;
 
 /** Changes made while a list request is in flight (e.g. a live title, a new
  * chat): applied on top of the response so a slower, older list never undoes
@@ -22,6 +29,8 @@ export const useConversations = create<ConversationsState>((set, get) => ({
   items: [],
   loaded: false,
   error: null,
+  hasMore: false,
+  loadingMore: false,
   load: async () => {
     const changes = new Map<string, Partial<Conversation>>();
     pendingChanges = changes;
@@ -33,18 +42,38 @@ export const useConversations = create<ConversationsState>((set, get) => ({
       const created = [...changes.entries()]
         .filter(([id, c]) => !known.has(id) && typeof c.title === "string" && typeof c.created_at === "string")
         .map(([, c]) => c as Conversation);
-      set({ items: [...created, ...items], loaded: true, error: null });
+      set({ items: [...created, ...items], loaded: true, error: null, hasMore: fetched.length >= PAGE_SIZE });
     } catch (err) {
       set({ error: errorText(err), loaded: true });
     } finally {
       if (pendingChanges === changes) pendingChanges = null;
     }
   },
+  loadMore: async () => {
+    if (get().loadingMore || !get().hasMore) return;
+    set({ loadingMore: true });
+    try {
+      const page = await api.conversations(get().items.length);
+      set((s) => {
+        const known = new Set(s.items.map((c) => c.id));
+        return { items: [...s.items, ...page.filter((c) => !known.has(c.id))], hasMore: page.length >= PAGE_SIZE };
+      });
+    } catch (err) {
+      set({ error: errorText(err) });
+    } finally {
+      set({ loadingMore: false });
+    }
+  },
   upsert: (c) =>
     set((s) => {
       if (pendingChanges) pendingChanges.set(c.id, { ...pendingChanges.get(c.id), ...c });
       const idx = s.items.findIndex((i) => i.id === c.id);
-      if (idx === -1) return { items: [c as Conversation, ...s.items] };
+      if (idx === -1) {
+        // Only a complete record becomes a row: a partial update (a title, "generating") of a
+        // conversation not in the list would otherwise show as an empty entry.
+        if (typeof c.title !== "string" || typeof c.created_at !== "string") return s;
+        return { items: [c as Conversation, ...s.items] };
+      }
       const items = s.items.slice();
       items[idx] = { ...items[idx], ...c };
       return { items };

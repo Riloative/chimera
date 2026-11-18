@@ -1,7 +1,7 @@
 {
   "composer": {
     "search": "Paieška",
-    "searchTooltip": "Ieškoti internete šiai žinutei",
+    "searchTooltip": "Paieška internete šiai žinutei",
     "searchOnTooltip": "Paieška internete įjungta šiai žinutei",
     "searchStickyTooltip": "Paieška internete lieka įjungta šiame pokalbyje",
     "searchUnavailableAdmin": "Paieška internete dar nenustatyta. Pasirinkite paieškos sistemą skiltyje Nustatymai → Internetas.",

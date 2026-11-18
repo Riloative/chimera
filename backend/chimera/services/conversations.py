@@ -67,9 +67,11 @@ class ConversationStore:
     def __init__(self, db: Database):
         self.db = db
 
-    def list(self, user_id: str, limit: int = 500) -> list[dict]:
+    def list(self, user_id: str, limit: int = 500, offset: int = 0) -> list[dict]:
+        # The id tiebreak keeps pages stable when timestamps are equal.
         rows = self.db.all(
-            "SELECT * FROM conversations WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC LIMIT ?", (user_id, limit)
+            "SELECT * FROM conversations WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC, id LIMIT ? OFFSET ?",
+            (user_id, limit, offset),
         )
         return [conversation_out(r) for r in rows]
 

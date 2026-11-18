@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -35,7 +36,8 @@ class Env:
     def release(self, version: str, compose_extra: str = "") -> None:
         d = self.releases / f"v{version}"
         d.mkdir()
-        compose = (ROOT / "docker-compose.yml").read_text().replace("1.0.0-rc.1", version) + compose_extra
+        # Each release's compose file defaults to its own version, whatever the repository's is now.
+        compose = re.sub(r"CHIMERA_VERSION:-[^}]+", f"CHIMERA_VERSION:-{version}", (ROOT / "docker-compose.yml").read_text()) + compose_extra
         files = {
             "docker-compose.yml": compose,
             ".env.example": (ROOT / ".env.example").read_text(),

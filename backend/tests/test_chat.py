@@ -311,6 +311,21 @@ def test_conversation_crud_and_search(client, conversation):
     assert client.get(f"/api/conversations/{cid}").status_code == 404
 
 
+def test_conversation_list_pages_beyond_the_first_500(client, provider, mock):
+    """Regression: the sidebar used to show only the newest 500 conversations, with no way to reach older ones."""
+    model = mock.app.state.models[0]
+    ids = [client.post("/api/conversations", json={"provider_id": provider["id"], "model": model}).json()["id"] for _ in range(7)]
+    first = client.get("/api/conversations", params={"limit": 3}).json()
+    second = client.get("/api/conversations", params={"limit": 3, "offset": 3}).json()
+    third = client.get("/api/conversations", params={"limit": 3, "offset": 6}).json()
+    seen = [c["id"] for c in first + second + third]
+    assert len(first) == len(second) == 3 and len(third) == 1
+    assert sorted(seen) == sorted(ids) and len(set(seen)) == 7  # every conversation exactly once
+    assert [c["id"] for c in client.get("/api/conversations").json()] == seen  # the default is unchanged
+    assert client.get("/api/conversations", params={"limit": 501}).status_code == 422
+    assert client.get("/api/conversations", params={"offset": -1}).status_code == 422
+
+
 def test_non_streaming_mode(client, conversation, mock):
     client.patch("/api/settings", json={"stream": False})
     events = send(client, conversation["id"], "hello")

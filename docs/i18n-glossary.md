@@ -159,3 +159,16 @@ Sources list, browser and release (0.4.1 and 1.0), additionally:
   and the first-run question text (*askBody*), which carries the privacy promise.
 - **"Paskutinis tikrinimas nepavyko ({{when}}): {{reason}}. Bus bandoma rytoj;
   naudotojai to nemato."**
+
+UI polish (1.1), additionally:
+
+- **"Rodyti {{count}} ankstesnę žinutę / ankstesnes žinutes / ankstesnių
+  žinučių"** (`chat.earlier_*`) for "Show N earlier messages" – *ankstesnės*
+  vs. *senesnės* (older); the *many* form (*ankstesnės žinutės*) is only used
+  for fractions and never appears with whole counts.
+- **"Rodyti senesnius pokalbius"** (`sidebar.showOlder`) for "Show older
+  conversations".
+- **"Paieška internete šiai žinutei"** (`web.composer.searchTooltip`, the
+  accessible name of the web-search button): it must start with the visible
+  label *Paieška* (WCAG 2.5.3), which makes it a noun phrase; the previous
+  *"Ieškoti internete šiai žinutei"* read more naturally.

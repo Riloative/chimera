@@ -53,7 +53,7 @@ test("the title updates live in the sidebar, top bar and tab, also with a reason
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/c\/[0-9a-f]+$/);
     // This conversation's entry in the sidebar (other tests leave chats with the same titles).
-    const entry = page.locator(`a[href="${new URL(page.url()).pathname}"]`);
+    const entry = page.locator(`a[href="${new URL(page.url()).pathname}"]`).getByTestId("conversation-entry-title");
     // While the answer streams, the fallback title from the first message is already shown.
     await expect(entry).toHaveText("[slow] Testas-testas?");
     await expect(page.getByTestId("conversation-title")).toHaveText("[slow] Testas-testas?");

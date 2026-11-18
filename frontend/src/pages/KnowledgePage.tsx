@@ -110,7 +110,7 @@ function CollectionList() {
           <Trans
             t={t}
             i18nKey="modeKeyword"
-            components={{ strong: <span className="font-medium text-fg" />, settingsLink: <Link to="/settings/documents" className="text-accent-text hover:underline" /> }}
+            components={{ strong: <span className="font-medium text-fg" />, settingsLink: <Link to="/settings/documents" className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current" /> }}
           />
         )}
       </p>

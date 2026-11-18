@@ -179,7 +179,9 @@ export const useChat = create<ChatState>((set, get) => {
         void useModels.getState().load();
         break;
       case "title":
-        useConversations.getState().upsert({ id: convId, title: data.title, title_source: "model" });
+        // A rename by the user wins, even if it crossed this event on the way.
+        if (useConversations.getState().items.find((c) => c.id === convId)?.title_source !== "user")
+          useConversations.getState().upsert({ id: convId, title: data.title, title_source: "model" });
         break;
     }
   };

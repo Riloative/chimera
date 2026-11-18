@@ -212,7 +212,7 @@ export const api = {
   testUnsaved: (data: Record<string, unknown>) => request<TestResult>("/api/providers/test", { method: "POST", json: data }),
   models: (refresh = false) => request<{ providers: ProviderModels[] }>(`/api/models${refresh ? "?refresh=true" : ""}`),
 
-  conversations: () => request<Conversation[]>("/api/conversations"),
+  conversations: (offset = 0) => request<Conversation[]>(offset ? `/api/conversations?offset=${offset}` : "/api/conversations"),
   searchConversations: (q: string) => request<Conversation[]>(`/api/conversations/search?q=${encodeURIComponent(q)}`),
   createConversation: (data: Record<string, unknown>) => request<Conversation>("/api/conversations", { method: "POST", json: data }),
   conversation: (id: string) => request<ConversationDetail>(`/api/conversations/${id}`),

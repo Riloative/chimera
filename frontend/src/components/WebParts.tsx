@@ -1,6 +1,6 @@
 /** Web reading & search in messages: progress steps, sources, link status. */
 import { AlertTriangle, AppWindow, Check, ChevronRight, ExternalLink, FileText, Globe, Link2, RotateCw, Search, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
 import { errorText, providerErrorText } from "@/lib/errors";
@@ -97,6 +97,7 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
   const steps = message.web?.steps ?? [];
   const running = steps.some((s) => s.status === "running");
   const [open, setOpen] = useState(defaultOpen);
+  const hintId = useId();
   if (!steps.length) return null;
   const expanded = running || open;
   const current = steps.findLast((s) => s.status === "running");
@@ -118,13 +119,16 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={expanded}
-        aria-label={t("steps.toggle")}
+        aria-describedby={hintId}
         disabled={running}
         className="flex max-w-full items-center gap-1.5 rounded-md py-0.5 text-left text-[0.8125rem] text-muted transition-colors hover:text-fg disabled:hover:text-muted"
       >
         {running ? <ThinkingIndicator className="text-[0.875rem]" /> : <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")} aria-hidden />}
         <span className="truncate" aria-live="polite">{summary}</span>
       </button>
+      <span id={hintId} hidden>
+        {t("steps.toggle")}
+      </span>
       {expanded && (
         <ol className="mt-1.5 ml-1.5 space-y-1.5 border-l-2 border-line pl-4" aria-label={t("steps.label")}>
           {steps.map((step) => (

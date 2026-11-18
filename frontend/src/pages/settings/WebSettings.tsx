@@ -357,8 +357,11 @@ function PipelineSettings({ settings, defaults, save }: { settings: WebAdminSett
 }
 
 function ListField({ id, label, hint, value, onSave }: { id: string; label: string; hint: string; value: string[]; onSave: (v: string[]) => void }) {
-  const [text, setText] = useState(value.join("\n"));
-  useEffect(() => setText(value.join("\n")), [value]);
+  const saved = value.join("\n");
+  const [text, setText] = useState(saved);
+  // Follow the saved value only when it really changes: another setting being saved
+  // (a new but equal array) must not wipe what is being typed here.
+  useEffect(() => setText(saved), [saved]);
   return (
     <Field label={label} htmlFor={id} hint={hint}>
       <Textarea id={id} rows={3} value={text} onChange={(e) => setText(e.target.value)} onBlur={() => text !== value.join("\n") && onSave(lines(text))} className="font-mono" />
@@ -368,12 +371,12 @@ function ListField({ id, label, hint, value, onSave }: { id: string; label: stri
 
 function NetworkSettings({ settings, save }: { settings: WebAdminSettings; save: Save }) {
   const { t } = useTranslation("web");
-  const [ports, setPorts] = useState(settings.allowed_ports.join(", "));
+  const savedPorts = settings.allowed_ports.join(", ");
+  const [ports, setPorts] = useState(savedPorts);
   const [ua, setUa] = useState(settings.user_agent);
-  useEffect(() => {
-    setPorts(settings.allowed_ports.join(", "));
-    setUa(settings.user_agent);
-  }, [settings.allowed_ports, settings.user_agent]);
+  // Compared as text: saving another setting returns an equal, new array.
+  useEffect(() => setPorts(savedPorts), [savedPorts]);
+  useEffect(() => setUa(settings.user_agent), [settings.user_agent]);
   return (
     <Group title={t("settings.admin.networkTitle")}>
       <ListField id="web-allowlist" label={t("settings.admin.allowlist")} hint={t("settings.admin.allowlistHelp")} value={settings.fetch_allowlist} onSave={(v) => save({ settings: { fetch_allowlist: v } })} />
@@ -415,7 +418,9 @@ const LIMITS = [
 function LimitSettings({ settings, save }: { settings: WebAdminSettings; save: Save }) {
   const { t } = useTranslation("web");
   const [values, setValues] = useState(() => Object.fromEntries(LIMITS.map(([k]) => [k, settings[k]])) as Record<(typeof LIMITS)[number][0], number>);
-  useEffect(() => setValues(Object.fromEntries(LIMITS.map(([k]) => [k, settings[k]])) as typeof values), [settings]);
+  // Only when a limit itself changed: saving any other setting must not reset what is being typed.
+  const savedLimits = LIMITS.map(([k]) => settings[k]).join(",");
+  useEffect(() => setValues(Object.fromEntries(LIMITS.map(([k]) => [k, settings[k]])) as typeof values), [savedLimits]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Group title={t("settings.admin.limitsTitle")}>
       <div className="grid gap-4 sm:grid-cols-2">

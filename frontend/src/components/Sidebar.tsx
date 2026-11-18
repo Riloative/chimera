@@ -30,6 +30,7 @@ import { useSettings } from "@/stores/settings";
 import { toast, useUI } from "@/stores/ui";
 import { Logo, LogoMark } from "./Logo";
 import { ConfirmDialog, IconButton, Kbd, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, StatusDot, Tooltip } from "./ui";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 export function Sidebar() {
   const { t } = useTranslation(["sidebar", "common"]);
@@ -133,6 +134,9 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   const setSearchOpen = useUI((s) => s.setSearchOpen);
   const { items, loaded } = useConversations();
   const groups = useMemo(() => groupConversations(items), [items]);
+  const hasMore = useConversations((s) => s.hasMore);
+  const loadingMore = useConversations((s) => s.loadingMore);
+  const loadMore = useConversations((s) => s.loadMore);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -173,7 +177,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         </NavItem>
       </nav>
 
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label={t("conversations")}>
+      <nav className="mt-4 min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label={t("conversations")}>
         {loaded && items.length === 0 && <p className="px-2 py-2 text-[0.8125rem] text-faint">{t("empty")}</p>}
         {groups.map((g) => (
           <section key={g.key} className="mb-4">
@@ -185,7 +189,18 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
             </ul>
           </section>
         ))}
-      </div>
+        {hasMore && (
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[0.8125rem] text-muted transition-colors hover:bg-hover hover:text-fg disabled:opacity-60"
+          >
+            {loadingMore && <ThinkingIndicator size="sm" />}
+            {t("showOlder")}
+          </button>
+        )}
+      </nav>
 
       <SidebarFooter />
     </div>
@@ -206,14 +221,21 @@ function ConversationItem({ conversation: c }: { conversation: Conversation }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const active = activeId === c.id;
 
+  // Seed the field once, when renaming starts: a title arriving meanwhile must not replace what is being typed.
+  const editing = useRef(false);
+  const startRename = () => {
+    editing.current = true;
+    setTitle(c.title);
+    setRenaming(true);
+  };
   useEffect(() => {
-    if (renaming) {
-      setTitle(c.title);
-      requestAnimationFrame(() => inputRef.current?.select());
-    }
-  }, [renaming, c.title]);
+    if (renaming) requestAnimationFrame(() => inputRef.current?.select());
+  }, [renaming]);
 
   const commit = async () => {
+    // Enter commits and the field then loses focus: save once.
+    if (!editing.current) return;
+    editing.current = false;
     setRenaming(false);
     const next = title.trim();
     if (next && next !== c.title) {
@@ -236,7 +258,10 @@ function ConversationItem({ conversation: c }: { conversation: Conversation }) {
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
-            if (e.key === "Escape") setRenaming(false);
+            if (e.key === "Escape") {
+              editing.current = false;
+              setRenaming(false);
+            }
           }}
           className="h-8 w-full rounded-lg border border-accent bg-elevated px-2 text-[0.8125rem] text-fg focus:outline-none"
           maxLength={200}
@@ -249,10 +274,18 @@ function ConversationItem({ conversation: c }: { conversation: Conversation }) {
             "flex h-8 items-center gap-2 rounded-lg pr-8 pl-2 text-[0.8125rem] transition-colors",
             active ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
           )}
-          onDoubleClick={() => setRenaming(true)}
+          onDoubleClick={startRename}
         >
-          <span className="truncate">{c.title}</span>
-          {(streaming || c.generating) && <span className="animate-breathe ml-auto size-1.5 shrink-0 rounded-full bg-accent" aria-label={t("generating")} />}
+          {/* Keyed by the title: a new title (e.g. generated live) fades in. */}
+          <span key={c.title} className="animate-title-in truncate" data-testid="conversation-entry-title">
+            {c.title}
+          </span>
+          {(streaming || c.generating) && (
+            <span className="ml-auto inline-flex shrink-0">
+              <ThinkingIndicator size="sm" />
+              <span className="sr-only">{t("generating")}</span>
+            </span>
+          )}
         </NavLink>
       )}
       {!renaming && (
@@ -273,7 +306,7 @@ function ConversationItem({ conversation: c }: { conversation: Conversation }) {
             <MenuItem icon={c.pinned ? <PinOff /> : <Pin />} onSelect={() => patch(c.id, { pinned: !c.pinned }).catch((e) => toast(errorText(e), "error"))}>
               {c.pinned ? t("unpin") : t("pin")}
             </MenuItem>
-            <MenuItem icon={<Pencil />} onSelect={() => setRenaming(true)}>
+            <MenuItem icon={<Pencil />} onSelect={startRename}>
               {t("rename")}
             </MenuItem>
             <MenuSeparator />
@@ -315,10 +348,13 @@ function AccountMenu({ compact }: { compact?: boolean }) {
         <MenuTrigger asChild>
           <button
             type="button"
-            aria-label={t("accountMenu", { username: user.username })}
             className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[0.72rem] font-semibold text-muted transition-colors hover:bg-hover hover:text-fg data-[state=open]:bg-hover"
           >
-            <span className="flex size-6 items-center justify-center rounded-full bg-subtle text-fg">{initials}</span>
+            {/* The initials are decoration: the name comes from the text read out instead. */}
+            <span aria-hidden className="flex size-6 items-center justify-center rounded-full bg-subtle text-fg">
+              {initials}
+            </span>
+            <span className="sr-only">{t("accountMenu", { username: user.username })}</span>
           </button>
         </MenuTrigger>
       </Tooltip>

@@ -184,3 +184,15 @@ def test_ollama_adapter_parses_ndjson():
     assert "".join(e.text for e in events if e.type == "reasoning") == "hmm"
     assert next(e for e in events if e.type == "usage").usage["tokens_per_second"] == 2.0
     assert seen["body"]["options"] == {"num_predict": 9}
+
+
+def test_quick_requests_turn_thinking_off_only_where_supported():
+    client = httpx.AsyncClient()
+    req = ChatRequest(model="m", messages=[ChatMessage(role="user", content="hi")], params={"max_tokens": 9}, quick=True)
+    llama = LlamaCppProvider(ProviderConfig(id="l", name="L", kind="llamacpp", base_url="http://x"), client)
+    generic = OpenAICompatibleProvider(ProviderConfig(id="o", name="O", kind="openai", base_url="http://x"), client)
+    assert llama.build_body(req)["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "chat_template_kwargs" not in generic.build_body(req)
+    normal = ChatRequest(model="m", messages=req.messages)
+    assert "chat_template_kwargs" not in llama.build_body(normal)
+    asyncio.run(client.aclose())

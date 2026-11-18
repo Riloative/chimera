@@ -114,7 +114,7 @@ describe("composer links and search", () => {
   it("works in Lithuanian at once", async () => {
     setupComposer(STATUS);
     await act(() => i18n.changeLanguage("lt"));
-    expect(screen.getByTestId("search-toggle")).toHaveAccessibleName("Ieškoti internete šiai žinutei");
+    expect(screen.getByTestId("search-toggle")).toHaveAccessibleName("Paieška internete šiai žinutei");
     expect(screen.getByText("Paieška")).toBeInTheDocument();
   });
 });
@@ -211,7 +211,7 @@ describe("citations", () => {
 describe("web steps and sources", () => {
   it("summarizes and expands the step log", async () => {
     wrap(<WebSteps message={MESSAGE} sources={SOURCES} defaultOpen={false} />);
-    const toggle = screen.getByRole("button", { name: "Show web activity" });
+    const toggle = screen.getByRole("button", { description: "Show web activity" });
     expect(toggle).toHaveTextContent("Used 2 sources");
     await userEvent.click(toggle);
     expect(screen.getByText("Searching for: festival vilnius")).toBeInTheDocument();
@@ -344,7 +344,7 @@ describe("sources under an answer", () => {
       { n: 2, source_id: "s3", included: true },
     ]);
     wrap(<WebSteps message={msg} sources={SOURCES} defaultOpen={false} />);
-    expect(screen.getByRole("button", { name: "Show web activity" })).toHaveTextContent("Used 1 source");
+    expect(screen.getByRole("button", { description: "Show web activity" })).toHaveTextContent("Used 1 source");
   });
 });
 

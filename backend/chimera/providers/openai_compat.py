@@ -258,6 +258,8 @@ class OpenAICompatibleProvider(Provider):
         if stream:
             body["stream_options"] = {"include_usage": True}
         body.update(self.filter_params(request.params))
+        if request.quick:
+            body.update(self.quick_body())
         return body
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[StreamEvent]:
@@ -403,6 +405,11 @@ class OpenAICompatibleProvider(Provider):
 
 class LlamaCppProvider(OpenAICompatibleProvider):
     kind = "llamacpp"
+
+    def quick_body(self) -> dict[str, Any]:
+        # llama-server passes these to the chat template: Qwen3-style templates
+        # skip the thinking block; templates without the variable ignore it.
+        return {"chat_template_kwargs": {"enable_thinking": False}}
     supported_params = (
         "temperature",
         "top_p",

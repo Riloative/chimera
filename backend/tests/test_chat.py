@@ -42,6 +42,34 @@ def test_title_is_generated_by_model(client, conversation):
     assert client.get(f"/api/conversations/{conversation['id']}").json()["title"] == "Mock Conversation Title"
 
 
+def test_start_event_carries_the_title_the_conversation_now_has(client, conversation):
+    """The first message replaces "New conversation" with a fallback title at
+    once; clients learn it from the start event, not only after a reload."""
+    events = send(client, conversation["id"], "Testas-testas?")
+    start = next(d for e, d in events if e == "start")
+    assert start["conversation"] == {"id": conversation["id"], "title": "Testas-testas?", "title_source": "fallback"}
+    # A later message reports the current (model) title, and a user's own title is never changed.
+    start2 = next(d for e, d in send(client, conversation["id"], "more") if e == "start")
+    assert start2["conversation"]["title"] == "Mock Conversation Title" and start2["conversation"]["title_source"] == "model"
+
+
+def test_reasoning_models_still_get_a_title(client, conversation, mock):
+    """Reasoning models (e.g. Qwen3) spent the whole title budget thinking, so
+    no title was ever generated. Titles now ask the template not to think and
+    leave room for an answer."""
+    mock.app.state.think_titles = True
+    events = send(client, conversation["id"], "How do I reverse a list in Python?")
+    assert ("title", {"conversation_id": conversation["id"], "title": "Mock Conversation Title"}) in events
+    title_req = next(r for r in mock.app.state.requests if "Write a short, specific title" in str(r["messages"][-1]["content"]))
+    assert title_req["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_title_comes_before_end_and_is_replayed_on_reattach(client, conversation):
+    events = send(client, conversation["id"], "order please")
+    order = names(events)
+    assert order.index("done") < order.index("title") < order.index("end")
+
+
 def test_fallback_title_when_disabled(client, conversation):
     client.patch("/api/settings", json={"auto_title": False})
     send(client, conversation["id"], "Explain the borrow checker in Rust please")
@@ -281,6 +309,21 @@ def test_conversation_crud_and_search(client, conversation):
     assert len(client.get(f"/api/conversations/{cid}").json()["messages"]) == 1
     assert client.delete(f"/api/conversations/{cid}").status_code == 204
     assert client.get(f"/api/conversations/{cid}").status_code == 404
+
+
+def test_conversation_list_pages_beyond_the_first_500(client, provider, mock):
+    """Regression: the sidebar used to show only the newest 500 conversations, with no way to reach older ones."""
+    model = mock.app.state.models[0]
+    ids = [client.post("/api/conversations", json={"provider_id": provider["id"], "model": model}).json()["id"] for _ in range(7)]
+    first = client.get("/api/conversations", params={"limit": 3}).json()
+    second = client.get("/api/conversations", params={"limit": 3, "offset": 3}).json()
+    third = client.get("/api/conversations", params={"limit": 3, "offset": 6}).json()
+    seen = [c["id"] for c in first + second + third]
+    assert len(first) == len(second) == 3 and len(third) == 1
+    assert sorted(seen) == sorted(ids) and len(set(seen)) == 7  # every conversation exactly once
+    assert [c["id"] for c in client.get("/api/conversations").json()] == seen  # the default is unchanged
+    assert client.get("/api/conversations", params={"limit": 501}).status_code == 422
+    assert client.get("/api/conversations", params={"offset": -1}).status_code == 422
 
 
 def test_non_streaming_mode(client, conversation, mock):

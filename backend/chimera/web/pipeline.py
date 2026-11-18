@@ -108,7 +108,8 @@ async def generate_queries(provider, model: str, message: str, history: list[tup
         return fallback, False
     convo = "\n".join(f"{'User' if role == 'user' else 'Assistant'}: {text[:600]}" for role, text in history[-6:])
     prompt = query_prompt(settings.query_prompt, conversation=convo, message=message[:4000], max_queries=MAX_QUERIES, tz_name=tz)
-    request = ChatRequest(model=model, messages=[ChatMessage(role="user", content=prompt)], params={"temperature": 0, "max_tokens": 256})
+    request = ChatRequest(model=model, messages=[ChatMessage(role="user", content=prompt)], params={"temperature": 0, "max_tokens": 256},
+                          quick=True)
     try:
         raw = await asyncio.wait_for(provider.complete(request), timeout=QUERY_TIMEOUT)
     except (ProviderError, asyncio.TimeoutError) as exc:

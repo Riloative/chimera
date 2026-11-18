@@ -22,6 +22,7 @@ import { Markdown } from "./Markdown";
 import { BranchNav } from "./BranchNav";
 import { Button, ConfirmDialog, Dialog, IconButton, Spinner } from "./ui";
 import { citationTargets, LinkStatus, visibleRefs, WebSourceList, WebSteps, type WebSources } from "./WebParts";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 /** Sibling navigation for a message that has other versions. */
 export interface BranchInfo {
@@ -292,7 +293,7 @@ export function AssistantMessage({
     <div className="group">
       {contextMarker}
       <div className="mb-2 flex items-center gap-2 text-[0.8125rem] text-muted">
-        <LogoMark className={cn("size-[18px] text-accent")} spinning={streaming} />
+        <LogoMark className="size-[18px] text-accent" />
         <span className="truncate font-medium text-fg" title={message.model ?? undefined}>{modelLabel(message.model) || t("message.unknownModel")}</span>
       </div>
 
@@ -301,8 +302,9 @@ export function AssistantMessage({
       {showReasoning && message.reasoning && <Reasoning text={message.reasoning} live={streaming && !message.content} />}
 
       {waiting ? (
-        <div className="flex h-7 items-center gap-1.5" role="status" aria-label={t("message.waiting")}>
-          <span className="animate-breathe size-2 rounded-full bg-accent" />
+        // Exactly one line of answer text tall, so the first streamed line takes its place without a jump.
+        <div className="flex h-[1.72rem] items-center gap-2" role="status" aria-label={t("message.waiting")}>
+          <ThinkingIndicator />
           <span className="text-[0.8125rem] text-faint">{t("message.thinking")}</span>
         </div>
       ) : (
@@ -365,11 +367,12 @@ export function AssistantMessage({
           <IconButton label={t("message.deleteResponse")} size="sm" onClick={() => setConfirm(true)} disabled={busy}>
             <Trash2 className="size-3.5" />
           </IconButton>
-          <span className="ml-2 flex min-w-0 items-center gap-2 truncate font-mono text-[0.7rem] text-faint">
+          {/* One line that ends in an ellipsis when narrow; the speed is left out on phones. */}
+          <span className="ml-2 min-w-0 truncate font-mono text-[0.7rem] text-faint" data-testid="message-meta">
             <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
-            {m.tokens_per_second ? <span>· {t("message.tokensPerSecond", { value: formatNumber(Number(m.tokens_per_second.toFixed(1))) })}</span> : null}
-            {m.completion_tokens ? <span>· {t("message.tokens", { count: m.completion_tokens })}</span> : null}
-            {m.finish_reason === "length" && <span className="text-warning">· {t("message.hitMaxTokens")}</span>}
+            {m.tokens_per_second ? <span className="ml-2 max-sm:hidden">· {t("message.tokensPerSecond", { value: formatNumber(Number(m.tokens_per_second.toFixed(1))) })}</span> : null}
+            {m.completion_tokens ? <span className="ml-2">· {t("message.tokens", { count: m.completion_tokens })}</span> : null}
+            {m.finish_reason === "length" && <span className="ml-2 text-warning">· {t("message.hitMaxTokens")}</span>}
           </span>
         </div>
         </div>
@@ -396,7 +399,7 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
         aria-expanded={open}
         className="flex items-center gap-1 rounded-md py-0.5 text-[0.8125rem] text-muted transition-colors hover:text-fg"
       >
-        <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+        {live ? <ThinkingIndicator className="mr-0.5 text-[0.875rem]" /> : <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />}
         {live ? t("message.thinking") : t("message.thoughtProcess")}
       </button>
       {open && (

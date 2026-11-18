@@ -5,7 +5,7 @@
 import { create } from "zustand";
 import { api, ApiError, stream, type SendBody } from "@/lib/api";
 import { errorText } from "@/lib/errors";
-import type { Attachment, ConversationDetail, Message, WebSource } from "@/lib/types";
+import type { Attachment, Conversation, ConversationDetail, Message, WebSource } from "@/lib/types";
 import { useConversations } from "./conversations";
 import { useModels } from "./models";
 import { useWeb } from "./web";
@@ -128,7 +128,15 @@ export const useChat = create<ChatState>((set, get) => {
             sendError: null,
           };
         });
-        useConversations.getState().upsert({ id: convId, updated_at: asst.created_at, generating: true });
+        // The server's current title: the first message replaces "New conversation"
+        // with a fallback title right away (the model's title follows as "title").
+        const conv = data.conversation as { title?: string; title_source?: Conversation["title_source"] } | undefined;
+        useConversations.getState().upsert({
+          id: convId,
+          updated_at: asst.created_at,
+          generating: true,
+          ...(conv?.title ? { title: conv.title, title_source: conv.title_source } : {}),
+        });
         break;
       }
       case "snapshot":
@@ -171,7 +179,9 @@ export const useChat = create<ChatState>((set, get) => {
         void useModels.getState().load();
         break;
       case "title":
-        useConversations.getState().upsert({ id: convId, title: data.title, title_source: "model" });
+        // A rename by the user wins, even if it crossed this event on the way.
+        if (useConversations.getState().items.find((c) => c.id === convId)?.title_source !== "user")
+          useConversations.getState().upsert({ id: convId, title: data.title, title_source: "model" });
         break;
     }
   };

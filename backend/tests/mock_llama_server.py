@@ -6,6 +6,7 @@ JSON) and ``/v1/embeddings``. Behaviour is steered by markers in the last
 user message:
 
 * ``[slow]``             – ~50 tokens/s for ~300 tokens (use to test Stop)
+* ``[waitfirst]``        – 2 s before the first token (waiting state)
 * ``[malformed]``        – interleaves malformed SSE events
 * ``[truncate]``         – stream ends without finish_reason / [DONE]
 * ``[error]``            – HTTP 500 with an OpenAI-style error body
@@ -122,6 +123,7 @@ def configure_context(app, n_ctx: int = 8192, slots: int = 1) -> None:
     app.state.prompt_sizes = []
     app.state.summaries = 0
     app.state.summary_fail = False
+    app.state.think_titles = False
 
 
 def embed_text(text: str, dims: int = 64) -> list[float]:
@@ -204,6 +206,12 @@ def create_mock_app(
             "usage": {"prompt_tokens": 0, "total_tokens": 0},
         }
 
+    @app.post("/__mock/think-titles")
+    async def set_think_titles(request: Request):
+        """Test control: behave like a reasoning model when writing titles."""
+        app.state.think_titles = bool((await request.json()).get("enabled"))
+        return {"think_titles": app.state.think_titles}
+
     @app.post("/tokenize")
     async def tokenize_endpoint(request: Request):
         if not app.state.tokenize_supported:
@@ -278,6 +286,13 @@ def create_mock_app(
             if images:
                 answer += f" (I can see {images} image(s).)"
         reasoning = "Let me think about this carefully." if "[reasoning]" in text else ""
+        if ("Write a short, specific title" in text and app.state.think_titles
+                and (body.get("chat_template_kwargs") or {}).get("enable_thinking") is not False):
+            # Like a reasoning model (e.g. Qwen3): it thinks first, and the
+            # thinking uses up max_tokens before any answer is written.
+            reasoning = " ".join(f"thought{i}" for i in range(120))
+            if int(body.get("max_tokens") or 100_000) < 200:
+                answer = ""
 
         if not body.get("stream"):
             app.state.completed += 1
@@ -305,6 +320,8 @@ def create_mock_app(
         async def stream():
             try:
                 yield chunk({"role": "assistant", "content": None})
+                if "[waitfirst]" in text:
+                    await asyncio.sleep(2)  # the model takes a while before the first token
                 for piece in tokenize(reasoning):
                     yield chunk({"reasoning_content": piece})
                 tokens = tokenize(answer)

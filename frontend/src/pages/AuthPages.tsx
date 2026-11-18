@@ -175,7 +175,7 @@ export function LoginPage() {
         registrationOpen ? (
           <>
             {t("noAccount")}{" "}
-            <Link to={`/register${params.get("next") ? `?next=${encodeURIComponent(params.get("next")!)}` : ""}`} className="text-accent-text hover:underline">
+            <Link to={`/register${params.get("next") ? `?next=${encodeURIComponent(params.get("next")!)}` : ""}`} className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current">
               {t("register")}
             </Link>
           </>
@@ -241,7 +241,7 @@ export function RegisterPage() {
         title={t("registrationClosedTitle")}
         subtitle={t("registrationClosedBody")}
         footer={
-          <Link to="/login" className="text-accent-text hover:underline">
+          <Link to="/login" className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current">
             {t("backToSignIn")}
           </Link>
         }
@@ -291,7 +291,7 @@ export function RegisterPage() {
         needsSetup ? null : (
           <>
             {t("haveAccount")}{" "}
-            <Link to="/login" className="text-accent-text hover:underline">
+            <Link to="/login" className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current">
               {t("signIn")}
             </Link>
           </>
@@ -371,7 +371,7 @@ export function ChangePasswordScreen() {
       title={t("mustChangeTitle")}
       subtitle={t("mustChangeSubtitle", { username: user?.username ?? "" })}
       footer={
-        <button type="button" className="text-accent-text hover:underline" onClick={() => logout()}>
+        <button type="button" className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current" onClick={() => logout()}>
           {t("signOut")}
         </button>
       }

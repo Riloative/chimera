@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowDown, Download, Menu, MoreHorizontal, Pencil, Pin, PinOff, SlidersHorizontal, Trash2, X } from "lucide-react";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { errorText, providerErrorText } from "@/lib/errors";
@@ -15,7 +15,7 @@ import { useActiveModel } from "@/lib/hooks";
 import { greetingKey } from "@/lib/time";
 import type { Attachment, Conversation, Message, ModelRef } from "@/lib/types";
 import { cn, modelLabel } from "@/lib/utils";
-import { pathMessages, siblingsOf, subtreeIds, useChat } from "@/stores/chat";
+import { pathMessages, siblingsOf, useChat } from "@/stores/chat";
 import { useConversations } from "@/stores/conversations";
 import { findProvider, modelSupportsVision, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
@@ -208,7 +208,7 @@ export function ChatPage() {
   const busy = !!chat?.streaming;
 
   return (
-    <div className="flex h-full flex-col">
+    <main className="flex h-full flex-col">
       <TopBar conversation={conv} model={model} onOpenSettings={() => { setSettingsTab("prompt"); setSettingsOpen(true); }} messages={messages} />
       <MessageList
         key={id}
@@ -224,7 +224,7 @@ export function ChatPage() {
         busy={busy}
         showReasoning={settings?.show_reasoning ?? true}
         expandSteps={settings?.web?.expand_steps ?? false}
-        webSources={chat?.webSources ?? {}}
+        webSources={chat?.webSources}
         onRegenerate={(mid, webSearch) =>
           regenerate(id, mid, { ...target(model), timezone: browserTimeZone(), ...(webSearch === undefined ? {} : { web_search: webSearch }) }).catch((e) =>
             toast(errorText(e), "error"),
@@ -250,7 +250,7 @@ export function ChatPage() {
         </div>
       </MessageList>
       {settingsDialog}
-    </div>
+    </main>
   );
 }
 
@@ -364,7 +364,9 @@ function TopBar({
                 type="button"
                 className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm transition-colors hover:bg-hover data-[state=open]:bg-hover"
               >
-                <span className="truncate font-medium text-fg">{conversation.title}</span>
+                <span key={conversation.title} className="animate-title-in truncate font-medium text-fg" data-testid="conversation-title">
+                  {conversation.title}
+                </span>
                 <MoreHorizontal className="size-4 shrink-0 text-faint" />
               </button>
             </MenuTrigger>
@@ -449,13 +451,117 @@ function TopBar({
   );
 }
 
-function MessageList({
+/** Messages rendered when a conversation opens; older ones follow as the reader scrolls up. */
+export const INITIAL_MESSAGES = 60;
+const MORE_MESSAGES = 80;
+const NO_SOURCES: WebSources = {};
+
+interface MessageActions {
+  onSwitch: (messageId: string) => void;
+  onTogglePin: (message: Message) => void;
+  onRegenerate: (messageId?: string, webSearch?: boolean) => void;
+  onEdit: (messageId: string, content: string) => Promise<void> | void;
+  onDelete: (messageId: string) => void;
+}
+
+/** Per-message facts that need the whole tree, computed once per tree change (not once per message). */
+function treeFacts(tree: Message[]) {
+  const children = new Map<string | null, Message[]>();
+  for (const m of tree) {
+    const key = m.parent_id ?? null;
+    const list = children.get(key);
+    if (list) list.push(m);
+    else children.set(key, [m]);
+  }
+  const sizes = new Map<string, number>();
+  const size = (id: string): number => {
+    const known = sizes.get(id);
+    if (known !== undefined) return known;
+    // Iterative post-order: deep conversations must not overflow the stack.
+    const stack: [string, boolean][] = [[id, false]];
+    while (stack.length) {
+      const [node, done] = stack.pop()!;
+      if (sizes.has(node)) continue;
+      const kids = children.get(node) ?? [];
+      if (done) sizes.set(node, 1 + kids.reduce((n, k) => n + (sizes.get(k.id) ?? 0), 0));
+      else {
+        stack.push([node, true]);
+        for (const k of kids) if (!sizes.has(k.id)) stack.push([k.id, false]);
+      }
+    }
+    return sizes.get(id) ?? 1;
+  };
+  const siblings = (m: Message) => {
+    const all = children.get(m.parent_id ?? null) ?? [];
+    return all.length > 1 ? siblingsOf(all, m) : [];
+  };
+  return { size, siblings };
+}
+
+const MessageRow = memo(function MessageRow({
+  message: m,
+  isLast,
+  busy,
+  showReasoning,
+  expandSteps,
+  webSources,
+  siblingIds,
+  deleteCount,
+  actions,
+}: {
+  message: Message;
+  isLast: boolean;
+  busy: boolean;
+  showReasoning: boolean;
+  expandSteps: boolean;
+  webSources: WebSources;
+  /** The versions of this message, comma-separated (a string, so unchanged versions keep the row memoized). */
+  siblingIds: string;
+  deleteCount: number;
+  actions: React.RefObject<MessageActions>;
+}) {
+  const ids = siblingIds ? siblingIds.split(",") : [];
+  const index = ids.indexOf(m.id);
+  const branch = ids.length > 1 && index >= 0 ? { index, total: ids.length, onSelect: (i: number) => actions.current.onSwitch(ids[i]) } : undefined;
+  return (
+    <li className={cn("animate-fade-in", m.role === "assistant" && "pr-1")}>
+      {m.role === "user" ? (
+        <UserMessage
+          message={m}
+          disabled={busy}
+          webSources={webSources}
+          branch={branch}
+          deleteCount={deleteCount}
+          onTogglePin={() => actions.current.onTogglePin(m)}
+          onEdit={async (c) => void (await actions.current.onEdit(m.id, c))}
+          onDelete={() => actions.current.onDelete(m.id)}
+        />
+      ) : m.role === "assistant" ? (
+        <AssistantMessage
+          message={m}
+          isLast={isLast}
+          busy={busy}
+          showReasoning={showReasoning}
+          webSources={webSources}
+          expandSteps={expandSteps}
+          branch={branch}
+          deleteCount={deleteCount}
+          onTogglePin={() => actions.current.onTogglePin(m)}
+          onRegenerate={(webSearch) => actions.current.onRegenerate(m.id, webSearch)}
+          onDelete={() => actions.current.onDelete(m.id)}
+        />
+      ) : null}
+    </li>
+  );
+});
+
+export function MessageList({
   messages,
   loading,
   busy,
   showReasoning,
   expandSteps,
-  webSources,
+  webSources = NO_SOURCES,
   tree,
   onSwitch,
   onTogglePin,
@@ -470,26 +576,59 @@ function MessageList({
   busy: boolean;
   showReasoning: boolean;
   expandSteps: boolean;
-  webSources: WebSources;
+  webSources?: WebSources;
   tree: Message[];
-  onSwitch: (messageId: string) => void;
-  onTogglePin: (message: Message) => void;
   onChangeStrategy: () => void;
-  onRegenerate: (messageId?: string, webSearch?: boolean) => void;
-  onEdit: (messageId: string, content: string) => Promise<void> | void;
-  onDelete: (messageId: string) => void;
   children: React.ReactNode;
-}) {
+} & MessageActions) {
   const { t } = useTranslation(["chat", "common", "sidebar"]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
   const stick = useRef(true);
   const [showJump, setShowJump] = useState(false);
+  const [shown, setShown] = useState(INITIAL_MESSAGES);
+  const anchor = useRef<{ height: number; top: number } | null>(null);
   const lastUserId = messages.findLast((m) => m.role === "user")?.id;
+  // The rows get the latest handlers through a ref: new closures every render would defeat memo().
+  const actions = useRef<MessageActions>({ onSwitch, onTogglePin, onRegenerate, onEdit, onDelete });
+  actions.current = { onSwitch, onTogglePin, onRegenerate, onEdit, onDelete };
+  const facts = useMemo(() => treeFacts(tree), [tree]);
+
+  const hidden = Math.max(0, messages.length - shown);
+  const visible = hidden ? messages.slice(hidden) : messages;
 
   const scrollToBottom = (smooth = false) => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   };
+
+  const showMore = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) anchor.current = { height: el.scrollHeight, top: el.scrollTop };
+    setShown((n) => n + MORE_MESSAGES);
+  }, []);
+
+  // Earlier messages appear above: keep what the reader is looking at in place.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const a = anchor.current;
+    if (!el || !a) return;
+    anchor.current = null;
+    el.scrollTop = a.top + (el.scrollHeight - a.height);
+  }, [shown]);
+
+  // Load earlier messages when the reader nears the top.
+  useEffect(() => {
+    const root = scrollRef.current;
+    const target = moreRef.current;
+    if (!root || !target || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && !stick.current && showMore(), {
+      root,
+      rootMargin: "600px 0px 0px 0px",
+    });
+    io.observe(target);
+    return () => io.disconnect();
+  }, [hidden, showMore]);
 
   // Follow the stream only while the user is at the bottom.
   useLayoutEffect(() => {
@@ -526,11 +665,6 @@ function MessageList({
   // Where the most recent request stopped including history (if it was trimmed).
   const lastContext = messages.findLast((m) => m.role === "assistant" && !!m.context?.window)?.context;
   const cutBefore = lastContext && (lastContext.dropped ?? 0) > 0 ? lastContext.cut_before : null;
-  const branchInfo = (m: Message) => {
-    const siblings = siblingsOf(tree, m);
-    const index = siblings.findIndex((s) => s.id === m.id);
-    return siblings.length > 1 && index >= 0 ? { index, total: siblings.length, onSelect: (i: number) => onSwitch(siblings[i].id) } : undefined;
-  };
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -541,51 +675,46 @@ function MessageList({
               <Spinner />
             </div>
           ) : (
-            <ol className="space-y-8" aria-label={t("messages")}>
-              {messages.map((m) => (
-                <Fragment key={m.id}>
-                {m.id === cutBefore && lastContext && (
-                  <li>
-                    <ContextMarker
-                      dropped={lastContext.dropped ?? 0}
-                      summary={lastContext.summary}
-                      summaryFailed={lastContext.summary_failed}
-                      retried={lastContext.retried}
-                      onChangeStrategy={onChangeStrategy}
-                    />
-                  </li>
-                )}
-                <li className={cn("animate-fade-in", m.role === "assistant" && "pr-1")}>
-                  {m.role === "user" ? (
-                    <UserMessage
-                      message={m}
-                      disabled={busy}
-                      webSources={webSources}
-                      branch={branchInfo(m)}
-                      deleteCount={subtreeIds(tree, m.id).length}
-                      onTogglePin={() => onTogglePin(m)}
-                      onEdit={async (c) => void (await onEdit(m.id, c))}
-                      onDelete={() => onDelete(m.id)}
-                    />
-                  ) : m.role === "assistant" ? (
-                    <AssistantMessage
+            <>
+              {hidden > 0 && (
+                <div className="mb-8 flex justify-center">
+                  <Button ref={moreRef} variant="ghost" size="sm" onClick={showMore} data-testid="show-earlier">
+                    {t("earlier", { count: hidden })}
+                  </Button>
+                </div>
+              )}
+              <ol className="space-y-8" aria-label={t("messages")}>
+                {visible.map((m) => (
+                  <Fragment key={m.id}>
+                    {m.id === cutBefore && lastContext && (
+                      <li>
+                        <ContextMarker
+                          dropped={lastContext.dropped ?? 0}
+                          summary={lastContext.summary}
+                          summaryFailed={lastContext.summary_failed}
+                          retried={lastContext.retried}
+                          onChangeStrategy={onChangeStrategy}
+                        />
+                      </li>
+                    )}
+                    <MessageRow
                       message={m}
                       isLast={m.id === lastAssistant}
                       busy={busy}
                       showReasoning={showReasoning}
-                      webSources={webSources}
                       expandSteps={expandSteps}
-                      branch={branchInfo(m)}
-                      deleteCount={subtreeIds(tree, m.id).length}
-                      onTogglePin={() => onTogglePin(m)}
-                      onRegenerate={(webSearch) => onRegenerate(m.id, webSearch)}
-                      onDelete={() => onDelete(m.id)}
+                      webSources={webSources}
+                      siblingIds={facts
+                        .siblings(m)
+                        .map((x) => x.id)
+                        .join(",")}
+                      deleteCount={facts.size(m.id)}
+                      actions={actions}
                     />
-                  ) : null}
-                </li>
-                </Fragment>
-              ))}
-            </ol>
+                  </Fragment>
+                ))}
+              </ol>
+            </>
           )}
         </div>
       </div>

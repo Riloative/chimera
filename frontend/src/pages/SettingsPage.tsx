@@ -43,8 +43,8 @@ export function SettingsPage() {
   return (
     <PageShell wide>
       <PageHeader title={t("title")} />
-      <div className="flex flex-col gap-8 md:flex-row md:gap-12">
-        <nav aria-label={t("sections")} className="-mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 md:w-48 md:flex-col">
+      <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
+        <nav aria-label={t("sections")} className="-mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 lg:w-48 lg:flex-col">
           {visible.map((s) => (
             <NavLink
               key={s}
@@ -63,7 +63,7 @@ export function SettingsPage() {
             {t("nav.models")} →
           </Link>
         </nav>
-        <div className="min-w-0 flex-1 md:max-w-2xl">
+        <div className="min-w-0 flex-1 lg:max-w-2xl">
           {current === "account" ? (
             <AccountSettings />
           ) : current === "users" ? (

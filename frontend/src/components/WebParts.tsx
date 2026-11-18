@@ -1,6 +1,6 @@
 /** Web reading & search in messages: progress steps, sources, link status. */
-import { AlertTriangle, AppWindow, Check, ChevronRight, ExternalLink, FileText, Globe, Link2, Loader2, RotateCw, Search, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, AppWindow, Check, ChevronRight, ExternalLink, FileText, Globe, Link2, RotateCw, Search, Sparkles } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
 import { errorText, providerErrorText } from "@/lib/errors";
@@ -14,6 +14,7 @@ import { toast } from "@/stores/ui";
 import type { CitationTarget } from "./Markdown";
 import { Markdown } from "./Markdown";
 import { Button, Dialog, Spinner, Tooltip } from "./ui";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 export type WebSources = Record<string, WebSource>;
 
@@ -49,7 +50,7 @@ function browserReason(s: WebSource): string | null {
 
 /* -------------------------------------------------------------- steps */
 function StepIcon({ step }: { step: WebStep }) {
-  if (step.status === "running") return <Loader2 className="size-3.5 animate-spin text-accent" aria-hidden />;
+  if (step.status === "running") return <ThinkingIndicator className="text-[0.875rem]" />;
   if (step.status === "error") return <AlertTriangle className="size-3.5 text-danger" aria-hidden />;
   if (step.status === "cancelled") return <span className="inline-block size-1.5 rounded-full bg-faint" aria-hidden />;
   const Icon = step.kind === "queries" ? Sparkles : step.kind === "search" ? Search : step.kind === "read_links" ? Link2 : step.kind === "read_results" ? Globe : Check;
@@ -96,6 +97,7 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
   const steps = message.web?.steps ?? [];
   const running = steps.some((s) => s.status === "running");
   const [open, setOpen] = useState(defaultOpen);
+  const hintId = useId();
   if (!steps.length) return null;
   const expanded = running || open;
   const current = steps.findLast((s) => s.status === "running");
@@ -117,13 +119,16 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={expanded}
-        aria-label={t("steps.toggle")}
+        aria-describedby={hintId}
         disabled={running}
         className="flex max-w-full items-center gap-1.5 rounded-md py-0.5 text-left text-[0.8125rem] text-muted transition-colors hover:text-fg disabled:hover:text-muted"
       >
-        {running ? <Loader2 className="size-3.5 shrink-0 animate-spin text-accent" aria-hidden /> : <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")} aria-hidden />}
+        {running ? <ThinkingIndicator className="text-[0.875rem]" /> : <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")} aria-hidden />}
         <span className="truncate" aria-live="polite">{summary}</span>
       </button>
+      <span id={hintId} hidden>
+        {t("steps.toggle")}
+      </span>
       {expanded && (
         <ol className="mt-1.5 ml-1.5 space-y-1.5 border-l-2 border-line pl-4" aria-label={t("steps.label")}>
           {steps.map((step) => (

@@ -2,6 +2,8 @@
   "messages": "Messages",
   "latest": "Latest",
   "jumpLatest": "Jump to the latest message",
+  "earlier_one": "Show {{count}} earlier message",
+  "earlier_other": "Show {{count}} earlier messages",
   "loadFailed": "This conversation could not be loaded.",
   "maybeDeleted": "It may have been deleted.",
   "startNew": "Start a new chat",

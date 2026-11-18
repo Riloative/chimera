@@ -13,6 +13,7 @@
   "settings": "Nustatymai",
   "conversations": "Pokalbiai",
   "empty": "Pokalbių dar nėra.",
+  "showOlder": "Rodyti senesnius pokalbius",
   "groups": {
     "pinned": "Prisegti",
     "today": "Šiandien",

@@ -39,8 +39,10 @@ test("admin configures the search engine, then links are read and search cites s
   await page.getByRole("button", { name: "Save engine" }).click();
   // The mock site runs on this machine: allow it explicitly (private addresses are blocked by default).
   await page.getByLabel("Internal hosts that may be read").fill("127.0.0.1");
+  // Wait for this save itself: an earlier "saved" message may still be on screen.
+  const saved = page.waitForResponse((r) => r.url().endsWith("/api/admin/web") && r.request().method() === "PATCH" && r.request().postData()!.includes("fetch_allowlist"));
   await page.getByLabel("User agent").click();
-  await expect(page.getByText("Web settings saved").first()).toBeVisible();
+  expect((await saved).ok()).toBe(true);
 
   // --- paste a URL
   await page.goto("/");
@@ -72,8 +74,8 @@ test("admin configures the search engine, then links are read and search cites s
   await composer(page).fill("What happens in Vilnius in March?");
   await page.keyboard.press("Enter");
   const answer = page.locator("li").filter({ has: page.getByTestId("web-steps") }).last();
-  await expect(answer.getByRole("button", { name: "Show web activity" })).toContainText(/Used \d sources/);
-  await answer.getByRole("button", { name: "Show web activity" }).click();
+  await expect(answer.getByTestId("web-steps").getByRole("button").first()).toContainText(/Used \d sources/);
+  await answer.getByTestId("web-steps").getByRole("button").first().click();
   await expect(answer.getByText(/Searching for: /)).toBeVisible();
   await expect(answer.getByText("Found 4 results")).toBeVisible();
   await expect(answer.getByRole("link", { name: /^Source 1: / })).toBeVisible();
@@ -94,7 +96,7 @@ test("Lithuanian: web UI strings switch instantly, stop works, narrow layout hol
   await page.getByRole("combobox", { name: "Language" }).selectOption("lt");
   await expect(page.locator("html")).toHaveAttribute("lang", "lt");
   await page.goto("/");
-  await expect(page.getByTestId("search-toggle")).toHaveAccessibleName("Ieškoti internete šiai žinutei");
+  await expect(page.getByTestId("search-toggle")).toHaveAccessibleName("Paieška internete šiai žinutei");
 
   await page.getByTestId("search-toggle").click();
   await composer(page).fill("festivalis [slow]");

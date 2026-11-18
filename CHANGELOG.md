@@ -10,6 +10,70 @@ changes.
 
 ## [Unreleased]
 
+## [1.1.0] - Unreleased
+
+Polish, bug fixes and speed: titles appear live, one calm waiting
+indicator, long conversations stay fast, pages load only what they need, and
+the interface meets WCAG 2.2 AA in both languages.
+
+### Added
+- **Older conversations in the sidebar**: "Show older conversations" loads them
+  500 at a time. Before, only the newest 500 were listed (the rest were only
+  reachable through search). `GET /api/conversations` takes optional `limit`
+  (1–500, default 500) and `offset` (default 0); without them it answers as
+  before.
+- **Long conversations open with the latest 60 messages**; earlier ones load
+  as you scroll up (or with "Show N earlier messages"), keeping your place.
+
+### Changed
+- **One waiting indicator everywhere** (waiting for the first token, live
+  reasoning, web steps, the send/stop button, loading states): a CSS-only
+  orbit that animates only `transform`/`opacity` on the compositor, so it
+  stays smooth while answers stream. With reduced motion it becomes a slow
+  opacity pulse. The status text next to it is unchanged and the indicator is
+  hidden from screen readers. The waiting row has the height of a line of
+  text, so the answer doesn't jump when it starts.
+- **Faster streaming in long conversations**: a token re-renders only the
+  message it belongs to (before: every message, with tree scans per message).
+  In a 600-message conversation an answer used 6 s of script with the page
+  frozen for up to a second at a time; now 0.7 s and no long tasks.
+- **Smaller pages**: pages load on demand, and the Markdown renderer (KaTeX,
+  highlight.js) comes with the chat page only. The sign-in page loads 616 kB
+  of JavaScript instead of 1,354 kB.
+- **Contrast**: secondary text, the warning colour and syntax highlighting
+  meet 4.5:1 in light and dark themes; inline links are underlined.
+- Settings use the tab row up to 1024 px wide, so tablets get a full-width
+  form instead of three narrow columns.
+- On phones the details under an answer (time, tokens) end in an ellipsis
+  instead of being cut mid-word; the speed is left out there.
+
+### Fixed
+- **Conversation titles not updating live** (the sidebar kept showing "New
+  conversation"): the start of an answer now carries the title the
+  conversation already has (from the first message), a slower conversation
+  list loaded at startup no longer overwrites newer titles, and title, summary
+  and query requests ask llama-server reasoning models (e.g. Qwen3) not to
+  think, so the short budget isn't spent on reasoning and a title is produced.
+  A title you set yourself is never replaced.
+- Renaming a chat while its title was being generated: the generated title
+  replaced what you were typing.
+- Search (Ctrl+K): an older, slower response could replace the results of
+  what you typed last; clearing the box mid-search left the spinner on; hits
+  showed the title from when the search ran.
+- Web settings (administrators): typing in a list, the ports or a limit was
+  wiped when another web setting finished saving.
+- A live update for a conversation that isn't listed no longer adds an empty
+  row to the sidebar.
+- Accessibility: the account menu, the web-steps toggle and the Lithuanian
+  web-search button are named by their visible text (WCAG 2.5.3); the
+  conversation list is a navigation landmark; the chat view is the page's
+  `main` region.
+
+### Upgrade notes
+- No database migration, no new or changed environment variables, no
+  breaking API change (`GET /api/conversations` only gained optional
+  parameters).
+
 ## [1.0.0-rc.1] - 2026-10-16
 
 Release candidate for 1.0.0; the notes are under [1.0.0] below.

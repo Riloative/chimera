@@ -202,8 +202,14 @@ def _owned_conversation(state: AppState, user: dict, cid: str) -> dict:
 
 
 @router.get("/conversations")
-async def list_conversations(user: dict = Depends(current_user), state: AppState = Depends(get_state)):
-    items = state.conversations.list(user["id"])
+async def list_conversations(
+    limit: int = Query(500, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(current_user),
+    state: AppState = Depends(get_state),
+):
+    """Newest first (pinned on top), in pages of ``limit``: a full page means there may be more."""
+    items = state.conversations.list(user["id"], limit, offset)
     for item in items:
         item["generating"] = state.chat.active_for(user["id"], item["id"]) is not None
     return items
@@ -281,8 +287,14 @@ def _stream(state: AppState, gen, initial) -> StreamingResponse:
 def _start_payload(state: AppState, gen, extra: dict) -> list:
     row = state.conversations.message(gen.message_id)
     path = message_tree.active_path(state.db, gen.conversation_id)
+    conv = state.conversations.get(gen.conversation_id) or {}
+    # The title as it is now: the first message replaces "New conversation"
+    # with a fallback title, which clients show at once (the model's title
+    # follows in a later "title" event).
+    conversation = {"id": gen.conversation_id, "title": conv.get("title"), "title_source": conv.get("title_source")}
     return [("start", {"generation_id": gen.id, "conversation_id": gen.conversation_id,
-                       "assistant_message": message_out(row), "active_path": path, **extra})]  # type: ignore[arg-type]
+                       "assistant_message": message_out(row), "active_path": path, "conversation": conversation,
+                       **extra})]  # type: ignore[arg-type]
 
 
 @router.post("/conversations/{cid}/messages")

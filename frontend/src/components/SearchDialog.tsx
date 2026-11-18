@@ -1,6 +1,6 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { MessageSquare, Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -36,23 +36,35 @@ export function SearchDialog() {
     const q = query.trim();
     if (!q) {
       setResults(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
+    // Only the latest query may show its results: an older, slower response is ignored.
+    let current = true;
     const t = setTimeout(() => {
       api
         .searchConversations(q)
         .then((r) => {
+          if (!current) return;
           setResults(r);
           setActive(0);
         })
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
+        .catch(() => current && setResults([]))
+        .finally(() => current && setLoading(false));
     }, 160);
-    return () => clearTimeout(t);
+    return () => {
+      current = false;
+      clearTimeout(t);
+    };
   }, [query]);
 
-  const items = results ?? recent.slice(0, 12);
+  // Hits carry the title from when they were found; show the live one (it may have just been generated).
+  const items = useMemo(() => {
+    if (!results) return recent.slice(0, 12);
+    const byId = new Map(recent.map((c) => [c.id, c]));
+    return results.map((r) => (byId.has(r.id) ? { ...r, title: byId.get(r.id)!.title } : r));
+  }, [results, recent]);
 
   const go = async (c: Conversation) => {
     setOpen(false);

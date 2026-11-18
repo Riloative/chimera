@@ -10,7 +10,7 @@ changes.
 
 ## [Unreleased]
 
-## [1.1.0] - Unreleased
+## [1.1.0] - 2026-11-18
 
 Polish, bug fixes and speed: titles appear live, one calm waiting
 indicator, long conversations stay fast, pages load only what they need, and

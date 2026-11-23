@@ -99,7 +99,7 @@ services:
   # address http://searxng:8080 (or set CHIMERA_WEB_SEARXNG_URL=http://searxng:8080).
   searxng:
     profiles: ["searxng"]
-    image: docker.io/searxng/searxng:2026.10.15-b00212a83
+    image: docker.io/searxng/searxng:2026.11.20-d93f57789
     container_name: chimera-searxng
     restart: unless-stopped
     environment:

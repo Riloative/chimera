@@ -1,2 +1,2 @@
 # Must match the Playwright image tag in the Dockerfile (browsers are baked into that image).
-playwright==1.56.0
+playwright==1.65.2

@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { errorText, providerErrorText } from "@/lib/errors";
 import { relativeTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { AppSettings, WebAdminSettings, WebAdminView, WebEngineKind, WebEngineTest, WebUserSettings } from "@/lib/types";
+import type { AppSettings, SearchMode, WebAdminSettings, WebAdminView, WebEngineKind, WebEngineTest, WebUserSettings } from "@/lib/types";
 import { useAuth } from "@/stores/auth";
 import { useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
@@ -44,8 +44,17 @@ function UserWebSettings({ settings }: { settings: AppSettings }) {
       {status && !status.enabled && <p className="rounded-lg bg-subtle px-3 py-2 text-[0.8125rem] text-muted">{t("settings.user.disabled")}</p>}
       {status?.enabled && !status.search_available && <p className="rounded-lg bg-subtle px-3 py-2 text-[0.8125rem] text-muted">{t("settings.user.noSearch")}</p>}
       <Switch label={t("settings.user.autoRead")} description={t("settings.user.autoReadHelp")} checked={w.auto_read_links} onChange={(v) => save({ auto_read_links: v })} />
-      <Switch label={t("settings.user.searchDefault")} description={t("settings.user.searchDefaultHelp")} checked={w.search_by_default} onChange={(v) => save({ search_by_default: v })} />
-      <Switch label={t("settings.user.keepOn")} description={t("settings.user.keepOnHelp")} checked={w.keep_search_on} onChange={(v) => save({ keep_search_on: v })} />
+      <Field
+        label={t("settings.user.searchDefault")}
+        htmlFor="web-search-default"
+        hint={w.search_default === "auto" && status && !status.auto_available && status.search_available ? t("settings.user.searchDefaultAutoOff") : t("settings.user.searchDefaultHelp")}
+      >
+        <Select id="web-search-default" value={w.search_default} onChange={(e) => save({ search_default: e.target.value as SearchMode })}>
+          <option value="off">{t("settings.user.searchDefaultOff")}</option>
+          <option value="on">{t("settings.user.searchDefaultOn")}</option>
+          {(status?.auto_available || w.search_default === "auto") && <option value="auto">{t("settings.user.searchDefaultAuto")}</option>}
+        </Select>
+      </Field>
       <Switch label={t("settings.user.expandSteps")} checked={w.expand_steps} onChange={(v) => save({ expand_steps: v })} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("settings.user.results")} htmlFor="web-results" hint={t("settings.user.resultsHelp", { max })}>
@@ -345,6 +354,15 @@ function PipelineSettings({ settings, defaults, save }: { settings: WebAdminSett
         onChange={(v) => save({ settings: { query_generation: v } })}
       />
       <PromptField id="web-query-prompt" label={t("settings.admin.queryPrompt")} value={settings.query_prompt} fallback={defaults.query_prompt} onSave={(v) => save({ settings: { query_prompt: v } })} />
+      <Switch
+        label={t("settings.admin.autoSearch")}
+        description={t("settings.admin.autoSearchHelp")}
+        checked={settings.auto_search}
+        onChange={(v) => save({ settings: { auto_search: v } })}
+      />
+      {settings.auto_search && (
+        <PromptField id="web-auto-prompt" label={t("settings.admin.autoPrompt")} value={settings.auto_prompt} fallback={defaults.auto_prompt} onSave={(v) => save({ settings: { auto_prompt: v } })} />
+      )}
       <PromptField
         id="web-grounding-prompt"
         label={t("settings.admin.groundingPrompt")}

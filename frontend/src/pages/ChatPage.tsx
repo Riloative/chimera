@@ -13,7 +13,7 @@ import { Button, ConfirmDialog, Dialog, IconButton, Input, MenuContent, MenuItem
 import { api } from "@/lib/api";
 import { useActiveModel } from "@/lib/hooks";
 import { greetingKey } from "@/lib/time";
-import type { Attachment, Conversation, Message, ModelRef } from "@/lib/types";
+import type { Attachment, Conversation, Message, ModelRef, SearchMode } from "@/lib/types";
 import { cn, modelLabel } from "@/lib/utils";
 import { pathMessages, siblingsOf, useChat } from "@/stores/chat";
 import { useConversations } from "@/stores/conversations";
@@ -72,7 +72,14 @@ export function ChatPage() {
 
   const onSend = async (content: string, attachments: Attachment[], web: WebChoice) => {
     if (!model) return;
-    const body = { content, attachments: attachments.map((a) => a.id), ...target(model), ...web, timezone: browserTimeZone() };
+    const body = {
+      content,
+      attachments: attachments.map((a) => a.id),
+      ...target(model),
+      urls: web.urls,
+      ...(web.web_search === null ? {} : { web_search: web.web_search }),
+      timezone: browserTimeZone(),
+    };
     let convId = id;
     if (!convId) {
       const created = await api
@@ -83,6 +90,7 @@ export function ChatPage() {
           params: draft.params,
           collection_ids: draft.collectionIds,
           context_strategy: draft.contextStrategy ?? null,
+          web_search: searchMode,
         })
         .catch((err) => {
           toast(errorText(err), "error");
@@ -91,7 +99,7 @@ export function ChatPage() {
       useConversations.getState().upsert(created);
       convId = created.id;
       resetDraft();
-      useWeb.getState().moveSearch("new", convId);
+      useWeb.getState().setDraftMode(null);
       const p = send(convId, body, attachments);
       navigate(`/c/${convId}`, { replace: true });
       // Rejections propagate so the composer restores what was typed.
@@ -99,6 +107,17 @@ export function ChatPage() {
       return;
     }
     await send(convId, body, attachments);
+  };
+
+  // Web search: stored on the conversation; on the start page, a draft until the conversation exists.
+  const draftMode = useWeb((s) => s.draftMode);
+  const searchMode: SearchMode = id ? (conv?.web_search ?? "off") : (draftMode ?? settings?.web?.search_default ?? "off");
+  const onSearchModeChange = (mode: SearchMode) => {
+    if (!id) return useWeb.getState().setDraftMode(mode);
+    useConversations
+      .getState()
+      .patch(id, { web_search: mode })
+      .catch((err) => toast(errorText(err), "error"));
   };
 
   const settingsValue: ConversationSettingsValue = conv
@@ -127,6 +146,8 @@ export function ChatPage() {
 
   const composer = (
     <Composer
+      searchMode={searchMode}
+      onSearchModeChange={onSearchModeChange}
       onSend={onSend}
       onStop={() => id && stop(id)}
       streaming={!!chat?.streaming}

@@ -53,7 +53,7 @@ function StepIcon({ step }: { step: WebStep }) {
   if (step.status === "running") return <ThinkingIndicator className="text-[0.875rem]" />;
   if (step.status === "error") return <AlertTriangle className="size-3.5 text-danger" aria-hidden />;
   if (step.status === "cancelled") return <span className="inline-block size-1.5 rounded-full bg-faint" aria-hidden />;
-  const Icon = step.kind === "queries" ? Sparkles : step.kind === "search" ? Search : step.kind === "read_links" ? Link2 : step.kind === "read_results" ? Globe : Check;
+  const Icon = step.kind === "queries" || step.kind === "decide" ? Sparkles : step.kind === "search" ? Search : step.kind === "read_links" ? Link2 : step.kind === "read_results" ? Globe : Check;
   return <Icon className="size-3.5 text-faint" aria-hidden />;
 }
 
@@ -62,6 +62,13 @@ function useStepText() {
   return (step: WebStep): string => {
     const p = step.params;
     const running = step.status === "running";
+    if (step.kind === "decide") {
+      if (running) return t("steps.decideRunning");
+      if (step.status === "error") return t("steps.decideFailed");
+      const reason = (p.reason ?? "").trim();
+      if (p.search) return reason ? t("steps.decideYes", { reason }) : t("steps.decideYesPlain");
+      return reason ? t("steps.decideNo", { reason }) : t("steps.decideNoPlain");
+    }
     if (step.status === "error" && step.code) return providerErrorText(step.code, {}, step.code);
     switch (step.kind) {
       case "read_links": {
@@ -103,9 +110,14 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
   const current = steps.findLast((s) => s.status === "running");
   // Only this turn's sources: pages re-sent from earlier turns aren't "read" again.
   const included = (message.web?.refs ?? []).filter((r) => !r.earlier && r.included && sources[r.source_id]?.status !== "error").length;
+  // Auto decided not to search (or couldn't decide): that decision is the whole story.
+  const decide = steps.find((s) => s.kind === "decide");
+  const decidedOnly = !!decide && (decide.status === "error" || !decide.params.search) && steps.every((s) => s.kind === "decide" || s.kind === "history_trimmed");
   const summary = running
     ? text(current ?? steps[steps.length - 1])
-    : steps.some((s) => s.status === "error")
+    : decidedOnly
+      ? text(decide)
+      : steps.some((s) => s.status === "error" && s.kind !== "decide")
       ? t("steps.failed")
       : steps.some((s) => s.status === "cancelled")
         ? t("steps.stopped")
@@ -137,7 +149,7 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
                 <span className="mt-[0.3rem] flex size-3.5 shrink-0 items-center justify-center">
                   <StepIcon step={step} />
                 </span>
-                <span className={cn("min-w-0 break-words", step.status === "error" && "text-danger")}>
+                <span className={cn("min-w-0 break-words", step.status === "error" && step.kind !== "decide" && "text-danger")}>
                   {text(step)}
                   {step.status === "cancelled" && <span className="text-faint"> · {t("steps.stopped")}</span>}
                 </span>

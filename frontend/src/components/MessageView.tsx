@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Copy,
   FileText,
+  Globe,
   Pencil,
   Pin,
   PinOff,
@@ -250,6 +251,15 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
   );
 }
 
+/** Auto mode answered without the web: it decided no search was needed, couldn't decide, or the search failed. */
+function autoSkipped(message: Message): boolean {
+  const web = message.web;
+  if (!web?.auto) return false;
+  const steps = web.steps ?? [];
+  const decide = steps.find((s) => s.kind === "decide");
+  return !decide || decide.status === "error" || !decide.params.search || steps.some((s) => s.kind === "search" && s.status === "error");
+}
+
 /* ---------------------------------------------------------- assistant turn */
 export function AssistantMessage({
   message,
@@ -298,6 +308,11 @@ export function AssistantMessage({
       </div>
 
       <WebSteps message={message} sources={webSources} defaultOpen={expandSteps} />
+      {isLast && !streaming && message.status === "complete" && autoSkipped(message) && (
+        <Button size="sm" variant="outline" className="-mt-1 mb-3" icon={<Globe className="size-3.5" />} onClick={() => onRegenerate(true)} disabled={busy}>
+          {t("web:actions.searchAnyway")}
+        </Button>
+      )}
 
       {showReasoning && message.reasoning && <Reasoning text={message.reasoning} live={streaming && !message.content} />}
 

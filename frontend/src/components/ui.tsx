@@ -378,6 +378,31 @@ export function MenuItem({ children, onSelect, icon, destructive, disabled }: { 
   );
 }
 
+/** A titled group of choices inside a menu (e.g. "In this conversation"). */
+export function MenuLabel({ children }: { children: ReactNode }) {
+  return <Menu.Label className="px-2.5 pt-1.5 pb-1 text-[0.75rem] font-medium text-faint">{children}</Menu.Label>;
+}
+
+export const MenuRadioGroup = Menu.RadioGroup;
+
+export function MenuRadioItem({ value, children, hint, testId }: { value: string; children: ReactNode; hint?: ReactNode; testId?: string }) {
+  return (
+    <Menu.RadioItem
+      value={value}
+      data-testid={testId}
+      className="flex min-h-8 cursor-default items-start gap-2.5 rounded-lg py-1.5 pr-2.5 pl-2.5 text-[0.8125rem] text-fg outline-none select-none data-[highlighted]:bg-hover"
+    >
+      <span className="mt-[3px] flex size-4 shrink-0 items-center justify-center" aria-hidden>
+        <span className="size-2 rounded-full border border-line-strong in-data-[state=checked]:border-fg in-data-[state=checked]:bg-fg" />
+      </span>
+      <span className="min-w-0">
+        <span className="block">{children}</span>
+        {hint && <span className="block text-[0.75rem] leading-snug text-muted">{hint}</span>}
+      </span>
+    </Menu.RadioItem>
+  );
+}
+
 export function MenuSeparator() {
   return <Menu.Separator className="my-1 h-px bg-line" />;
 }

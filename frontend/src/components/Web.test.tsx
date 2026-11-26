@@ -1,28 +1,28 @@
 import { act, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import i18n from "@/i18n";
 import { providerErrorText } from "@/lib/errors";
-import type { AppSettings, Message, WebRef, WebSource, WebStatus, WebUserSettings } from "@/lib/types";
+import type { AppSettings, Message, SearchMode, WebRef, WebSource, WebStatus, WebUserSettings } from "@/lib/types";
 import { useChat } from "@/stores/chat";
 import { useSettings } from "@/stores/settings";
 import { useWeb } from "@/stores/web";
-import { Composer } from "./Composer";
+import { Composer, type ComposerProps } from "./Composer";
 import { Markdown } from "./Markdown";
 import { TooltipProvider } from "./ui";
 import { citationTargets, LinkStatus, visibleRefs, WebSourceList, WebSteps } from "./WebParts";
 
 const PREFS: WebUserSettings = {
   auto_read_links: true,
-  search_by_default: false,
-  keep_search_on: false,
+  search_default: "off",
   results: 5,
   expand_steps: false,
   task_provider_id: null,
   task_model: null,
   privacy_acknowledged: true,
 };
-const STATUS: WebStatus = { enabled: true, search_available: true, engine: "searxng", max_urls_per_message: 2, max_results: 8, is_admin: false };
+const STATUS: WebStatus = { enabled: true, search_available: true, auto_available: true, engine: "searxng", max_urls_per_message: 2, max_results: 8, is_admin: false };
 
 function wrap(ui: React.ReactNode) {
   return render(
@@ -32,13 +32,39 @@ function wrap(ui: React.ReactNode) {
   );
 }
 
-function setupComposer(status: WebStatus | null, prefs: Partial<WebUserSettings> = {}) {
+/** The composer with its conversation's search mode held like ChatPage holds it (stored per conversation). */
+function Harness({ initial, onSend, onMode }: { initial: SearchMode; onSend: ComposerProps["onSend"]; onMode: (m: SearchMode) => void }) {
+  const [mode, setMode] = useState<SearchMode>(initial);
+  return (
+    <Composer
+      onSend={onSend}
+      model={{ providerId: "p", model: "m" }}
+      onModelChange={() => {}}
+      visionSupported={false}
+      conversationKey="c1"
+      searchMode={mode}
+      onSearchModeChange={(m) => {
+        setMode(m);
+        onMode(m);
+      }}
+    />
+  );
+}
+
+function setupComposer(status: WebStatus | null, prefs: Partial<WebUserSettings> = {}, mode: SearchMode = "off") {
   const update = vi.fn().mockResolvedValue(null);
   useSettings.setState({ settings: { enter_to_send: true, web: { ...PREFS, ...prefs } } as AppSettings, update });
-  useWeb.setState({ status, search: {} });
+  useWeb.setState({ status, override: {}, draftMode: null });
   const onSend = vi.fn().mockResolvedValue(undefined);
-  wrap(<Composer onSend={onSend} model={{ providerId: "p", model: "m" }} onModelChange={() => {}} visionSupported={false} conversationKey="c1" />);
-  return { onSend, update, input: screen.getByLabelText("Message") as HTMLTextAreaElement };
+  const onMode = vi.fn();
+  wrap(<Harness initial={mode} onSend={onSend} onMode={onMode} />);
+  return { onSend, update, onMode, input: screen.getByLabelText("Message") as HTMLTextAreaElement };
+}
+
+async function chooseInMenu(name: string | RegExp) {
+  await userEvent.click(screen.getByRole("button", { name: /^(Web search options|Paieškos internete parinktys)$/ }));
+  const item = await screen.findAllByRole("menuitem", { name }).catch(() => screen.findAllByRole("menuitemradio", { name }));
+  await userEvent.click(item[0]);
 }
 
 afterEach(async () => {
@@ -56,7 +82,7 @@ describe("composer links and search", () => {
     expect(chips[1]).toHaveAttribute("aria-pressed", "false");
     await userEvent.click(input);
     await userEvent.keyboard("{Enter}");
-    expect(onSend).toHaveBeenCalledWith(expect.any(String), [], { urls: ["https://a.example.com/x"], web_search: false });
+    expect(onSend).toHaveBeenCalledWith(expect.any(String), [], { urls: ["https://a.example.com/x"], web_search: null });
   });
 
   it("asks before reading links when auto-read is off", async () => {
@@ -67,19 +93,64 @@ describe("composer links and search", () => {
     await userEvent.click(chip);
     await userEvent.click(input);
     await userEvent.keyboard("{Enter}");
-    expect(onSend.mock.calls[0][2]).toEqual({ urls: ["https://a.example.com"], web_search: false });
+    expect(onSend.mock.calls[0][2]).toEqual({ urls: ["https://a.example.com"], web_search: null });
   });
 
-  it("search toggle: off, on for one message, then off again", async () => {
-    const { onSend, input } = setupComposer(STATUS);
+  it("the search button turns web search on for the whole conversation, and it stays on", async () => {
+    const { onSend, onMode, input } = setupComposer(STATUS);
     const toggle = screen.getByTestId("search-toggle");
     expect(toggle).toHaveAttribute("aria-pressed", "false");
-    expect(toggle).toHaveAccessibleName("Search the web for this message");
+    expect(toggle).toHaveAccessibleName("Search the web in this conversation");
     await userEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(onMode).toHaveBeenLastCalledWith("on");
+    expect(screen.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "true");
     await userEvent.type(input, "latest news{Enter}");
+    // The conversation's mode decides: no per-message value is sent.
+    expect(onSend.mock.calls[0][2]).toEqual({ urls: [], web_search: null });
+    await userEvent.type(input, "and more{Enter}");
+    expect(screen.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("a one-off choice applies to the next message only, and says so", async () => {
+    const { onSend, onMode, input } = setupComposer(STATUS);
+    await chooseInMenu("Search the web for the next message");
+    expect(screen.getByTestId("search-control")).toHaveAttribute("data-effective", "on");
+    expect(screen.getByText("Web search for the next message only")).toBeInTheDocument();
+    expect(screen.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "false"); // the conversation stays off
+    await userEvent.type(input, "festival dates{Enter}");
     expect(onSend.mock.calls[0][2]).toEqual({ urls: [], web_search: true });
-    await vi.waitFor(() => expect(screen.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "false"));
+    await vi.waitFor(() => expect(screen.getByTestId("search-control")).toHaveAttribute("data-effective", "off"));
+    expect(screen.queryByText("Web search for the next message only")).toBeNull();
+    expect(onMode).not.toHaveBeenCalled();
+  });
+
+  it("can skip search for one message in a conversation that searches", async () => {
+    const { onSend, input } = setupComposer(STATUS, {}, "on");
+    await chooseInMenu("Don't search for the next message");
+    expect(screen.getByText("No web search for the next message")).toBeInTheDocument();
+    await userEvent.type(input, "thanks{Enter}");
+    expect(onSend.mock.calls[0][2]).toEqual({ urls: [], web_search: false });
+    await vi.waitFor(() => expect(screen.getByTestId("search-control")).toHaveAttribute("data-effective", "on"));
+  });
+
+  it("offers Auto when the server allows it", async () => {
+    const { onMode } = setupComposer(STATUS);
+    await chooseInMenu(/^Auto/);
+    expect(onMode).toHaveBeenLastCalledWith("auto");
+    const toggle = screen.getByTestId("search-toggle");
+    expect(toggle).toHaveAccessibleName("Auto web search in this conversation");
+    expect(toggle).toHaveTextContent("Auto");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(toggle); // the button turns it off
+    expect(onMode).toHaveBeenLastCalledWith("off");
+  });
+
+  it("hides Auto when an administrator turned it off, and treats it as off", async () => {
+    setupComposer({ ...STATUS, auto_available: false }, {}, "auto");
+    expect(screen.getByTestId("search-control")).toHaveAttribute("data-mode", "off");
+    await userEvent.click(screen.getByRole("button", { name: "Web search options" }));
+    expect(await screen.findByRole("menuitemradio", { name: /^On/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: /^Auto/ })).toBeNull();
   });
 
   it("is disabled with an explanation when no engine is configured", async () => {
@@ -98,24 +169,28 @@ describe("composer links and search", () => {
     expect(screen.queryByRole("list", { name: "Links in this message" })).toBeNull();
     expect(screen.getByText("Links are not read because web access is turned off on this server.")).toBeInTheDocument();
     await userEvent.keyboard("{Enter}");
-    expect(onSend.mock.calls[0][2]).toEqual({ urls: null, web_search: false });
+    expect(onSend.mock.calls[0][2]).toEqual({ urls: null, web_search: null });
   });
 
   it("shows the privacy notice the first time search is turned on", async () => {
-    const { update } = setupComposer(STATUS, { privacy_acknowledged: false });
+    const { update, onMode } = setupComposer(STATUS, { privacy_acknowledged: false });
     await userEvent.click(screen.getByTestId("search-toggle"));
     const dialog = await screen.findByRole("dialog");
+    expect(onMode).not.toHaveBeenCalled(); // nothing changes before the notice is accepted
     expect(within(dialog).getByText(/self-hosted|own SearXNG/)).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Turn on web search" }));
     expect(screen.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "true");
+    expect(onMode).toHaveBeenLastCalledWith("on");
     expect(update).toHaveBeenCalledWith({ web: expect.objectContaining({ privacy_acknowledged: true }) });
   });
 
   it("works in Lithuanian at once", async () => {
-    setupComposer(STATUS);
+    setupComposer(STATUS, {}, "on");
     await act(() => i18n.changeLanguage("lt"));
-    expect(screen.getByTestId("search-toggle")).toHaveAccessibleName("Paieška internete šiai žinutei");
+    expect(screen.getByTestId("search-toggle")).toHaveAccessibleName("Paieška internete šiame pokalbyje");
     expect(screen.getByText("Paieška")).toBeInTheDocument();
+    await chooseInMenu("Kitai žinutei neieškoti");
+    expect(screen.getByText("Kitai žinutei internete neieškoti")).toBeInTheDocument();
   });
 });
 
@@ -258,7 +333,7 @@ describe("headless browser", () => {
 
   function openShell(available: boolean, extra: Partial<WebSource> = {}) {
     const shell = SOURCE("s9", 1, { origin: "pasted", status: "error", error_code: "web.needs_javascript", chars: 0, ...extra });
-    useWeb.setState({ status: { ...STATUS, browser_available: available }, search: {} });
+    useWeb.setState({ status: { ...STATUS, browser_available: available }, override: {} });
     useChat.setState({ convs: {} });
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/refetch")) {

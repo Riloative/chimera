@@ -112,6 +112,8 @@ export interface Conversation {
   pinned: boolean;
   active_leaf_id?: string | null;
   context_strategy?: "sliding" | "summarize" | "off" | null;
+  /** Web search in this conversation (stored on the server). */
+  web_search?: SearchMode;
   created_at: string;
   updated_at: string;
   generating?: boolean;
@@ -208,7 +210,7 @@ export interface ConversationDetail extends Conversation {
 }
 
 /* ------------------------------------------------------------------ web */
-export type WebStepKind = "read_links" | "queries" | "search" | "read_results" | "budget" | "older_omitted" | "history_trimmed";
+export type WebStepKind = "decide" | "read_links" | "queries" | "search" | "read_results" | "budget" | "older_omitted" | "history_trimmed";
 export type WebStepStatus = "running" | "done" | "error" | "cancelled";
 
 export interface WebStep {
@@ -225,6 +227,9 @@ export interface WebStep {
     fallback?: boolean;
     count?: number;
     used?: number;
+    /** Auto: whether the model decided to search, and why. */
+    search?: boolean;
+    reason?: string;
   };
 }
 
@@ -241,6 +246,8 @@ export interface WebRef {
 /** The web part of an answer: progress steps, queries and the citation map. */
 export interface WebState {
   search?: boolean;
+  /** Auto mode: the model decided whether to search (see the "decide" step). */
+  auto?: boolean;
   links?: boolean;
   steps?: WebStep[];
   queries?: string[];
@@ -279,6 +286,8 @@ export interface WebSource {
 export interface WebStatus {
   enabled: boolean;
   search_available: boolean;
+  /** "Auto" mode is allowed (search available and not turned off by an administrator). */
+  auto_available?: boolean;
   engine: WebEngineKind | null;
   max_urls_per_message: number;
   max_results: number;
@@ -289,10 +298,13 @@ export interface WebStatus {
 
 export type WebEngineKind = "searxng" | "brave" | "tavily";
 
+/** Web search per conversation: never, every message, or when the model decides. */
+export type SearchMode = "off" | "on" | "auto";
+
 export interface WebUserSettings {
   auto_read_links: boolean;
-  search_by_default: boolean;
-  keep_search_on: boolean;
+  /** The search mode new conversations start with. */
+  search_default: SearchMode;
   results: number;
   expand_steps: boolean;
   task_provider_id: string | null;
@@ -307,6 +319,8 @@ export interface WebAdminSettings {
   searxng_auth_header: string;
   query_generation: boolean;
   query_prompt: string;
+  auto_search: boolean;
+  auto_prompt: string;
   grounding_prompt: string;
   fetch_allowlist: string[];
   domain_allowlist: string[];
@@ -350,7 +364,7 @@ export interface WebEngineTest {
 export interface WebAdminView {
   settings: WebAdminSettings;
   engines: { kind: WebEngineKind; configured: boolean; has_key: boolean; status: WebEngineTest | null }[];
-  defaults: { query_prompt: string; grounding_prompt: string };
+  defaults: { query_prompt: string; grounding_prompt: string; auto_prompt: string };
   browser?: WebBrowserStatus;
 }
 

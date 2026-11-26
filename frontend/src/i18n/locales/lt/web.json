@@ -1,9 +1,6 @@
 {
   "composer": {
     "search": "Paieška",
-    "searchTooltip": "Paieška internete šiai žinutei",
-    "searchOnTooltip": "Paieška internete įjungta šiai žinutei",
-    "searchStickyTooltip": "Paieška internete lieka įjungta šiame pokalbyje",
     "searchUnavailableAdmin": "Paieška internete dar nenustatyta. Pasirinkite paieškos sistemą skiltyje Nustatymai → Internetas.",
     "searchUnavailableUser": "Šiame serveryje paieška internete nenustatyta. Kreipkitės į administratorių.",
     "openSettings": "Atverti interneto nustatymus",
@@ -18,7 +15,34 @@
     "overLimit_one": "Bus perskaityta ne daugiau kaip {{count}} nuoroda.",
     "overLimit_few": "Bus perskaitytos ne daugiau kaip {{count}} nuorodos.",
     "overLimit_many": "Bus perskaityta ne daugiau kaip {{count}} nuorodos.",
-    "overLimit_other": "Bus perskaityta ne daugiau kaip {{count}} nuorodų."
+    "overLimit_other": "Bus perskaityta ne daugiau kaip {{count}} nuorodų.",
+    "auto": "Auto",
+    "searchName": {
+      "off": "Paieška internete šiame pokalbyje",
+      "on": "Paieška internete šiame pokalbyje",
+      "auto": "Auto paieška internete šiame pokalbyje"
+    },
+    "searchTip": {
+      "off": "Šiame pokalbyje paieška internete išjungta",
+      "on": "Šiame pokalbyje internete ieškoma kiekvienai žinutei",
+      "auto": "Modelis kiekvienai žinutei sprendžia, ar ieškoti internete"
+    },
+    "searchOptions": "Paieškos internete parinktys",
+    "oneOffOn": "Paieška internete tik kitai žinutei",
+    "oneOffOff": "Kitai žinutei internete neieškoti",
+    "menu": {
+      "conversation": "Šiame pokalbyje",
+      "off": "Išjungta",
+      "offHint": "Niekada neieškoti internete.",
+      "on": "Įjungta",
+      "onHint": "Ieškoti internete kiekvienai žinutei.",
+      "auto": "Auto",
+      "autoHint": "Modelis sprendžia kiekvienai žinutei.",
+      "nextOnly": "Tik kitai žinutei",
+      "searchNext": "Ieškoti internete kitai žinutei",
+      "skipNext": "Kitai žinutei neieškoti",
+      "undoOneOff": "Atšaukti pasirinkimą kitai žinutei"
+    }
   },
   "privacy": {
     "title": "Ką siunčia paieška internete",
@@ -90,7 +114,13 @@
     "historyTrimmed_many": "Kad tilptų puslapiai, praleista {{count}} ankstesnės žinutės",
     "historyTrimmed_other": "Kad tilptų puslapiai, praleista {{count}} ankstesnių žinučių",
     "stopped": "Sustabdyta",
-    "failed": "Nepavyko"
+    "failed": "Nepavyko",
+    "decideRunning": "Sprendžiama, ar ieškoti internete…",
+    "decideYes": "Ieškoma internete: {{reason}}",
+    "decideYesPlain": "Nuspręsta ieškoti internete",
+    "decideNo": "Paieška internete nereikalinga: {{reason}}",
+    "decideNoPlain": "Nuspręsta, kad paieška internete nereikalinga",
+    "decideFailed": "Nepavyko nuspręsti, ar ieškoti, todėl atsakymas parašytas be interneto."
   },
   "sources": {
     "title": "Šaltiniai",
@@ -124,7 +154,8 @@
   },
   "actions": {
     "retrySearch": "Ieškoti dar kartą",
-    "withoutSearch": "Atsakyti be paieškos"
+    "withoutSearch": "Atsakyti be paieškos",
+    "searchAnyway": "Ieškoti internete"
   },
   "image": {
     "blocked": "Nuotolinis paveikslėlis neįkeltas: {{alt}}",
@@ -139,10 +170,8 @@
       "noSearch": "Šiame serveryje paieška internete nenustatyta. Įklijuotas nuorodas vis tiek galima perskaityti.",
       "autoRead": "Skaityti nuorodas mano žinutėse",
       "autoReadHelp": "Išjungus nuorodos rodomos įvedimo lauke, o jūs pasirenkate, kurias skaityti.",
-      "searchDefault": "Įjungti paiešką internete naujoms žinutėms",
-      "searchDefaultHelp": "Bet kuriai žinutei ją vis tiek galėsite išjungti.",
-      "keepOn": "Laikyti paiešką internete įjungtą visam pokalbiui",
-      "keepOnHelp": "Išjungus paieška po kiekvienos žinutės išsijungia.",
+      "searchDefault": "Paieška internete naujuose pokalbiuose",
+      "searchDefaultHelp": "Kiekvienas pokalbis turi savo nustatymą, kurį galite pakeisti rašymo lauke, taip pat ir vienai žinutei.",
       "results": "Kiek paieškos rezultatų skaityti",
       "resultsHelp": "Ne daugiau kaip {{max}}, kaip leidžia administratorius. Daugiau rezultatų – platesni atsakymai, bet reikia daugiau konteksto.",
       "expandSteps": "Rodyti veiksmus internete išskleistus",
@@ -151,7 +180,11 @@
       "taskModelDefault": "Pokalbio modelis",
       "privacy": "Privatumo pranešimas",
       "privacyAcknowledged": "Jūs perskaitėte, ką siunčia paieška internete.",
-      "privacyShow": "Rodyti dar kartą"
+      "privacyShow": "Rodyti dar kartą",
+      "searchDefaultOff": "Išjungta",
+      "searchDefaultOn": "Įjungta, kiekvienai žinutei",
+      "searchDefaultAuto": "Auto, sprendžia modelis",
+      "searchDefaultAutoOff": "Šiame serveryje Auto režimas išjungtas, todėl tokiuose pokalbiuose neieškoma."
     },
     "admin": {
       "title": "Prieiga prie interneto visiems",
@@ -227,7 +260,10 @@
       "browserAutoHelp": "Kai puslapis pasirodo esąs tuščia JavaScript programėlė, jis atvaizduojamas naršykle. Lėčiau ir naudoja daugiau atminties nei įprastas skaitymas.",
       "browserTimeout": "Atvaizdavimo laiko limitas (sekundės)",
       "browserPerHour": "Atvaizdavimų vienam naudotojui per valandą",
-      "saved": "Interneto nustatymai išsaugoti"
+      "saved": "Interneto nustatymai išsaugoti",
+      "autoSearch": "Leisti Auto paiešką internete",
+      "autoSearchHelp": "Auto režimu modelis kiekvienai žinutei sprendžia, ar ieškoti. Tai kainuoja vieną papildomą trumpą užklausą modeliui kiekvienai žinutei, kuriai neieškoma. Išjungus, pokalbiuose su Auto neieškoma.",
+      "autoPrompt": "Nurodymai, kaip nuspręsti, ar ieškoti"
     }
   }
 }

@@ -1,9 +1,6 @@
 {
   "composer": {
     "search": "Search",
-    "searchTooltip": "Search the web for this message",
-    "searchOnTooltip": "Web search is on for this message",
-    "searchStickyTooltip": "Web search stays on in this conversation",
     "searchUnavailableAdmin": "Web search isn't set up yet. Choose a search engine in Settings → Web.",
     "searchUnavailableUser": "Web search isn't set up on this server. Ask your administrator.",
     "openSettings": "Open web settings",
@@ -16,7 +13,34 @@
     "skip": "Skip",
     "linksOff": "Links are not read because web access is turned off on this server.",
     "overLimit_one": "Only the first {{count}} link will be read.",
-    "overLimit_other": "Only the first {{count}} links will be read."
+    "overLimit_other": "Only the first {{count}} links will be read.",
+    "auto": "Auto",
+    "searchName": {
+      "off": "Search the web in this conversation",
+      "on": "Search the web in this conversation",
+      "auto": "Auto web search in this conversation"
+    },
+    "searchTip": {
+      "off": "Web search is off in this conversation",
+      "on": "Web search is on for every message in this conversation",
+      "auto": "The model decides for each message whether to search the web"
+    },
+    "searchOptions": "Web search options",
+    "oneOffOn": "Web search for the next message only",
+    "oneOffOff": "No web search for the next message",
+    "menu": {
+      "conversation": "In this conversation",
+      "off": "Off",
+      "offHint": "Never search the web.",
+      "on": "On",
+      "onHint": "Search the web for every message.",
+      "auto": "Auto",
+      "autoHint": "The model decides for each message.",
+      "nextOnly": "Next message only",
+      "searchNext": "Search the web for the next message",
+      "skipNext": "Don't search for the next message",
+      "undoOneOff": "Cancel the choice for the next message"
+    }
   },
   "privacy": {
     "title": "What web search sends",
@@ -64,7 +88,13 @@
     "historyTrimmed_one": "{{count}} earlier message was left out to make room for the pages",
     "historyTrimmed_other": "{{count}} earlier messages were left out to make room for the pages",
     "stopped": "Stopped",
-    "failed": "Failed"
+    "failed": "Failed",
+    "decideRunning": "Deciding whether to search the web…",
+    "decideYes": "Searching the web: {{reason}}",
+    "decideYesPlain": "Decided to search the web",
+    "decideNo": "No web search needed: {{reason}}",
+    "decideNoPlain": "Decided that no web search was needed",
+    "decideFailed": "Couldn't decide whether to search, so the answer doesn't use the web."
   },
   "sources": {
     "title": "Sources",
@@ -98,7 +128,8 @@
   },
   "actions": {
     "retrySearch": "Retry search",
-    "withoutSearch": "Answer without search"
+    "withoutSearch": "Answer without search",
+    "searchAnyway": "Search the web"
   },
   "image": {
     "blocked": "Remote image not loaded: {{alt}}",
@@ -113,10 +144,8 @@
       "noSearch": "Web search isn't set up on this server. Links you paste can still be read.",
       "autoRead": "Read links in my messages",
       "autoReadHelp": "When off, links are shown in the composer and you choose which ones to read.",
-      "searchDefault": "Turn on web search for new messages",
-      "searchDefaultHelp": "You can still switch it off for any message.",
-      "keepOn": "Keep web search on for the whole conversation",
-      "keepOnHelp": "When off, search turns itself off after each message.",
+      "searchDefault": "Web search in new conversations",
+      "searchDefaultHelp": "Each conversation keeps its own setting, which you can change from the composer, also for a single message.",
       "results": "Search results to read",
       "resultsHelp": "Up to {{max}}, as allowed by your administrator. More results give broader answers but need more context.",
       "expandSteps": "Show web activity expanded",
@@ -125,7 +154,11 @@
       "taskModelDefault": "The chat's model",
       "privacy": "Privacy notice",
       "privacyAcknowledged": "You have read what web search sends.",
-      "privacyShow": "Show again"
+      "privacyShow": "Show again",
+      "searchDefaultOff": "Off",
+      "searchDefaultOn": "On, for every message",
+      "searchDefaultAuto": "Auto, the model decides",
+      "searchDefaultAutoOff": "Auto is turned off on this server, so these conversations don't search."
     },
     "admin": {
       "title": "Web access for everyone",
@@ -199,7 +232,10 @@
       "browserAutoHelp": "When a page turns out to be an empty JavaScript app, it is rendered instead. Slower and uses more memory than normal reading.",
       "browserTimeout": "Render timeout (seconds)",
       "browserPerHour": "Renders per user per hour",
-      "saved": "Web settings saved"
+      "saved": "Web settings saved",
+      "autoSearch": "Allow Auto web search",
+      "autoSearchHelp": "In Auto mode the model decides for each message whether to search. This costs one extra short request to the model per message that doesn't search. When off, conversations set to Auto don't search.",
+      "autoPrompt": "Instructions for deciding whether to search"
     }
   }
 }

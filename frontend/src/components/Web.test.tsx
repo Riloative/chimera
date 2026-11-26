@@ -283,6 +283,26 @@ describe("citations", () => {
   });
 });
 
+describe("Auto decisions", () => {
+  const decided = (step: Record<string, unknown>) =>
+    ({ ...MESSAGE, web: { auto: true, search: false, steps: [{ id: 0, kind: "decide", code: null, params: {}, ...step }], refs: [] } }) as Message;
+
+  it("shows the model's decision as the summary when it didn't search", async () => {
+    wrap(<WebSteps message={decided({ status: "done", params: { search: false, reason: "general question" } })} sources={{}} defaultOpen={false} />);
+    expect(screen.getByRole("button", { description: "Show web activity" })).toHaveTextContent("No web search needed: general question");
+    await act(() => i18n.changeLanguage("lt"));
+    expect(screen.getByRole("button", { description: "Rodyti veiksmus internete" })).toHaveTextContent("Paieška internete nereikalinga: general question");
+  });
+
+  it("says when it couldn't decide, without presenting it as a failure", () => {
+    wrap(<WebSteps message={decided({ status: "error", code: "web.auto_undecided" })} sources={{}} defaultOpen />);
+    const summary = screen.getByRole("button", { description: "Show web activity" });
+    expect(summary).toHaveTextContent("Couldn't decide whether to search, so the answer doesn't use the web.");
+    expect(summary).not.toHaveTextContent("Failed");
+    expect(screen.getByRole("list", { name: "Web activity" }).querySelector(".text-danger")).toBeNull();
+  });
+});
+
 describe("web steps and sources", () => {
   it("summarizes and expands the step log", async () => {
     wrap(<WebSteps message={MESSAGE} sources={SOURCES} defaultOpen={false} />);

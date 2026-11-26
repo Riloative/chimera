@@ -4,7 +4,7 @@ import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { forwardRef, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useId, useState, type ButtonHTMLAttributes, type ComponentProps, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import type { ProviderStatus } from "@/lib/types";
@@ -22,7 +22,7 @@ export const Button = forwardRef<
     disabled={disabled || loading}
     className={cn(
       "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg font-medium whitespace-nowrap transition-colors duration-150 select-none disabled:opacity-50",
-      size === "sm" ? "h-8 px-2.5 text-[0.8125rem]" : "h-9 px-3.5 text-sm",
+      size === "sm" ? "h-8 px-2.5 text-ui" : "h-9 px-3.5 text-sm",
       variant === "primary" && "bg-fg text-bg hover:opacity-90",
       variant === "secondary" && "bg-subtle text-fg hover:bg-active",
       variant === "outline" && "border border-line-strong text-fg hover:bg-hover",
@@ -58,7 +58,7 @@ export function Tooltip({ label, children, side = "top", shortcut }: { label: Re
           className="animate-fade-in z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-xs font-medium text-bg"
         >
           {label}
-          {shortcut && <span className="font-mono text-[0.7rem] opacity-60">{shortcut}</span>}
+          {shortcut && <span className="font-mono text-caption opacity-60">{shortcut}</span>}
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>
@@ -139,7 +139,7 @@ export function Select({ className, children, ...props }: React.SelectHTMLAttrib
 export function Field({ label, hint, error, children, htmlFor }: { label: ReactNode; hint?: ReactNode; error?: string | null; children: ReactNode; htmlFor?: string }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={htmlFor} className="block text-[0.8125rem] font-medium text-fg">
+      <label htmlFor={htmlFor} className="block text-ui font-medium text-fg">
         {label}
       </label>
       {children}
@@ -156,7 +156,7 @@ export function Switch({ checked, onChange, label, description, disabled }: { ch
         <label htmlFor={id} className="text-sm font-medium text-fg">
           {label}
         </label>
-        {description && <p className="mt-0.5 text-[0.8125rem] leading-relaxed text-muted">{description}</p>}
+        {description && <p className="mt-0.5 text-ui leading-relaxed text-muted">{description}</p>}
       </div>
       <button
         id={id}
@@ -187,7 +187,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "flex h-7 items-center gap-1.5 rounded-md px-3 text-[0.8125rem] font-medium transition-colors",
+            "flex h-7 items-center gap-1.5 rounded-md px-3 text-ui font-medium transition-colors",
             value === o.value ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
           )}
         >
@@ -229,7 +229,7 @@ export function Spinner({ className }: { className?: string }) {
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
-  return <kbd className="rounded border border-line bg-elevated px-1 font-mono text-[0.68rem] text-faint">{children}</kbd>;
+  return <kbd className="rounded border border-line bg-elevated px-1 font-mono text-caption text-faint">{children}</kbd>;
 }
 
 /* ------------------------------------------------------------------ Dialog */
@@ -343,8 +343,28 @@ export function ConfirmDialog({
   );
 }
 
+/** Loading → spinner; failed → what went wrong and "Try again" (never a spinner forever). */
+export function LoadState({ error, onRetry, className }: { error: string | null; onRetry: () => void; className?: string }) {
+  const { t } = useTranslation();
+  if (!error) return <Spinner />;
+  return (
+    <div role="alert" className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3 text-ui", className)}>
+      <p className="min-w-0 flex-1 text-fg">
+        {t("loadError")} <span className="text-muted">{error}</span>
+      </p>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        {t("tryAgain")}
+      </Button>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------------- Menu */
-export const MenuRoot = Menu.Root;
+/** Non-modal: a modal menu hides the rest of the page from assistive technology while
+ * its controls stay focusable (axe: aria-hidden-focus). Focus handling is unchanged. */
+export function MenuRoot(props: ComponentProps<typeof Menu.Root>) {
+  return <Menu.Root modal={false} {...props} />;
+}
 export const MenuTrigger = Menu.Trigger;
 
 export function MenuContent({ children, align = "start", side, className }: { children: ReactNode; align?: "start" | "end" | "center"; side?: "top" | "bottom" | "left" | "right"; className?: string }) {
@@ -368,7 +388,7 @@ export function MenuItem({ children, onSelect, icon, destructive, disabled }: { 
       disabled={disabled}
       onSelect={onSelect}
       className={cn(
-        "flex h-8 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-[0.8125rem] outline-none select-none data-[disabled]:opacity-40 data-[highlighted]:bg-hover",
+        "flex h-8 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-ui outline-none select-none data-[disabled]:opacity-40 data-[highlighted]:bg-hover",
         destructive ? "text-danger" : "text-fg",
       )}
     >
@@ -380,7 +400,7 @@ export function MenuItem({ children, onSelect, icon, destructive, disabled }: { 
 
 /** A titled group of choices inside a menu (e.g. "In this conversation"). */
 export function MenuLabel({ children }: { children: ReactNode }) {
-  return <Menu.Label className="px-2.5 pt-1.5 pb-1 text-[0.75rem] font-medium text-faint">{children}</Menu.Label>;
+  return <Menu.Label className="px-2.5 pt-1.5 pb-1 text-caption font-medium text-faint">{children}</Menu.Label>;
 }
 
 export const MenuRadioGroup = Menu.RadioGroup;
@@ -390,14 +410,14 @@ export function MenuRadioItem({ value, children, hint, testId }: { value: string
     <Menu.RadioItem
       value={value}
       data-testid={testId}
-      className="flex min-h-8 cursor-default items-start gap-2.5 rounded-lg py-1.5 pr-2.5 pl-2.5 text-[0.8125rem] text-fg outline-none select-none data-[highlighted]:bg-hover"
+      className="flex min-h-8 cursor-default items-start gap-2.5 rounded-lg py-1.5 pr-2.5 pl-2.5 text-ui text-fg outline-none select-none data-[highlighted]:bg-hover"
     >
       <span className="mt-[3px] flex size-4 shrink-0 items-center justify-center" aria-hidden>
         <span className="size-2 rounded-full border border-line-strong in-data-[state=checked]:border-fg in-data-[state=checked]:bg-fg" />
       </span>
       <span className="min-w-0">
         <span className="block">{children}</span>
-        {hint && <span className="block text-[0.75rem] leading-snug text-muted">{hint}</span>}
+        {hint && <span className="block text-caption leading-snug text-muted">{hint}</span>}
       </span>
     </Menu.RadioItem>
   );

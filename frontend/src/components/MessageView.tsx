@@ -44,7 +44,7 @@ function PinButton({ pinned, onToggle }: { pinned: boolean; onToggle: () => void
 function PinnedBadge() {
   const { t } = useTranslation("context");
   return (
-    <span className="flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-[0.68rem] text-accent-text" title={t("pin.pinnedHelp")}>
+    <span className="flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-caption text-accent-text" title={t("pin.pinnedHelp")}>
       <Pin className="size-3" aria-hidden /> {t("pin.pinned")}
     </span>
   );
@@ -139,10 +139,10 @@ export function UserMessage({
               if (e.key === "Escape") setEditing(false);
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
             }}
-            className="block w-full resize-none bg-transparent text-[0.95rem] leading-relaxed text-fg focus:outline-none"
+            className="block w-full resize-none bg-transparent text-lead leading-relaxed text-fg focus:outline-none"
           />
           <div className="mt-2 flex items-center justify-end gap-2">
-            <span className="mr-auto text-[0.72rem] text-faint">{t("message.editWarning")}</span>
+            <span className="mr-auto text-caption text-faint">{t("message.editWarning")}</span>
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
               {t("common:cancel")}
             </Button>
@@ -153,7 +153,7 @@ export function UserMessage({
         </div>
       ) : (
         message.content && (
-          <div className="max-w-[85%] rounded-2xl bg-subtle px-4 py-2.5 text-[0.95rem] leading-relaxed break-words whitespace-pre-wrap text-fg">
+          <div className="max-w-[85%] rounded-2xl bg-subtle px-4 py-2.5 text-lead leading-relaxed break-words whitespace-pre-wrap text-fg">
             {message.content}
           </div>
         )
@@ -162,7 +162,7 @@ export function UserMessage({
       {!editing && (
         <div className="mt-1 flex h-7 items-center gap-1">
           <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
-            <time className="mr-1.5 text-[0.72rem] text-faint" dateTime={message.created_at}>
+            <time className="mr-1.5 text-caption text-faint" dateTime={message.created_at}>
               {formatTime(message.created_at)}
             </time>
             <CopyButton text={message.content} />
@@ -223,8 +223,8 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
           )}
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-[0.8125rem] text-fg">{attachment.filename}</span>
-          <span className="block text-[0.7rem] text-faint">
+          <span className="block truncate text-ui text-fg">{attachment.filename}</span>
+          <span className="block text-caption text-faint">
             {formatBytes(attachment.size)}
             {attachment.truncated && ` · ${t("message.truncated")}`}
           </span>
@@ -244,7 +244,7 @@ function AttachmentPreview({ attachment }: { attachment: Attachment }) {
         ) : text === null ? (
           <Spinner />
         ) : (
-          <pre className="mb-4 max-h-[60vh] overflow-auto rounded-lg bg-code p-4 font-mono text-[0.78rem] leading-relaxed whitespace-pre-wrap">{text}</pre>
+          <pre className="mb-4 max-h-[60vh] overflow-auto rounded-lg bg-code p-4 font-mono text-ui leading-relaxed whitespace-pre-wrap">{text}</pre>
         )}
       </Dialog>
     </>
@@ -302,7 +302,7 @@ export function AssistantMessage({
   return (
     <div className="group">
       {contextMarker}
-      <div className="mb-2 flex items-center gap-2 text-[0.8125rem] text-muted">
+      <div className="mb-2 flex items-center gap-2 text-ui text-muted">
         <LogoMark className="size-[18px] text-accent" />
         <span className="truncate font-medium text-fg" title={message.model ?? undefined}>{modelLabel(message.model) || t("message.unknownModel")}</span>
       </div>
@@ -320,7 +320,7 @@ export function AssistantMessage({
         // Exactly one line of answer text tall, so the first streamed line takes its place without a jump.
         <div className="flex h-[1.72rem] items-center gap-2" role="status" aria-label={t("message.waiting")}>
           <ThinkingIndicator />
-          <span className="text-[0.8125rem] text-faint">{t("message.thinking")}</span>
+          <span className="text-ui text-faint">{t("message.thinking")}</span>
         </div>
       ) : (
         message.content && <Markdown content={message.content} streaming={streaming} citations={citations} />
@@ -334,11 +334,11 @@ export function AssistantMessage({
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-fg">{t("message.failed")}</p>
-            <p className="mt-0.5 text-[0.8125rem] leading-relaxed break-words text-muted">
+            <p className="mt-0.5 text-ui leading-relaxed break-words text-muted">
               {providerErrorText(message.error_code, message.error_params, message.error)}
             </p>
             {serverDetail(message.error_params) && (
-              <p className="mt-1 font-mono text-[0.75rem] break-words text-faint">{serverDetail(message.error_params)}</p>
+              <p className="mt-1 font-mono text-caption break-words text-faint">{serverDetail(message.error_params)}</p>
             )}
           </div>
           {isLast && webError ? (
@@ -358,11 +358,11 @@ export function AssistantMessage({
         </div>
       )}
       {(message.status === "cancelled" || message.status === "interrupted") && (
-        <p className="mt-2 flex items-center gap-2 text-[0.8125rem] text-faint">
+        <p className="mt-2 flex items-center gap-2 text-ui text-faint">
           <span className="inline-block size-1.5 rounded-full bg-faint" aria-hidden />
           {message.status === "cancelled" ? t("message.stopped") : message.error_code === "interrupted" || !message.error_code ? t("message.interrupted") : providerErrorText(message.error_code, message.error_params, message.error)}
           {isLast && (
-            <button type="button" className="text-accent-text hover:underline disabled:opacity-50" onClick={() => onRegenerate()} disabled={busy}>
+            <button type="button" className="link disabled:opacity-50" onClick={() => onRegenerate()} disabled={busy}>
               {t("message.regenerate")}
             </button>
           )}
@@ -383,7 +383,7 @@ export function AssistantMessage({
             <Trash2 className="size-3.5" />
           </IconButton>
           {/* One line that ends in an ellipsis when narrow; the speed is left out on phones. */}
-          <span className="ml-2 min-w-0 truncate font-mono text-[0.7rem] text-faint" data-testid="message-meta">
+          <span className="ml-2 min-w-0 truncate font-mono text-caption text-faint" data-testid="message-meta">
             <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
             {m.tokens_per_second ? <span className="ml-2 max-sm:hidden">· {t("message.tokensPerSecond", { value: formatNumber(Number(m.tokens_per_second.toFixed(1))) })}</span> : null}
             {m.completion_tokens ? <span className="ml-2">· {t("message.tokens", { count: m.completion_tokens })}</span> : null}
@@ -412,7 +412,7 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex items-center gap-1 rounded-md py-0.5 text-[0.8125rem] text-muted transition-colors hover:text-fg"
+        className="flex items-center gap-1 rounded-md py-0.5 text-ui text-muted transition-colors hover:text-fg"
       >
         {live ? <ThinkingIndicator className="mr-0.5 text-[0.875rem]" /> : <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />}
         {live ? t("message.thinking") : t("message.thoughtProcess")}
@@ -429,14 +429,14 @@ function Sources({ sources }: { sources: Source[] }) {
   const [active, setActive] = useState<Source | null>(null);
   return (
     <div className="mt-3">
-      <p className="mb-1.5 text-[0.72rem] font-medium text-faint">{t("message.sources")}</p>
+      <p className="mb-1.5 text-caption font-medium text-faint">{t("message.sources")}</p>
       <div className="flex flex-wrap gap-1.5">
         {sources.map((s) => (
           <button
             key={s.n}
             type="button"
             onClick={() => setActive(s)}
-            className="flex h-7 max-w-[16rem] items-center gap-1.5 rounded-lg border border-line px-2 text-[0.75rem] text-muted transition-colors hover:bg-hover hover:text-fg"
+            className="flex h-7 max-w-[16rem] items-center gap-1.5 rounded-lg border border-line px-2 text-caption text-muted transition-colors hover:bg-hover hover:text-fg"
           >
             <span className="font-mono text-accent-text">{s.n}</span>
             <span className="truncate">{s.filename}</span>

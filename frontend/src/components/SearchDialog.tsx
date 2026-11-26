@@ -117,12 +117,12 @@ export function SearchDialog() {
               aria-expanded="true"
               aria-controls="search-results"
               aria-activedescendant={items[active] ? `search-item-${items[active].id}` : undefined}
-              className="h-12 flex-1 bg-transparent text-[0.95rem] text-fg placeholder:text-faint focus:outline-none"
+              className="h-12 flex-1 bg-transparent text-lead text-fg placeholder:text-faint focus:outline-none"
             />
             {loading && <Spinner />}
           </div>
           <ul id="search-results" ref={listRef} role="listbox" className="max-h-[55vh] overflow-y-auto p-1.5">
-            {!results && items.length > 0 && <li className="px-3 pt-1.5 pb-1 text-[0.72rem] font-medium text-faint">{t("searchDialog.recent")}</li>}
+            {!results && items.length > 0 && <li className="px-3 pt-1.5 pb-1 text-caption font-medium text-faint">{t("searchDialog.recent")}</li>}
             {items.length === 0 && (
               <li className="px-3 py-8 text-center text-sm text-muted">{query.trim() ? t("searchDialog.noResults") : t("empty")}</li>
             )}
@@ -137,14 +137,14 @@ export function SearchDialog() {
                   <MessageSquare className="mt-0.5 size-4 shrink-0 text-faint" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-fg">{c.title}</span>
-                    {c.snippet && <span className="mt-0.5 line-clamp-2 block text-[0.78rem] text-muted">{c.snippet}</span>}
+                    {c.snippet && <span className="mt-0.5 line-clamp-2 block text-ui text-muted">{c.snippet}</span>}
                   </span>
-                  <span className="shrink-0 text-[0.72rem] text-faint">{formatTime(c.updated_at)}</span>
+                  <span className={cn("shrink-0 text-caption", i === active ? "text-muted" : "text-faint")}>{formatTime(c.updated_at)}</span>
                 </button>
               </li>
             ))}
           </ul>
-          <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-[0.72rem] text-faint">
+          <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-caption text-faint">
             <span>
               <Kbd>↑</Kbd> <Kbd>↓</Kbd> {t("searchDialog.navigate")}
             </span>

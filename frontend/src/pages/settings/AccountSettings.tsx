@@ -1,12 +1,12 @@
 import { Download, Laptop, LogOut } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSelect } from "@/components/LanguageSelect";
-import { Button, Dialog, Field, Input, Spinner } from "@/components/ui";
+import { Button, Dialog, Field, Input, LoadState } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
+import { useLoad } from "@/lib/useLoad";
 import { errorText } from "@/lib/errors";
 import { formatDateTime, relativeTime } from "@/lib/time";
-import type { SessionInfo } from "@/lib/types";
 import { downloadUrl } from "@/lib/utils";
 import { PasswordHint, PasswordInput } from "@/pages/AuthPages";
 import { Group } from "@/components/Page";
@@ -89,7 +89,7 @@ function Profile() {
             <PasswordInput id="acc-current" value={password} onChange={setPassword} autoComplete="current-password" />
           </Field>
         )}
-        {general && <p className="text-[0.8125rem] text-danger">{general}</p>}
+        {general && <p className="text-ui text-danger">{general}</p>}
         <Button type="submit" variant="primary" disabled={!changed || !password} loading={busy}>
           {t("profile.save")}
         </Button>
@@ -138,7 +138,7 @@ function PasswordForm() {
             <PasswordInput id="pw-confirm" value={form.confirm} onChange={(v) => setForm({ ...form, confirm: v })} autoComplete="new-password" />
           </Field>
         </div>
-        {error && !(error instanceof ApiError && error.params?.field) ? <p className="text-[0.8125rem] text-danger">{errorText(error)}</p> : null}
+        {error && !(error instanceof ApiError && error.params?.field) ? <p className="text-ui text-danger">{errorText(error)}</p> : null}
         <Button type="submit" variant="primary" loading={busy} disabled={!form.current || !form.next}>
           {t("password.submit")}
         </Button>
@@ -149,28 +149,24 @@ function PasswordForm() {
 
 function Sessions() {
   const { t } = useTranslation(["account", "common"]);
-  const [items, setItems] = useState<SessionInfo[] | null>(null);
-  const load = () => api.sessions().then(setItems).catch((e) => toast(errorText(e), "error"));
-  useEffect(() => {
-    void load();
-  }, []);
+  const { data: items, error, reload: load } = useLoad(api.sessions);
 
   return (
     <Group title={t("sessions.title")} description={t("sessions.help")}>
       {items === null ? (
-        <Spinner />
+        <LoadState error={error} onRetry={() => void load()} />
       ) : (
         <>
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-elevated">
             {items.map((s) => (
               <li key={s.id} className="flex items-center gap-3 px-4 py-3">
                 <Laptop className="size-4 shrink-0 text-faint" aria-hidden />
-                <div className="min-w-0 flex-1 text-[0.8125rem]">
+                <div className="min-w-0 flex-1 text-ui">
                   <p className="truncate text-fg">
                     {describeAgent(s.user_agent) || t("sessions.unknownDevice")}
-                    {s.current && <span className="ml-2 rounded-md bg-accent-soft px-1.5 py-0.5 text-[0.7rem] text-accent-text">{t("sessions.current")}</span>}
+                    {s.current && <span className="ml-2 rounded-md bg-accent-soft px-1.5 py-0.5 text-caption text-accent-text">{t("sessions.current")}</span>}
                   </p>
-                  <p className="truncate text-[0.75rem] text-muted">
+                  <p className="truncate text-caption text-muted">
                     {t("sessions.meta", { created: formatDateTime(s.created_at), used: relativeTime(s.last_used_at) })}
                     {s.ip ? ` · ${s.ip}` : ""}
                   </p>

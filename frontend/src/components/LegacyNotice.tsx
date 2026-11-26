@@ -24,7 +24,7 @@ export function LegacyNotice() {
   };
 
   return (
-    <div role="status" className="mx-3 mt-3 flex items-start gap-3 rounded-xl border border-line bg-elevated px-4 py-3 text-[0.8125rem] md:mx-4">
+    <div role="status" className="mx-3 mt-3 flex items-start gap-3 rounded-xl border border-line bg-elevated px-4 py-3 text-ui md:mx-4">
       <Info className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
       <p className="flex-1 leading-relaxed text-fg">{t("legacy.body", { items: formatList(parts) })}</p>
       <button type="button" onClick={dismiss} aria-label={t("legacy.dismiss")} className="text-muted hover:text-fg">

@@ -24,14 +24,14 @@ export function LanguageSelect({ className, compact }: { className?: string; com
   };
 
   return (
-    <label className={cn("inline-flex items-center gap-1.5 text-[0.8125rem] text-muted", className)}>
+    <label className={cn("inline-flex items-center gap-1.5 text-ui text-muted", className)}>
       <Languages className="size-4 shrink-0" aria-hidden />
       <span className={compact ? "sr-only" : "sr-only sm:not-sr-only"}>{t("language")}</span>
       <select
         value={i18n.language}
         onChange={(e) => change(e.target.value as Language)}
         aria-label={t("language")}
-        className="h-8 cursor-pointer rounded-lg bg-transparent px-1.5 text-[0.8125rem] text-fg hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+        className="h-8 cursor-pointer rounded-lg bg-transparent px-1.5 text-ui text-fg hover:bg-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
       >
         {LANGUAGES.map((lng) => (
           <option key={lng} value={lng} lang={lng}>

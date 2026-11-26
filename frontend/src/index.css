@@ -17,10 +17,11 @@
   --fg-subtle: #6f6b65;
   --border: #e7e4dd;
   --border-strong: #d6d2c9;
-  --accent: #c56845;
-  --accent-hover: #b35b3a;
-  --accent-text: #a4502f;
-  --accent-soft: rgb(197 104 69 / 0.1);
+  /* Accent "Ink": warm graphite. Colour is left to meaning (danger, warning, success). */
+  --accent: #3d3934;
+  --accent-hover: #302c28;
+  --accent-text: #3d3934;
+  --accent-soft: rgb(61 57 52 / 0.08);
   --on-accent: #ffffff;
   --code-bg: #f3f1ec;
   --code-border: #e7e4dd;
@@ -28,7 +29,7 @@
   --danger-soft: rgb(176 65 44 / 0.08);
   --success: #4c7a46;
   --warning: #8f6218;
-  --focus: rgb(197 104 69 / 0.55);
+  --focus: #3d3934; /* solid: at least 3:1 on every surface (WCAG 1.4.11) */
   --shadow-pop: 0 1px 2px rgb(41 40 37 / 0.04), 0 6px 24px rgb(41 40 37 / 0.08);
   --chat-width: 46rem;
   --sidebar-width: 16.5rem;
@@ -47,10 +48,10 @@
   --fg-subtle: #959189;
   --border: #31302d;
   --border-strong: #403f3b;
-  --accent: #d97b57;
-  --accent-hover: #e38a67;
-  --accent-text: #e5936f;
-  --accent-soft: rgb(217 123 87 / 0.12);
+  --accent: #e4dfd5;
+  --accent-hover: #f5f0e5;
+  --accent-text: #e4dfd5;
+  --accent-soft: rgb(228 223 213 / 0.1);
   --on-accent: #1d1d1b;
   --code-bg: #232321;
   --code-border: #31302d;
@@ -58,7 +59,7 @@
   --danger-soft: rgb(226 115 93 / 0.1);
   --success: #8fbf86;
   --warning: #d9a650;
-  --focus: rgb(217 123 87 / 0.6);
+  --focus: #e4dfd5;
   --shadow-pop: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 28px rgb(0 0 0 / 0.35);
   color-scheme: dark;
 }
@@ -70,6 +71,11 @@ html[data-chat-width="narrow"] { --chat-width: 40rem; }
 html[data-chat-width="wide"] { --chat-width: 56rem; }
 
 @theme inline {
+  /* Type scale for UI text (font size only: line height follows the parent, as before).
+     caption 12px: meta, labels, badges · ui 13px: controls and secondary text · lead 15px: inputs and the composer. */
+  --text-caption: 0.75rem;
+  --text-ui: 0.8125rem;
+  --text-lead: 0.9375rem;
   --color-bg: var(--bg);
   --color-sidebar: var(--bg-sidebar);
   --color-elevated: var(--bg-elevated);
@@ -200,7 +206,13 @@ html[data-reduce-motion="true"] .thinking-core { animation: thinking-pulse 2.4s 
 .prose-chimera h3 { font-size: 1.07em; }
 .prose-chimera h4 { font-size: 1em; }
 .prose-chimera strong { font-weight: 600; }
-.prose-chimera a { color: var(--accent-text); text-decoration: underline; text-decoration-color: var(--accent-soft); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+/* A horizontally scrolling row that continues to the right. */
+.fade-right { mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent); }
+
+/* Links and link-style buttons outside answers: always underlined, so they never rely on colour (WCAG 1.4.1). */
+.link { color: var(--accent-text); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.link:hover { text-decoration-color: currentColor; }
+.prose-chimera a { color: var(--accent-text); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
 .prose-chimera a:hover { text-decoration-color: currentColor; }
 .prose-chimera ul, .prose-chimera ol { margin: 0 0 1em; padding-left: 1.5em; }
 .prose-chimera ul { list-style: disc; }
@@ -230,7 +242,8 @@ pre, code, kbd, .font-mono { font-variant-ligatures: none; font-feature-settings
 /* ----------------------------------------------- syntax highlighting */
 .hljs { color: var(--fg); }
 .hljs-comment, .hljs-quote { color: #6f6b65; font-style: italic; }
-.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-name, .hljs-tag { color: #a4502f; }
+/* Keywords take the accent; with a near-text accent, weight keeps them apart. */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-name, .hljs-tag { color: var(--accent-text); font-weight: 600; }
 .hljs-string, .hljs-title.class_, .hljs-attr, .hljs-symbol, .hljs-bullet, .hljs-addition { color: #44703f; }
 .hljs-number, .hljs-literal, .hljs-variable.constant_, .hljs-template-variable { color: #8a5a9b; }
 .hljs-title, .hljs-title.function_, .hljs-section { color: #3a6a8f; }
@@ -239,7 +252,6 @@ pre, code, kbd, .font-mono { font-variant-ligatures: none; font-feature-settings
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 600; }
 .dark .hljs-comment, .dark .hljs-quote { color: #959189; }
-.dark .hljs-keyword, .dark .hljs-selector-tag, .dark .hljs-built_in, .dark .hljs-name, .dark .hljs-tag { color: #e5936f; }
 .dark .hljs-string, .dark .hljs-title.class_, .dark .hljs-attr, .dark .hljs-symbol, .dark .hljs-bullet, .dark .hljs-addition { color: #a3c98f; }
 .dark .hljs-number, .dark .hljs-literal, .dark .hljs-variable.constant_, .dark .hljs-template-variable { color: #c9a0dc; }
 .dark .hljs-title, .dark .hljs-title.function_, .dark .hljs-section { color: #8fb8d9; }

@@ -40,7 +40,7 @@ export function SearchControl({
           aria-label={t("composer.searchName.off")}
           onClick={() => isAdmin && navigate("/settings/web")}
           data-testid="search-toggle"
-          className="flex h-8 cursor-not-allowed items-center gap-1.5 rounded-lg px-2 text-[0.8125rem] text-faint opacity-60"
+          className="flex h-8 cursor-not-allowed items-center gap-1.5 rounded-lg px-2 text-ui text-faint opacity-60"
         >
           <Globe className="size-[18px] shrink-0" />
           <span className="hidden sm:inline">{t("composer.search")}</span>
@@ -73,7 +73,7 @@ export function SearchControl({
           aria-label={label}
           onClick={() => onModeChange(stored === "off" ? "on" : "off")}
           data-testid="search-toggle"
-          className={cn("flex h-full items-center gap-1.5 rounded-l-lg pr-1 pl-2 text-[0.8125rem]", active ? "font-medium" : "hover:bg-hover hover:text-fg")}
+          className={cn("flex h-full items-center gap-1.5 rounded-l-lg pr-1 pl-2 text-ui", active ? "font-medium" : "hover:bg-hover hover:text-fg")}
         >
           {stored === "auto" ? <Sparkles className="size-[17px] shrink-0" /> : <Globe className="size-[18px] shrink-0" />}
           {/* The visible word starts the accessible name (WCAG 2.5.3). */}

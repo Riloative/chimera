@@ -4,8 +4,9 @@ import { Trans, useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { errorText } from "@/lib/errors";
 import { PageHeader, PageShell, Section } from "@/components/Page";
-import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, MenuContent, MenuItem, MenuRoot, MenuTrigger, Spinner, Textarea } from "@/components/ui";
+import { Button, ConfirmDialog, Dialog, Field, IconButton, Input, MenuContent, MenuItem, MenuRoot, MenuTrigger, LoadState, Spinner, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useLoad } from "@/lib/useLoad";
 import { relativeTime } from "@/lib/time";
 import type { Collection, KnowledgeDocument, SearchHit } from "@/lib/types";
 import { cn, formatBytes, formatNumber, modelLabel } from "@/lib/utils";
@@ -78,14 +79,10 @@ function CollectionDialog({ open, onOpenChange, collection, onSaved }: { open: b
 
 function CollectionList() {
   const { t } = useTranslation(["knowledge", "chat", "common"]);
-  const [items, setItems] = useState<Collection[] | null>(null);
+  const { data: items, error: loadError, reload } = useLoad(api.collections);
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const knowledge = useSettings((s) => s.settings?.knowledge);
-
-  useEffect(() => {
-    api.collections().then(setItems).catch((e) => toast(errorText(e), "error"));
-  }, []);
 
   return (
     <PageShell>
@@ -98,7 +95,7 @@ function CollectionList() {
           </Button>
         }
       />
-      <p className="mb-6 rounded-xl bg-subtle px-4 py-3 text-[0.8125rem] leading-relaxed text-muted">
+      <p className="mb-6 rounded-xl bg-subtle px-4 py-3 text-ui leading-relaxed text-muted">
         {knowledge?.embedding_model ? (
           <Trans
             t={t}
@@ -110,12 +107,12 @@ function CollectionList() {
           <Trans
             t={t}
             i18nKey="modeKeyword"
-            components={{ strong: <span className="font-medium text-fg" />, settingsLink: <Link to="/settings/documents" className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current" /> }}
+            components={{ strong: <span className="font-medium text-fg" />, settingsLink: <Link to="/settings/documents" className="link" /> }}
           />
         )}
       </p>
       {items === null ? (
-        <Spinner />
+        <LoadState error={loadError} onRetry={() => void reload()} />
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line-strong px-6 py-12 text-center">
           <Library className="mx-auto mb-3 size-6 text-faint" />
@@ -128,8 +125,8 @@ function CollectionList() {
             <li key={c.id}>
               <Link to={`/knowledge/${c.id}`} className="block rounded-2xl border border-line bg-elevated px-4 py-3.5 transition-colors hover:border-line-strong">
                 <span className="block truncate text-sm font-medium text-fg">{c.name}</span>
-                {c.description && <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">{c.description}</span>}
-                <span className="mt-2 block text-[0.75rem] text-faint">
+                {c.description && <span className="mt-0.5 block truncate text-ui text-muted">{c.description}</span>}
+                <span className="mt-2 block text-caption text-faint">
                   {t("documents", { count: c.document_count })} · {t("chunks", { count: c.chunk_count, formatted: formatNumber(c.chunk_count) })} · {t("updated", { when: relativeTime(c.updated_at) })}
                 </span>
               </Link>
@@ -197,7 +194,7 @@ function CollectionDetail({ id }: { id: string }) {
     return (
       <PageShell>
         <p className="text-muted">{error}</p>
-        <Link to="/knowledge" className="mt-3 inline-block text-accent-text hover:underline">
+        <Link to="/knowledge" className="mt-3 inline-block link">
           {t("back")}
         </Link>
       </PageShell>
@@ -211,7 +208,7 @@ function CollectionDetail({ id }: { id: string }) {
 
   return (
     <PageShell>
-      <Link to="/knowledge" className="mb-4 inline-flex items-center gap-1.5 text-[0.8125rem] text-muted hover:text-fg">
+      <Link to="/knowledge" className="mb-4 inline-flex items-center gap-1.5 text-ui text-muted hover:text-fg">
         <ArrowLeft className="size-3.5" /> {t("title")}
       </Link>
       <PageHeader
@@ -269,7 +266,7 @@ function CollectionDetail({ id }: { id: string }) {
           <button type="button" onClick={() => fileRef.current?.click()} className="w-full px-6 py-12 text-center">
             <Upload className="mx-auto mb-3 size-5 text-faint" />
             <span className="block text-sm font-medium text-fg">{t("drop")}</span>
-            <span className="mt-1 block text-[0.8125rem] text-muted">{t("dropHint")}</span>
+            <span className="mt-1 block text-ui text-muted">{t("dropHint")}</span>
           </button>
         ) : (
           <ul className="divide-y divide-line">
@@ -277,11 +274,11 @@ function CollectionDetail({ id }: { id: string }) {
               <li key={u.name} className="flex items-center gap-3 px-4 py-3 text-sm">
                 {u.status === "uploading" ? <Spinner /> : <AlertTriangle className="size-4 text-danger" />}
                 <span className="truncate text-fg">{u.name}</span>
-                <span className={cn("ml-auto text-[0.8125rem]", u.status === "error" ? "text-danger" : "text-muted")}>
+                <span className={cn("ml-auto text-ui", u.status === "error" ? "text-danger" : "text-muted")}>
                   {u.status === "uploading" ? t("indexing") : u.error}
                 </span>
                 {u.status === "error" && (
-                  <button type="button" className="text-[0.8125rem] text-muted hover:text-fg" onClick={() => setUploads((x) => x.filter((y) => y !== u))}>
+                  <button type="button" className="text-ui text-muted hover:text-fg" onClick={() => setUploads((x) => x.filter((y) => y !== u))}>
                     {t("common:dismiss")}
                   </button>
                 )}
@@ -312,13 +309,13 @@ function CollectionDetail({ id }: { id: string }) {
             {hits.length === 0 && <p className="text-sm text-muted">{t("noMatches")}</p>}
             {hits.map((h, i) => (
               <li key={h.chunk_id} className="rounded-xl border border-line bg-elevated px-4 py-3">
-                <div className="mb-1 flex items-center gap-2 text-[0.75rem] text-faint">
+                <div className="mb-1 flex items-center gap-2 text-caption text-faint">
                   <span className="font-mono text-accent-text">{i + 1}</span>
                   <span className="truncate">{h.filename}</span>
                   <span>· {t("chunkN", { n: h.index + 1 })}</span>
                   <span className="ml-auto">{t(`chat:method.${h.method as "keyword" | "semantic" | "hybrid"}`)}</span>
                 </div>
-                <p className="line-clamp-4 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-fg">{h.text}</p>
+                <p className="line-clamp-4 text-ui leading-relaxed whitespace-pre-wrap text-fg">{h.text}</p>
               </li>
             ))}
           </ol>
@@ -349,10 +346,10 @@ function DocumentRow({ doc, onChanged }: { doc: KnowledgeDocument; onChanged: ()
       <FileText className="size-4 shrink-0 text-faint" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-fg">{doc.filename}</p>
-        <p className="text-[0.75rem] text-faint">
+        <p className="text-caption text-faint">
           {formatBytes(doc.size)} · {t("chunks", { count: doc.chunk_count, formatted: formatNumber(doc.chunk_count) })} · {doc.embedding_model ? t("docHybrid") : t("docKeyword")}
         </p>
-        {doc.warning && <p className="mt-0.5 text-[0.75rem] text-warning">{doc.warning_code ? t("embeddingsUnavailable") : doc.warning}</p>}
+        {doc.warning && <p className="mt-0.5 text-caption text-warning">{doc.warning_code ? t("embeddingsUnavailable") : doc.warning}</p>}
       </div>
       <IconButton
         label={t("reindex")}

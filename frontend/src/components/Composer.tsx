@@ -273,7 +273,7 @@ export function Composer({
           onPaste={onPaste}
           rows={1}
           placeholder={placeholder ?? t("composer.placeholder")}
-          className="block max-h-[40vh] min-h-[3.25rem] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[0.95rem] leading-relaxed text-fg placeholder:text-faint focus:outline-none focus-visible:outline-none"
+          className="block max-h-[40vh] min-h-[3.25rem] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-lead leading-relaxed text-fg placeholder:text-faint focus:outline-none focus-visible:outline-none"
           aria-describedby="composer-hint"
         />
         <div className="flex items-center gap-1 px-2 pb-2">
@@ -313,7 +313,7 @@ export function Composer({
               <button
                 type="button"
                 onClick={onOpenSettings}
-                className="ml-0.5 flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2 text-[0.75rem] font-medium text-accent-text"
+                className="ml-0.5 flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2 text-caption font-medium text-accent-text"
               >
                 <Library className="size-3.5" /> {knowledgeCount}
               </button>
@@ -349,7 +349,7 @@ export function Composer({
           )}
         </div>
       </div>
-      <p id="composer-hint" className={cn("min-h-5 px-2 pt-1.5 text-center text-[0.72rem]", hint ? "text-muted" : "text-faint")} aria-live="polite">
+      <p id="composer-hint" className={cn("min-h-5 px-2 pt-1.5 text-center text-caption", hint ? "text-muted" : "text-faint")} aria-live="polite">
         {hint ?? (enterToSend ? t("composer.hintEnter") : t("composer.hintMod", { key: modKey }))}
       </p>
       <PrivacyNotice
@@ -382,13 +382,13 @@ function LinkChip({ url, selected, onToggle }: { url: string; selected: boolean;
           aria-pressed={selected}
           aria-label={selected ? t("composer.skipLink", { url }) : t("composer.readLink", { url })}
           className={cn(
-            "flex h-7 max-w-[min(18rem,calc(100vw-5rem))] items-center gap-1.5 rounded-lg border pr-1.5 pl-2 text-[0.75rem] transition-colors",
+            "flex h-7 max-w-[min(18rem,calc(100vw-5rem))] items-center gap-1.5 rounded-lg border pr-1.5 pl-2 text-caption transition-colors",
             selected ? "border-line bg-bg text-fg hover:bg-hover" : "border-dashed border-line text-faint hover:text-muted",
           )}
         >
           <Link2 className={cn("size-3.5 shrink-0", selected ? "text-accent" : "")} aria-hidden />
           <span className={cn("truncate", !selected && "line-through")}>{short}</span>
-          <span className="ml-0.5 shrink-0 rounded px-1 text-[0.68rem] text-muted">{selected ? <X className="size-3" aria-hidden /> : t("composer.read")}</span>
+          <span className="ml-0.5 shrink-0 rounded px-1 text-caption text-muted">{selected ? <X className="size-3" aria-hidden /> : t("composer.read")}</span>
         </button>
       </Tooltip>
     </li>
@@ -458,8 +458,8 @@ function AttachmentChip({ file, visionSupported, onRemove }: { file: PendingFile
         )}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[0.8125rem] font-medium text-fg">{file.name}</span>
-        <span className={cn("block truncate text-[0.72rem]", file.status === "error" || blocked ? "text-danger" : "text-faint")}>
+        <span className="block truncate text-ui font-medium text-fg">{file.name}</span>
+        <span className={cn("block truncate text-caption", file.status === "error" || blocked ? "text-danger" : "text-faint")}>
           {file.status === "error"
             ? file.error
             : blocked
@@ -535,7 +535,7 @@ function PromptInsert({ onInsert }: { onInsert: (p: Prompt) => void }) {
                 className="block w-full rounded-lg px-3 py-2 text-left hover:bg-hover"
               >
                 <span className="block truncate text-sm text-fg">{p.title}</span>
-                <span className="block truncate text-[0.75rem] text-faint">{p.description || p.content}</span>
+                <span className="block truncate text-caption text-faint">{p.description || p.content}</span>
               </button>
             ))}
           </div>
@@ -546,7 +546,7 @@ function PromptInsert({ onInsert }: { onInsert: (p: Prompt) => void }) {
                 setOpen(false);
                 navigate("/prompts");
               }}
-              className="flex h-8 w-full items-center rounded-lg px-3 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg"
+              className="flex h-8 w-full items-center rounded-lg px-3 text-ui text-muted hover:bg-hover hover:text-fg"
             >
               {t("composer.managePrompts")}
             </button>

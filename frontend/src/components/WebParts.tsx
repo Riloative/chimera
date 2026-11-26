@@ -51,7 +51,8 @@ function browserReason(s: WebSource): string | null {
 /* -------------------------------------------------------------- steps */
 function StepIcon({ step }: { step: WebStep }) {
   if (step.status === "running") return <ThinkingIndicator className="text-[0.875rem]" />;
-  if (step.status === "error") return <AlertTriangle className="size-3.5 text-danger" aria-hidden />;
+  // An undecided Auto step is not a failure: the answer was written without the web.
+  if (step.status === "error" && step.kind !== "decide") return <AlertTriangle className="size-3.5 text-danger" aria-hidden />;
   if (step.status === "cancelled") return <span className="inline-block size-1.5 rounded-full bg-faint" aria-hidden />;
   const Icon = step.kind === "queries" || step.kind === "decide" ? Sparkles : step.kind === "search" ? Search : step.kind === "read_links" ? Link2 : step.kind === "read_results" ? Globe : Check;
   return <Icon className="size-3.5 text-faint" aria-hidden />;
@@ -133,7 +134,7 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
         aria-expanded={expanded}
         aria-describedby={hintId}
         disabled={running}
-        className="flex max-w-full items-center gap-1.5 rounded-md py-0.5 text-left text-[0.8125rem] text-muted transition-colors hover:text-fg disabled:hover:text-muted"
+        className="flex max-w-full items-center gap-1.5 rounded-md py-0.5 text-left text-ui text-muted transition-colors hover:text-fg disabled:hover:text-muted"
       >
         {running ? <ThinkingIndicator className="text-[0.875rem]" /> : <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")} aria-hidden />}
         <span className="truncate" aria-live="polite">{summary}</span>
@@ -144,7 +145,7 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
       {expanded && (
         <ol className="mt-1.5 ml-1.5 space-y-1.5 border-l-2 border-line pl-4" aria-label={t("steps.label")}>
           {steps.map((step) => (
-            <li key={step.id} className="text-[0.8125rem] leading-relaxed text-muted">
+            <li key={step.id} className="text-ui leading-relaxed text-muted">
               <span className="flex items-start gap-2">
                 <span className="mt-[0.3rem] flex size-3.5 shrink-0 items-center justify-center">
                   <StepIcon step={step} />
@@ -157,7 +158,7 @@ export function WebSteps({ message, sources, defaultOpen }: { message: Message; 
               {!!step.params.domains?.length && (
                 <span className="mt-1 ml-5.5 flex flex-wrap gap-1">
                   {[...new Set(step.params.domains)].map((d) => (
-                    <span key={d} className="rounded-md bg-subtle px-1.5 py-px font-mono text-[0.68rem] text-muted">
+                    <span key={d} className="rounded-md bg-subtle px-1.5 py-px font-mono text-caption text-muted">
                       {d}
                     </span>
                   ))}
@@ -179,7 +180,7 @@ export function WebSourceList({ refs, sources, conversationId }: { refs: WebRef[
   if (!items.length) return null;
   return (
     <div className="mt-3" data-testid="web-sources">
-      <p className="mb-1.5 text-[0.72rem] font-medium text-faint" id={`sources-${refs[0].source_id}`}>
+      <p className="mb-1.5 text-caption font-medium text-faint" id={`sources-${refs[0].source_id}`}>
         {t("sources.title")}
       </p>
       <ol className="grid gap-1 sm:grid-cols-2" aria-labelledby={`sources-${refs[0].source_id}`}>
@@ -198,10 +199,10 @@ export function WebSourceList({ refs, sources, conversationId }: { refs: WebRef[
                 className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2"
                 title={url}
               >
-                <span className={cn("w-5 shrink-0 text-center font-mono text-[0.72rem]", state === "ok" || state === "snippet" ? "text-accent-text" : "text-faint")}>{ref.n}</span>
+                <span className={cn("w-5 shrink-0 text-center font-mono text-caption", state === "ok" || state === "snippet" ? "text-accent-text" : "text-faint")}>{ref.n}</span>
                 <span className="min-w-0">
-                  <span className={cn("block truncate text-[0.8125rem]", state === "ok" ? "text-fg" : "text-muted")}>{source.title || source.domain}</span>
-                  <span className="flex items-center gap-1.5 text-[0.7rem] text-faint">
+                  <span className={cn("block truncate text-ui", state === "ok" ? "text-fg" : "text-muted")}>{source.title || source.domain}</span>
+                  <span className="flex items-center gap-1.5 text-caption text-faint">
                     <span className={cn("truncate", reason && "max-w-[45%] shrink-0")}>{source.domain}</span>
                     {state === "snippet" && <span className="shrink-0 text-warning">· {t("sources.status.snippet")}</span>}
                     {reason && (
@@ -250,7 +251,7 @@ export function LinkStatus({ sources, conversationId }: { sources: WebSource[]; 
                   type="button"
                   onClick={() => setActive(s)}
                   className={cn(
-                    "flex h-7 max-w-[16rem] items-center gap-1.5 rounded-lg border px-2 text-[0.75rem] transition-colors hover:bg-hover",
+                    "flex h-7 max-w-[16rem] items-center gap-1.5 rounded-lg border px-2 text-caption transition-colors hover:bg-hover",
                     ok ? "border-line text-muted" : "border-danger/30 text-danger",
                   )}
                   aria-label={ok ? `${t("sources.status.ok")}: ${label}` : label}
@@ -318,7 +319,7 @@ function SourceDialog({ source, onClose, conversationId }: { source: WebSource |
       footer={
         s && (
           <>
-            <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="mr-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg">
+            <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="mr-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-ui text-muted hover:bg-hover hover:text-fg">
               <ExternalLink className="size-3.5" /> {t("sources.open")}
             </a>
             {browserAvailable && (
@@ -335,8 +336,8 @@ function SourceDialog({ source, onClose, conversationId }: { source: WebSource |
     >
       {s && (
         <div className="pb-3">
-          <p className="mb-2 truncate font-mono text-[0.72rem] text-faint" title={url}>{url}</p>
-          <p className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[0.75rem] text-muted">
+          <p className="mb-2 truncate font-mono text-caption text-faint" title={url}>{url}</p>
+          <p className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-caption text-muted">
             <span>{s.origin === "search" ? t("sources.fromSearch") : t("sources.pasted")}</span>
             {s.fetched_at && <span title={formatDateTime(s.fetched_at)}>{t("sources.retrieved", { when: relativeTime(s.fetched_at) })}</span>}
             {s.published && <span>{t("sources.published", { date: s.published })}</span>}
@@ -344,15 +345,15 @@ function SourceDialog({ source, onClose, conversationId }: { source: WebSource |
             {s.loader === "browser" && <span>{t("sources.renderedWithBrowser")}</span>}
           </p>
           {s.status === "error" && (
-            <p role="alert" className="mb-3 rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-[0.8125rem] text-fg">
+            <p role="alert" className="mb-3 rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-ui text-fg">
               {t("sources.failedTo", { domain: s.domain, reason: sourceReason(s) })}
               {browserReason(s) && <> {t("sources.browserFailed", { reason: browserReason(s) })}</>}
               {!browserReason(s) && s.error_code === "web.needs_javascript" && browserAvailable && <> {t("sources.tryBrowser")}</>}
             </p>
           )}
-          {s.status === "snippet" && <p className="mb-3 text-[0.8125rem] text-muted">{t("sources.snippetOnly")}</p>}
-          {s.notes.includes("transcript_unavailable") && <p className="mb-3 text-[0.8125rem] text-muted">{t("sources.transcript")}</p>}
-          {s.truncated && <p className="mb-3 text-[0.8125rem] text-muted">{t("sources.truncated")}</p>}
+          {s.status === "snippet" && <p className="mb-3 text-ui text-muted">{t("sources.snippetOnly")}</p>}
+          {s.notes.includes("transcript_unavailable") && <p className="mb-3 text-ui text-muted">{t("sources.transcript")}</p>}
+          {s.truncated && <p className="mb-3 text-ui text-muted">{t("sources.truncated")}</p>}
           {error ? (
             <p className="text-sm text-danger">{error}</p>
           ) : content === null ? (

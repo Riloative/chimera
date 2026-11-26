@@ -51,10 +51,10 @@ export function ParamsEditor({
         return (
           <div key={spec.key} className={cn("grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 rounded-lg py-2", !isSupported && "opacity-45")}>
             <div className="min-w-0">
-              <label htmlFor={`param-${spec.key}`} className="text-[0.8125rem] font-medium text-fg">
+              <label htmlFor={`param-${spec.key}`} className="text-ui font-medium text-fg">
                 {t(`params.${spec.key}.label`)}
               </label>
-              <p className="text-[0.75rem] text-muted">{isSupported ? t(`params.${spec.key}.hint`) : t("params.unsupported")}</p>
+              <p className="text-caption text-muted">{isSupported ? t(`params.${spec.key}.hint`) : t("params.unsupported")}</p>
             </div>
             <div className="flex items-center gap-1.5">
               <input
@@ -73,7 +73,7 @@ export function ParamsEditor({
                   const n = spec.integer ? parseInt(raw, 10) : parseFloat(raw);
                   if (!Number.isNaN(n)) set(spec.key, Math.min(spec.max, Math.max(spec.min, n)));
                 }}
-                className="h-8 w-24 rounded-md border border-line-strong bg-elevated px-2 text-right font-mono text-[0.8125rem] text-fg placeholder:font-sans placeholder:text-faint focus:border-accent focus:outline-none"
+                className="h-8 w-24 rounded-md border border-line-strong bg-elevated px-2 text-right font-mono text-ui text-fg placeholder:font-sans placeholder:text-faint focus:border-accent focus:outline-none"
               />
               <button
                 type="button"
@@ -102,10 +102,10 @@ export function ParamsEditor({
         );
       })}
       <div className="py-2">
-        <label htmlFor="param-stop" className="text-[0.8125rem] font-medium text-fg">
+        <label htmlFor="param-stop" className="text-ui font-medium text-fg">
           {t("params.stop.label")}
         </label>
-        <p className="mb-1.5 text-[0.75rem] text-muted">{t("params.stop.hint")}</p>
+        <p className="mb-1.5 text-caption text-muted">{t("params.stop.hint")}</p>
         <textarea
           id="param-stop"
           rows={2}
@@ -115,7 +115,7 @@ export function ParamsEditor({
             const lines = e.target.value.split("\n").slice(0, 8);
             set("stop", lines.some((l) => l.length) ? lines : null);
           }}
-          className="w-full rounded-md border border-line-strong bg-elevated px-2 py-1.5 font-mono text-[0.8125rem] text-fg focus:border-accent focus:outline-none"
+          className="w-full rounded-md border border-line-strong bg-elevated px-2 py-1.5 font-mono text-ui text-fg focus:border-accent focus:outline-none"
         />
       </div>
     </div>

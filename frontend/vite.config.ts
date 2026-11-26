@@ -26,7 +26,10 @@ export default defineConfig({
       output: {
         manualChunks: (id) => {
           if (!id.includes("node_modules")) return undefined;
-          if (/katex|micromark|mdast|hast|unified|remark|rehype|lowlight|highlight\.js|react-markdown|vfile|unist/.test(id)) return "markdown";
+          // KaTeX and highlight.js load only when an answer has maths or code (see Markdown.tsx).
+          if (/[\\/](katex|rehype-katex)[\\/]/.test(id)) return "katex";
+          if (/[\\/](lowlight|highlight\.js|rehype-highlight)[\\/]/.test(id)) return "highlight";
+          if (/micromark|mdast|hast|unified|remark|rehype|react-markdown|vfile|unist/.test(id)) return "markdown";
           if (/react|scheduler|zustand|@radix-ui|lucide/.test(id)) return "vendor";
           return undefined;
         },

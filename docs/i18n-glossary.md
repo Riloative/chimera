@@ -172,3 +172,19 @@ UI polish (1.1), additionally:
   accessible name of the web-search button): it must start with the visible
   label *Paieška* (WCAG 2.5.3), which makes it a noun phrase; the previous
   *"Ieškoti internete šiai žinutei"* read more naturally.
+
+Web search per conversation, Auto and polish (1.2), additionally:
+
+- **"Paieška internete šiame pokalbyje"** / **"Auto paieška internete šiame
+  pokalbyje"** (`web.composer.searchName.*`): the accessible names must start
+  with the visible word (*Paieška*, *Auto*), hence the noun phrases.
+- **"Auto"** kept as is for the mode name (like the English); *Automatinė* or
+  *Savarankiška* are alternatives if a reviewer prefers a Lithuanian word.
+- **"Kitai žinutei neieškoti"** / **"Ieškoti internete kitai žinutei"** /
+  **"Atšaukti pasirinkimą kitai žinutei"** for the one-off choices; *kitai
+  žinutei* ("for the next message") vs. *tik šiai žinutei*.
+- **"Paieška internete nereikalinga: {{reason}}"** — the reason comes from the
+  model and may be in another language than the interface.
+- **"Nepavyko nuspręsti, ar ieškoti, todėl atsakymas parašytas be interneto."**
+- **"Leisti Auto paiešką internete"** and its help text (administrators).
+- **"Nepavyko įkelti."** / **"Bandyti dar kartą"** (failed loads).

@@ -285,7 +285,7 @@ describe("citations", () => {
 
 describe("Auto decisions", () => {
   const decided = (step: Record<string, unknown>) =>
-    ({ ...MESSAGE, web: { auto: true, search: false, steps: [{ id: 0, kind: "decide", code: null, params: {}, ...step }], refs: [] } }) as Message;
+    ({ ...MESSAGE, web: { auto: true, search: false, steps: [{ id: 0, kind: "decide", code: null, params: {}, ...step }], refs: [] } }) as unknown as Message;
 
   it("shows the model's decision as the summary when it didn't search", async () => {
     wrap(<WebSteps message={decided({ status: "done", params: { search: false, reason: "general question" } })} sources={{}} defaultOpen={false} />);

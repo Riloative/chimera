@@ -152,6 +152,53 @@ the last result is remembered (*"Last tested …"*).
 - **Size**: 10 MB per page by default (Settings → Web → Limits); compressed
   responses are capped by their *decompressed* size.
 
+## When Chimera searches
+
+Each conversation has a **search mode**, stored on the server (so it is the
+same after a reload and on another device), shown by the **Search** button in
+the composer:
+
+| Mode | What happens for each message |
+| --- | --- |
+| **Off** | No search. Pasted links are still read (see above). |
+| **On** | Always searches: the model writes the queries, Chimera searches and reads the results. |
+| **Auto** | The model decides whether the message needs a search (and writes the queries in the same call). |
+
+- The button switches between off and on; the menu beside it (▾) also offers
+  **Auto** and a choice for the **next message only**: *Search the web for the
+  next message* in a conversation that is off, *Don't search for the next
+  message* in one that is on. A one-off choice is drawn with a dashed outline
+  and explained under the composer; it clears after sending.
+- New conversations start from *Settings → Web → Web search in new
+  conversations* (off by default).
+- **Regenerate** and **edit** follow the conversation's mode. The buttons
+  *Retry search* / *Answer without search* (after a failed search) and *Search
+  the web* (after Auto chose not to) override it for that one answer.
+- Until 1.1 the toggle applied to one message, "keep search on" made it
+  sticky, and the state lived only in the browser. The 1.2 migration sets each
+  existing conversation to its owner's "search by default" (what a reload
+  showed before); "keep search on" is no longer needed.
+
+### Auto mode
+
+Before answering, one short request asks the model (or the *task model*)
+whether a good answer needs current information from the web, and for the
+queries if so. The answer shows the decision as a web step, e.g. *"No web
+search needed: general question"*, with **Search the web** next to it.
+
+- **Cost:** one extra short model call for messages that don't search. For
+  messages that do, the decision replaces the query-writing call, so nothing
+  is added.
+- **Failing safely:** if the call fails, times out (20 s) or returns something
+  unreadable, the answer is written without the web and says so (*"Couldn't
+  decide whether to search…"*). If the search itself fails, the answer is still
+  written; the failed step is shown. Auto never blocks an answer, unlike **On**.
+- **Administrators** can turn Auto off (*Settings → Web → Allow Auto web
+  search*); conversations set to Auto then don't search. The decision prompt is
+  editable like the query prompt.
+- It uses a JSON reply, not native tool calling, so it works with every model
+  (see the last section).
+
 ## How web search works
 
 1. **Query writing.** The selected chat model (or a lighter *task model* you
@@ -425,18 +472,16 @@ Pages rendered this way take seconds and ~100–300 MB of memory each.
 When automatic rendering fails, the source keeps *"This page needs
 JavaScript"* and adds why the browser didn't help.
 
-## Optional: "let the model decide when to search"
+## Native tool calling (not used)
 
-**Status: planned — not available in the UI.** The interface exists
-(`backend/chimera/web/tools.py`): OpenAI-style `web_search(query)` and
-`fetch_url(url)` tool definitions and an executor that validates arguments,
-caps calls (4) and routes everything through the same fetcher, quotas and
-domain rules (tested). It is not wired into chat because native tool calling
-with local models depends on the chat template (llama-server needs `--jinja`
-and a template with tool support, which `/props` does not reliably report),
-and small models often emit malformed calls. Rather than ship a toggle that
-works for some models and silently fails for others, the default pipeline —
-which works with every model — is the supported path.
+`backend/chimera/web/tools.py` defines OpenAI-style `web_search(query)` and
+`fetch_url(url)` tools and a validated executor (capped calls, the same
+fetcher, quotas and domain rules; tested), but chat doesn't use it. Native tool
+calling with local models depends on the chat template (llama-server needs
+`--jinja` and a template with tool support, which `/props` doesn't reliably
+report), and small models often emit malformed calls. **Auto** mode (above)
+gets the same "the model decides" behaviour from a plain JSON reply, which
+works with every model.
 
 ## Implemented and planned
 
@@ -446,8 +491,10 @@ BM25 passage selection and context budgeting, live steps, citations and
 sources, per-user quotas and caching, admin controls, the optional headless
 browser for JavaScript pages, English and Lithuanian.
 
-Planned: model-driven tool
-search, embedding-based reranking (using a knowledge-base embedding model),
+Implemented in 1.2: search per conversation (off/on/Auto) with one-off
+overrides, Auto mode (the model decides).
+
+Planned: embedding-based reranking (using a knowledge-base embedding model),
 video transcripts, image search, a "deep research" multi-step mode, more
 engines (Google PSE, Kagi, Serper, Mojeek).
 

@@ -216,6 +216,7 @@ class WebService:
             "enabled": settings.enabled,
             "browser_available": self.browser_available(settings),
             "search_available": self.search_available(settings),
+            "auto_available": self.search_available(settings) and settings.auto_search,
             "engine": settings.engine if self.search_available(settings) else None,
             "max_urls_per_message": settings.max_urls_per_message,
             "max_results": settings.max_results,

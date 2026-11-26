@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 EngineKind = Literal["searxng", "brave", "tavily"]
+# Web search per conversation: never, for every message, or when the model decides.
+SearchMode = Literal["off", "on", "auto"]
 DEFAULT_USER_AGENT = "Chimera/0.4 (self-hosted AI assistant; fetches pages on behalf of its users)"
 
 
@@ -32,6 +34,9 @@ class WebAdminSettings(BaseModel):
     # Search pipeline
     query_generation: bool = True
     query_prompt: str = Field("", max_length=20_000)  # empty = built-in default
+    # "Auto": the model decides per message whether to search (one extra quick call).
+    auto_search: bool = True
+    auto_prompt: str = Field("", max_length=20_000)  # empty = built-in default
     grounding_prompt: str = Field("", max_length=20_000)  # empty = built-in default
     # Fetching
     fetch_allowlist: list[str] = Field(default_factory=list, max_length=100)
@@ -84,10 +89,20 @@ class WebUserSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     auto_read_links: bool = True
-    search_by_default: bool = False
-    keep_search_on: bool = False
+    # The search mode new conversations start with (each conversation then keeps its own).
+    search_default: SearchMode = "off"
     results: int = Field(5, ge=1, le=10)
     expand_steps: bool = False
     task_provider_id: str | None = None
     task_model: str | None = Field(None, max_length=500)
     privacy_acknowledged: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_search(cls, data: object) -> object:
+        """Until 1.1: ``search_by_default`` (bool) and ``keep_search_on``. The
+        latter needs no successor: a conversation's mode now always stays as
+        set, and a single message can be overridden from the composer."""
+        if isinstance(data, dict) and "search_default" not in data and isinstance(data.get("search_by_default"), bool):
+            data = {**data, "search_default": "on" if data["search_by_default"] else "off"}
+        return data

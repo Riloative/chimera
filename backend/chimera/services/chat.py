@@ -22,7 +22,7 @@ from ..db import Database, dumps, loads, new_id, now_iso
 from ..errors import AppError
 from ..providers import ChatMessage, ChatRequest, ProviderError
 from ..web.errors import WebError
-from ..web.pipeline import WebPlan, WebTurn, compose, finish_refs, generate_queries, read_links, run_search
+from ..web.pipeline import WebPlan, WebTurn, compose, decide_search, finish_refs, generate_queries, read_links, run_search
 from ..web.prompting import citations, grounding_prompt, new_token
 from ..web.rank import estimate_tokens, tokens_to_chars
 from .context import ContextTooLarge, TokenCounter, Turn, Window, context_window, covers_hash, plan_context, verify_exact
@@ -256,22 +256,30 @@ class ChatEngine:
             return None
 
     def web_plan(self, user: dict, content: str, urls: list[str] | None, web_search: bool | None, tz: str | None,
-                 *, inherit_search: bool = False) -> WebPlan:
-        """Decide what web work a turn does. Enforces the administrator switch
-        server-side: with web access disabled nothing is fetched."""
+                 *, mode: str = "off") -> WebPlan:
+        """Decide what web work a turn does. ``mode`` is the conversation's
+        search mode; ``web_search`` overrides it for this one message. Enforces
+        the administrator switch server-side: with web access disabled nothing
+        is fetched, and a conversation's mode quietly falls back to off when
+        search (or Auto) isn't available."""
         tz = self._timezone(tz)
+        explicit = web_search is not None
+        search = bool(web_search) if explicit else mode == "on"
+        auto = not explicit and mode == "auto"
         if not self.web:
             return WebPlan(timezone=tz)
         admin = self.web.admin()
         if not admin.enabled:
-            if web_search or urls:
+            if (explicit and web_search) or urls:
                 raise WebError("web.disabled", "Web access is turned off on this server.")
             return WebPlan(timezone=tz)
-        if web_search and not self.web.search_available(admin):
-            if inherit_search:
-                web_search = False
-            else:
+        available = self.web.search_available(admin)
+        if search and not available:
+            if explicit:
                 raise WebError("web.search_unavailable", "Web search is not configured on this server.")
+            search = False
+        if auto and not (available and admin.auto_search):
+            auto = False
         limit = admin.max_urls_per_message
         if urls is None:
             chosen = find_urls(content, limit).urls if self.settings.get(user["id"]).web.auto_read_links else []
@@ -280,7 +288,7 @@ class ChatEngine:
             present = {dedupe_key(u): u for u in find_urls(content, 100).urls}
             keys = [dedupe_key(u) for u in urls if isinstance(u, str) and "://" in u]
             chosen = [present[k] for k in dict.fromkeys(keys) if k in present][:limit]
-        return WebPlan(urls=chosen, search=bool(web_search), timezone=tz)
+        return WebPlan(urls=chosen, search=search, auto=auto, timezone=tz)
 
     def launch(self, gen: Generation) -> None:
         gen.task = asyncio.create_task(self._run(gen), name=f"generation-{gen.id}")
@@ -306,7 +314,7 @@ class ChatEngine:
         if not content.strip() and not attachment_ids:
             raise ChatError("Message is empty.", code="empty_message")
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
-        plan = self.web_plan(user, content, urls, web_search, timezone)
+        plan = self.web_plan(user, content, urls, web_search, timezone, mode=conv.get("web_search") or "off")
         attachments = self._attachment_snapshots(user, attachment_ids, pid, mdl)
         tree = message_tree.load(self.db, conversation_id)
         path = message_tree.active_path(self.db, conversation_id, tree)
@@ -358,11 +366,9 @@ class ChatEngine:
         if not prior_user or prior_user["role"] != "user":
             raise ChatError("Nothing to regenerate.", code="nothing_to_regenerate")
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
-        # Pages read for the user message are reused (no re-fetch). Search runs
-        # again if the replaced answer used it, unless the caller says otherwise.
-        inherit = web_search is None
-        search = bool(loads(previous["web"], {}).get("search")) if inherit and previous else bool(web_search)
-        plan = self.web_plan(user, "", [], search, timezone, inherit_search=inherit)
+        # Pages read for the user message are reused (no re-fetch). Search
+        # follows the conversation's mode unless the caller overrides it.
+        plan = self.web_plan(user, "", [], web_search, timezone, mode=conv.get("web_search") or "off")
         # A new answer is a sibling of the old one, which stays as another
         # branch, except an attempt that failed or was stopped before writing
         # anything: that one is replaced so failed tries don't pile up.
@@ -396,7 +402,7 @@ class ChatEngine:
         if not content.strip() and not loads(target["attachments"], []):
             raise ChatError("Message is empty.", code="empty_message")
         pid, mdl = self._resolve_target(user, conv, provider_id, model)
-        plan = self.web_plan(user, content, urls, web_search, timezone)
+        plan = self.web_plan(user, content, urls, web_search, timezone, mode=conv.get("web_search") or "off")
         tree = message_tree.load(self.db, conversation_id)
         parent_path = tree.path_to(target["parent_id"]) if target["parent_id"] else []
         with self.db.transaction() as conn:
@@ -759,24 +765,43 @@ class ChatEngine:
         if plan.urls and gen.user_message_id:
             data = await read_links(self.web, gen.user, plan.urls, admin, turn)
             turn.add_sources(self.web.store(uid, gen.conversation_id, gen.user_message_id, "pasted", data))
-        if plan.search:
-            settings = self.settings.get(uid)
-            history = [(r["role"], r["content"]) for r in self.path_rows(gen) if r["status"] != "error"]
-            message = next((text for role, text in reversed(history) if role == "user"), "")
+        if not (plan.search or plan.auto):
+            return
+        settings = self.settings.get(uid)
+        history = [(r["role"], r["content"]) for r in self.path_rows(gen) if r["status"] != "error"]
+        message = next((text for role, text in reversed(history) if role == "user"), "")
+        provider, model = self.registry.provider(gen.user, gen.provider_id), gen.model
+        task = settings.web
+        if task.task_provider_id and task.task_model and self.registry.visible(gen.user, task.task_provider_id):
+            provider, model = self.registry.provider(gen.user, task.task_provider_id), task.task_model
+        if plan.auto:
+            # The model decides, and writes the queries in the same call.
+            step = turn.step("decide")
+            decision = await decide_search(provider, model, message, history[:-1], admin, plan.timezone)
+            if decision is None:
+                turn.update(step, status="error", code="web.auto_undecided")
+                return  # answer without searching; the answer offers "Search the web"
+            needed, reason, queries = decision
+            turn.update(step, status="done", search=needed, reason=reason)
+            if not needed or not queries:
+                return
+            turn.state["search"] = True
+        else:
             step = turn.step("queries")
-            provider, model = self.registry.provider(gen.user, gen.provider_id), gen.model
-            task = settings.web
-            if task.task_provider_id and task.task_model and self.registry.visible(gen.user, task.task_provider_id):
-                provider, model = self.registry.provider(gen.user, task.task_provider_id), task.task_model
             queries, fallback = await generate_queries(provider, model, message, history[:-1], admin, plan.timezone)
             if not queries:
                 turn.update(step, status="error", code="web.no_query")
                 raise WebError("web.no_query", "There is nothing to search for in this message.")
-            turn.state["queries"] = queries
             turn.update(step, status="done", queries=queries, fallback=fallback)
-            count = min(settings.web.results, admin.max_results)
+        turn.state["queries"] = queries
+        count = min(settings.web.results, admin.max_results)
+        try:
             data = await run_search(self.web, gen.user, queries, count, admin, turn)
-            turn.add_sources(self.web.store(uid, gen.conversation_id, gen.message_id, "search", data))
+        except WebError:
+            if not plan.auto:
+                raise
+            return  # Auto never blocks the answer: the failed step is shown with "Search again"
+        turn.add_sources(self.web.store(uid, gen.conversation_id, gen.message_id, "search", data))
 
     def _finish_web(self, gen: Generation, status: str, knowledge_count: int) -> None:
         turn = gen.turn

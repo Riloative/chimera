@@ -32,6 +32,7 @@ def conversation_out(row: dict) -> dict[str, Any]:
         "pinned": bool(row["pinned"]),
         "active_leaf_id": row.get("active_leaf_id"),
         "context_strategy": row.get("context_strategy"),
+        "web_search": row.get("web_search") or "off",
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -86,7 +87,7 @@ class ConversationStore:
         cid, ts = new_id(), now_iso()
         self.db.execute(
             """INSERT INTO conversations(id, user_id, title, provider_id, model, system_prompt, params, collection_ids,
-                   context_strategy, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   context_strategy, web_search, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 cid,
                 user_id,
@@ -97,6 +98,7 @@ class ConversationStore:
                 dumps(data.get("params") or {}),
                 dumps(data.get("collection_ids") or []),
                 data.get("context_strategy"),
+                data.get("web_search") or "off",
                 ts,
                 ts,
             ),
@@ -108,7 +110,8 @@ class ConversationStore:
     def update(self, cid: str, data: dict[str, Any], touch: bool = False) -> dict | None:
         sets: list[str] = []
         values: list[Any] = []
-        for key in ("title", "provider_id", "model", "system_prompt", "pinned", "params", "collection_ids", "context_strategy"):
+        for key in ("title", "provider_id", "model", "system_prompt", "pinned", "params", "collection_ids", "context_strategy",
+                    "web_search"):
             if key not in data:
                 continue
             value = data[key]
@@ -148,27 +151,61 @@ class ConversationStore:
             (mid, user_id),
         )
 
+    # Above this many matching messages a term is common: scanning newest
+    # conversations first finds 50 hits sooner than collecting every match.
+    FTS_MAX_HITS = 2000
+
+    def _fts(self) -> bool:
+        if not hasattr(self, "_has_fts"):
+            self._has_fts = self.db.one("SELECT 1 AS x FROM sqlite_master WHERE name = 'messages_fts'") is not None
+        return self._has_fts
+
     def search(self, user_id: str, query: str, limit: int = 50) -> list[dict]:
         q = query.strip()
         if not q:
             return []
         pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        rows = self.db.all(
-            """SELECT c.*, (
-                   SELECT m.content FROM messages m
-                   WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'
-                   ORDER BY m.position, m.created_at LIMIT 1
-               ) AS match_text, (
-                   SELECT m.id FROM messages m
-                   WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'
-                   ORDER BY m.position, m.created_at LIMIT 1
-               ) AS match_id
-               FROM conversations c
-               WHERE c.user_id = ? AND (c.title LIKE ? ESCAPE '\\'
-                  OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'))
-               ORDER BY c.updated_at DESC LIMIT ?""",
-            (pattern, pattern, user_id, pattern, pattern, limit),
-        )
+        rows = None
+        if self._fts() and len(q) >= 3:
+            # Trigram index: the same "contains" match as LIKE, without scanning every message.
+            phrase = '"' + q.replace('"', '""') + '"'
+            hits = self.db.one(
+                "SELECT count(*) AS n FROM (SELECT 1 FROM messages_fts WHERE messages_fts MATCH ? LIMIT ?)", (phrase, self.FTS_MAX_HITS + 1)
+            )
+            if hits and hits["n"] <= self.FTS_MAX_HITS:
+                rows = self.db.all(
+                    """WITH hit AS MATERIALIZED (
+                           SELECT m.id, m.conversation_id, m.content, m.position, m.created_at, m.rowid AS rid
+                           FROM messages_fts JOIN messages m ON m.rowid = messages_fts.rowid
+                           WHERE messages_fts MATCH ?
+                       )
+                       SELECT c.*, (
+                           SELECT h.content FROM hit h WHERE h.conversation_id = c.id ORDER BY h.position, h.created_at, h.rid LIMIT 1
+                       ) AS match_text, (
+                           SELECT h.id FROM hit h WHERE h.conversation_id = c.id ORDER BY h.position, h.created_at, h.rid LIMIT 1
+                       ) AS match_id
+                       FROM conversations c
+                       WHERE c.user_id = ? AND (c.title LIKE ? ESCAPE '\\' OR c.id IN (SELECT conversation_id FROM hit))
+                       ORDER BY c.updated_at DESC LIMIT ?""",
+                    (phrase, user_id, pattern, limit),
+                )
+        if rows is None:
+            rows = self.db.all(
+                """SELECT c.*, (
+                       SELECT m.content FROM messages m
+                       WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'
+                       ORDER BY m.position, m.created_at LIMIT 1
+                   ) AS match_text, (
+                       SELECT m.id FROM messages m
+                       WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'
+                       ORDER BY m.position, m.created_at LIMIT 1
+                   ) AS match_id
+                   FROM conversations c
+                   WHERE c.user_id = ? AND (c.title LIKE ? ESCAPE '\\'
+                      OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ? ESCAPE '\\'))
+                   ORDER BY c.updated_at DESC LIMIT ?""",
+                (pattern, pattern, user_id, pattern, pattern, limit),
+            )
         out = []
         for row in rows:
             item = conversation_out(row)

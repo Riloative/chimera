@@ -65,6 +65,55 @@ def _migrate_tree(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE conversations SET active_leaf_id = ? WHERE id = ?", (previous, cid))
 
 
+SEARCH_MODES = ("off", "on", "auto")
+
+
+def _migrate_search_mode(conn: sqlite3.Connection) -> None:
+    """5 — web search per conversation (1.2) and a full-text index of messages.
+
+    Each conversation gets a stored search mode (off/on/auto). Until 1.1 the
+    toggle lived only in the browser and fell back to the owner's "search by
+    default" after a reload, so existing conversations start from that same
+    preference; the preference itself becomes ``search_default``. Additive: an
+    older Chimera ignores the column, the index and the new settings key.
+
+    The index (FTS5, trigram tokenizer) keeps conversation search a "contains"
+    search like before, without scanning every message. It is skipped when
+    this SQLite has no trigram tokenizer (before 3.34); search then scans as
+    before."""
+    conn.execute("ALTER TABLE conversations ADD COLUMN web_search TEXT NOT NULL DEFAULT 'off'")
+    for row in conn.execute("SELECT user_id, value FROM user_settings WHERE key = 'web'").fetchall():
+        try:
+            web = json.loads(row[1])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(web, dict) or "search_default" in web:
+            continue
+        mode = "on" if web.get("search_by_default") is True else "off"
+        web["search_default"] = mode
+        conn.execute("UPDATE user_settings SET value = ? WHERE user_id = ? AND key = 'web'", (dumps(web), row[0]))
+        if mode == "on":
+            conn.execute("UPDATE conversations SET web_search = 'on' WHERE user_id = ?", (row[0],))
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE messages_fts USING fts5(content, content='messages', content_rowid='rowid', tokenize='trigram')"
+        )
+    except sqlite3.OperationalError:
+        logging.getLogger("chimera.db").warning("SQLite has no FTS5 trigram tokenizer: conversation search scans messages")
+        return
+    for statement in (
+        """CREATE TRIGGER messages_fts_ai AFTER INSERT ON messages BEGIN
+               INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content); END""",
+        """CREATE TRIGGER messages_fts_ad AFTER DELETE ON messages BEGIN
+               INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content); END""",
+        """CREATE TRIGGER messages_fts_au AFTER UPDATE OF content ON messages BEGIN
+               INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+               INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content); END""",
+        "INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')",
+    ):
+        conn.execute(statement)
+
+
 MIGRATIONS: list[str | Callable[[sqlite3.Connection], None]] = [
     # 1 — initial schema
     """
@@ -311,6 +360,7 @@ MIGRATIONS: list[str | Callable[[sqlite3.Connection], None]] = [
     ALTER TABLE messages ADD COLUMN web TEXT NOT NULL DEFAULT '{}';
     """,
     _migrate_tree,
+    _migrate_search_mode,
 ]
 
 

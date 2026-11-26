@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
 from .. import BUILD_COMMIT, __version__
-from ..db import SCHEMA_VERSION, dumps, is_chimera_database, new_id, now_iso, schema_version_of
+from ..db import SEARCH_MODES, SCHEMA_VERSION, dumps, is_chimera_database, new_id, now_iso, schema_version_of
 from ..errors import AppError
 from ..netpolicy import url_allowed
 from ..services.conversations import conversation_out, message_out
@@ -230,6 +230,8 @@ async def create_conversation(
     if body.params is not None:
         data["params"] = body.params.model_dump(exclude_none=True)
     data["collection_ids"] = state.knowledge.owned_ids(user["id"], body.collection_ids)
+    if not data.get("web_search"):
+        data["web_search"] = state.settings.get(user["id"]).web.search_default
     if body.provider_id and not state.registry.visible(user, body.provider_id):
         data["provider_id"] = data["model"] = None
     return conversation_out(state.conversations.create(user["id"], data))
@@ -259,6 +261,8 @@ async def update_conversation(
     data = body.model_dump(exclude_unset=True)
     if "params" in data:
         data["params"] = body.params.model_dump(exclude_none=True) if body.params else {}
+    if "web_search" in data and data["web_search"] is None:
+        del data["web_search"]  # the column always holds a mode
     if "title" in data:
         data["title"] = data["title"].strip() or "Untitled"
     if "collection_ids" in data:
@@ -634,11 +638,12 @@ async def import_data(file: UploadFile = File(...), user: dict = Depends(current
             ts = now_iso()
             conn.execute(
                 """INSERT INTO conversations(id, user_id, title, title_source, provider_id, model, system_prompt, params,
-                       collection_ids, pinned, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       collection_ids, pinned, web_search, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     cid, uid, str(conv.get("title") or "Imported conversation")[:200], "user",
                     None, conv.get("model"), conv.get("system_prompt"),
                     dumps(conv.get("params") or {}), "[]", 1 if conv.get("pinned") else 0,
+                    conv.get("web_search") if conv.get("web_search") in SEARCH_MODES else "off",
                     conv.get("created_at") or ts, conv.get("updated_at") or ts,
                 ),
             )

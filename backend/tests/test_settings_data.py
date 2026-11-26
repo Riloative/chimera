@@ -92,6 +92,7 @@ def test_prompts_crud(client):
 
 
 def test_export_import_roundtrip(client, conversation):
+    client.patch(f"/api/conversations/{conversation['id']}", json={"web_search": "auto"})
     with client.stream("POST", f"/api/conversations/{conversation['id']}/messages", json={"content": "keep this"}) as r:
         read_sse(r)
     client.post("/api/prompts", json={"title": "P", "content": "c"})
@@ -102,8 +103,9 @@ def test_export_import_roundtrip(client, conversation):
     assert client.get("/api/conversations").json() == []
     result = client.post("/api/data/import", files={"file": ("e.json", io.BytesIO(payload), "application/json")}).json()
     assert result["conversations"] == 1 and result["messages"] == 2 and result["skipped"] == 1  # prompt existed
-    msgs = client.get(f"/api/conversations/{conversation['id']}").json()["messages"]
-    assert msgs[0]["content"] == "keep this"
+    restored = client.get(f"/api/conversations/{conversation['id']}").json()
+    assert restored["messages"][0]["content"] == "keep this"
+    assert restored["web_search"] == "auto"  # the conversation's search mode travels with it
     bad = client.post("/api/data/import", files={"file": ("e.json", io.BytesIO(b'{"x":1}'), "application/json")})
     assert bad.status_code == 422
 

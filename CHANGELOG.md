@@ -10,7 +10,7 @@ changes.
 
 ## [Unreleased]
 
-## [1.2.0] - Unreleased
+## [1.2.0] - 2026-11-27
 
 Web search per conversation with an Auto mode, a calmer look (the "Ink"
 accent and a simpler stop button), and a round of accessibility, error-state

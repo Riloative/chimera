@@ -107,6 +107,8 @@ export function ChatPage() {
       await p;
       return;
     }
+    // A level or search mode chosen a moment ago must be saved before this message uses it.
+    await useConversations.getState().settled(convId);
     await send(convId, body, attachments);
   };
 
@@ -262,11 +264,19 @@ export function ChatPage() {
         expandSteps={settings?.web?.expand_steps ?? false}
         webSources={chat?.webSources}
         onRegenerate={(mid, webSearch) =>
-          regenerate(id, mid, { ...target(model), timezone: browserTimeZone(), ...(webSearch === undefined ? {} : { web_search: webSearch }) }).catch((e) =>
-            toast(errorText(e), "error"),
-          )
+          useConversations
+            .getState()
+            .settled(id)
+            .then(() => regenerate(id, mid, { ...target(model), timezone: browserTimeZone(), ...(webSearch === undefined ? {} : { web_search: webSearch }) }))
+            .catch((e) => toast(errorText(e), "error"))
         }
-        onEdit={(mid, content) => edit(id, mid, content, { ...target(model), timezone: browserTimeZone() }).catch((e) => toast(errorText(e), "error"))}
+        onEdit={(mid, content) =>
+          useConversations
+            .getState()
+            .settled(id)
+            .then(() => edit(id, mid, content, { ...target(model), timezone: browserTimeZone() }))
+            .catch((e) => toast(errorText(e), "error"))
+        }
         onDelete={(mid) => deleteMessage(id, mid).catch((e) => toast(errorText(e), "error"))}
       >
         <div className="mx-auto w-full max-w-[var(--chat-width)] px-4 pb-3 md:px-6">

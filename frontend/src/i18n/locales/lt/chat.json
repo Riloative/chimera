@@ -220,7 +220,8 @@
       "medium": "Subalansuotai.",
       "high": "Viską apgalvoja. Lėčiau ir sunaudoja daugiau žetonų.",
       "max": "Mąsto tiek, kiek leidžia modelis. Lėčiausia.",
-      "on": "Pamąsto prieš atsakydamas."
+      "on": "Pamąsto prieš atsakydamas.",
+      "defaultOff": "Įprastas modelio nustatymas: atsako nemąstęs."
     },
     "buttonName": {
       "default": "Mąstymas: modelio numatytasis",

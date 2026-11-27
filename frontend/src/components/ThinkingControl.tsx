@@ -83,9 +83,11 @@ export function ThinkingControl({
   const clamped = level !== "default" && now !== level;
   const choices: ThinkingLevel[] = ["default", ...caps.levels.filter((l) => l !== "on")];
   const defaultHint =
-    caps.default && caps.default !== "default" && caps.levels.includes(caps.default)
-      ? t("thinking.hints.defaultKnown", { level: t(`thinking.levels.${caps.default}`).toLocaleLowerCase() })
-      : t("thinking.hints.default");
+    caps.default === "off"
+      ? t("thinking.hints.defaultOff")
+      : caps.default && caps.default !== "default" && caps.levels.includes(caps.default)
+        ? t("thinking.hints.defaultKnown", { level: t(`thinking.levels.${caps.default}`).toLocaleLowerCase() })
+        : t("thinking.hints.default");
   return (
     <MenuRoot>
       <Tooltip label={t("thinking.levelsTip")}>
@@ -102,7 +104,7 @@ export function ThinkingControl({
           >
             <Brain className="size-[17px] shrink-0" aria-hidden />
             <span className="hidden sm:inline">{visible}</span>
-            <ChevronDown className="size-3.5 shrink-0 opacity-70" aria-hidden />
+            <ChevronDown className="hidden size-3.5 shrink-0 opacity-70 sm:block" aria-hidden />
           </button>
         </MenuTrigger>
       </Tooltip>

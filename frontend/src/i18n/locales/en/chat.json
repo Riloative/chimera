@@ -212,7 +212,8 @@
       "medium": "Balanced.",
       "high": "Thinks it through. Slower, and uses more tokens.",
       "max": "As much as the model allows. The slowest.",
-      "on": "Thinks before answering."
+      "on": "Thinks before answering.",
+      "defaultOff": "The model's usual setting: it answers without thinking."
     },
     "buttonName": {
       "default": "Thinking: the model's default",

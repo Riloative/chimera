@@ -328,7 +328,7 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
                 <dt>{t("endpoint")}</dt>
                 <dd className="truncate font-mono text-fg">{p.base_url + (p.api_path || "")}</dd>
                 <dt>{t("auth")}</dt>
-                <dd className="text-fg">{p.has_api_key ? t("authKey", { header: p.auth_header || "Authorization" }) : t("authNone")}</dd>
+                <dd className="text-fg">{p.has_api_key ? t("authKey", { header: p.auth_header || (p.kind === "anthropic" ? "x-api-key" : "Authorization") }) : t("authNone")}</dd>
                 <dt>{t("timeout")}</dt>
                 <dd className="text-fg">{t("seconds", { value: p.timeout })}</dd>
                 <dt>{t("context")}</dt>
@@ -379,7 +379,7 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-caption text-muted" data-testid="model-thinking">
-                        <span className="min-w-0 truncate">
+                        <span className="min-w-0">
                           {t("thinkingCaps.label")}: <ThinkingSummary model={m} />
                         </span>
                         {p.editable && (

@@ -74,6 +74,11 @@ conversation's numbers.
   under *Thought process*.
 - **Ollama vision** is detected from `/api/show`, so image input works
   without setting it to "on" manually.
+- **A setting changed just before sending** (thinking level, web search mode)
+  could miss that message because it hadn't been saved yet; sending,
+  regenerating and editing now wait for it.
+- **A menu opened just as an answer finished closed again**, because the
+  composer took the focus back; it now does so only when nothing else has it.
 
 ### Not verified against live services
 The hosted services' rules (which levels each model accepts, which

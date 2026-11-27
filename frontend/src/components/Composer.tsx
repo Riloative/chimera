@@ -216,7 +216,11 @@ export function Composer({
     } finally {
       setSubmitting(false);
       submittingNow.current = false;
-      requestAnimationFrame(() => textareaRef.current?.focus());
+      // Back to the message box, unless the user has moved on (e.g. opened a menu meanwhile).
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body || active === textareaRef.current) textareaRef.current?.focus();
+      });
     }
   };
 

@@ -10,7 +10,7 @@ changes.
 
 ## [Unreleased]
 
-## [1.3.0] - Unreleased
+## [1.3.0] - 2026-11-27
 
 A **Thinking** control next to the model picker, a native Anthropic
 connection, and a fix for the context indicator showing another

@@ -6,7 +6,7 @@ import { Button, ConfirmDialog, Dialog, Field, Input, MenuContent, MenuItem, Men
 import { api } from "@/lib/api";
 import { errorText, providerErrorText, serverDetail } from "@/lib/errors";
 import { relativeTime } from "@/lib/time";
-import type { HealthCheck, Provider, ProviderKind, ProviderModels, TestResult } from "@/lib/types";
+import type { HealthCheck, ModelInfo, Provider, ProviderKind, ProviderModels, ProviderService, TestResult, ThinkingOverride } from "@/lib/types";
 import { cn, compactNumber, formatBytes, formatList, formatNumber, modelLabel } from "@/lib/utils";
 import { useAuth } from "@/stores/auth";
 import { useModels } from "@/stores/models";
@@ -18,7 +18,73 @@ const KINDS: { value: ProviderKind; url: string; path: string }[] = [
   { value: "llamacpp", url: "http://127.0.0.1:8080", path: "/v1" },
   { value: "openai", url: "http://127.0.0.1:1234", path: "/v1" },
   { value: "ollama", url: "http://127.0.0.1:11434", path: "" },
+  { value: "anthropic", url: "https://api.anthropic.com", path: "/v1" },
 ];
+const SERVICES: ProviderService[] = ["openai", "mistral", "gemini", "deepseek", "xai", "openrouter", "anthropic", "other"];
+const OVERRIDES: ThinkingOverride[] = ["detect", "none", "toggle", "levels"];
+
+/** "Low, medium, high" / "on or off" / "always thinks" / "not supported". */
+function ThinkingSummary({ model }: { model: ModelInfo }) {
+  const { t } = useTranslation(["models", "chat"]);
+  const caps = model.thinking;
+  if (!caps || caps.shape === "none") return <>{caps?.source === "rejected" ? t("thinkingCaps.rejected") : t("thinkingCaps.none")}</>;
+  if (caps.shape === "always") return <>{t("thinkingCaps.always")}</>;
+  if (caps.shape === "toggle") return <>{t("thinkingCaps.toggle")}</>;
+  return <>{formatList(caps.levels.map((l) => t(`chat:thinking.levels.${l}`).toLocaleLowerCase()))}</>;
+}
+
+/** Per-model override of the detected thinking control (editors only). */
+function ThinkingOverrideSelect({ provider, model }: { provider: Provider; model: ModelInfo }) {
+  const { t } = useTranslation("models");
+  const { setProvider, load } = useModels();
+  const current = provider.model_settings?.[model.id]?.thinking ?? "detect";
+  return (
+    <select
+      aria-label={t("thinkingCaps.overrideFor", { model: model.name || model.id })}
+      value={current}
+      onChange={async (e) => {
+        const next = { ...(provider.model_settings ?? {}) };
+        const choice = e.target.value as ThinkingOverride;
+        if (choice === "detect") delete next[model.id];
+        else next[model.id] = { thinking: choice };
+        try {
+          setProvider(await api.updateProvider(provider.id, { model_settings: next }));
+          await load(false);
+        } catch (err) {
+          toast(errorText(err), "error");
+        }
+      }}
+      className="h-7 min-w-0 rounded-md border border-line bg-elevated px-1.5 text-caption text-fg"
+    >
+      {OVERRIDES.map((o) => (
+        <option key={o} value={o}>
+          {t(`thinkingCaps.override.${o}`)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+const SERVICE_HOSTS: Record<string, ProviderService> = {
+  "api.openai.com": "openai",
+  "api.mistral.ai": "mistral",
+  "generativelanguage.googleapis.com": "gemini",
+  "api.deepseek.com": "deepseek",
+  "api.x.ai": "xai",
+  "openrouter.ai": "openrouter",
+  "api.anthropic.com": "anthropic",
+};
+
+/** The service an OpenAI-compatible URL points to (the server does the same, see providers/reasoning.py). */
+function detectService(url: string): ProviderService {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    for (const [known, name] of Object.entries(SERVICE_HOSTS)) if (host === known || host.endsWith(`.${known}`)) return name;
+  } catch {
+    /* not a URL yet */
+  }
+  return "other";
+}
 
 /** A diagnostics line, translated from its code; server text shown verbatim. */
 function CheckText({ check }: { check: HealthCheck }) {
@@ -301,15 +367,27 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
               ) : (
                 <ul className="space-y-1">
                   {entry.models.map((m) => (
-                    <li key={m.id} className="flex items-center gap-2">
-                      <span className="truncate font-mono text-fg" title={m.id}>
-                        {m.name || m.id}
-                      </span>
-                      {m.vision && <Eye className="size-3 shrink-0 text-muted" aria-label={t("vision")} />}
-                      <span className="ml-auto shrink-0 text-faint">
-                        {m.source === "manual" ? t("manual") : m.context_length ? t("ctx", { value: compactNumber(m.context_length) }) : ""}
-                        {typeof m.meta?.size === "number" ? ` · ${formatBytes(m.meta.size as number)}` : ""}
-                      </span>
+                    <li key={m.id} className="py-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-mono text-fg" title={m.id}>
+                          {m.name || m.id}
+                        </span>
+                        {m.vision && <Eye className="size-3 shrink-0 text-muted" aria-label={t("vision")} />}
+                        <span className="ml-auto shrink-0 text-faint">
+                          {m.source === "manual" ? t("manual") : m.context_length ? t("ctx", { value: compactNumber(m.context_length) }) : ""}
+                          {typeof m.meta?.size === "number" ? ` · ${formatBytes(m.meta.size as number)}` : ""}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-caption text-muted" data-testid="model-thinking">
+                        <span className="min-w-0 truncate">
+                          {t("thinkingCaps.label")}: <ThinkingSummary model={m} />
+                        </span>
+                        {p.editable && (
+                          <span className="ml-auto shrink-0">
+                            <ThinkingOverrideSelect provider={p} model={m} />
+                          </span>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -351,11 +429,12 @@ interface FormState {
   enabled: boolean;
   shared: boolean;
   context_override: string;
+  service: ProviderService | "";
 }
 
 function initialForm(p: Provider | null): FormState {
   if (!p)
-    return { name: "llama-server", kind: "llamacpp", base_url: KINDS[0].url, api_path: "/v1", api_key: "", auth_header: "", timeout: 300, vision: "auto", manual_models: "", enabled: true, shared: false, context_override: "" };
+    return { name: "llama-server", kind: "llamacpp", base_url: KINDS[0].url, api_path: "/v1", api_key: "", auth_header: "", timeout: 300, vision: "auto", manual_models: "", enabled: true, shared: false, context_override: "", service: "" };
   return {
     name: p.name,
     kind: p.kind,
@@ -369,6 +448,7 @@ function initialForm(p: Provider | null): FormState {
     enabled: p.enabled,
     shared: p.shared,
     context_override: p.context_override ? String(p.context_override) : "",
+    service: p.service ?? "",
   };
 }
 
@@ -408,6 +488,7 @@ function ProviderDialog({ open, provider, onClose }: { open: boolean; provider: 
       manual_models: form.manual_models.split("\n").map((s) => s.trim()).filter(Boolean),
       enabled: form.enabled,
       context_override: Number(form.context_override) >= 256 ? Math.round(Number(form.context_override)) : null,
+      service: form.kind === "openai" && form.service ? form.service : null,
     };
     if (isAdmin) data.shared = form.shared;
     if (form.api_key) data.api_key = form.api_key;
@@ -516,6 +597,23 @@ function ProviderDialog({ open, provider, onClose }: { open: boolean; provider: 
         >
           <Input id="pv-url" value={form.base_url} onChange={(e) => set("base_url", e.target.value)} placeholder={kind.url} className="font-mono" spellCheck={false} />
         </Field>
+        {form.kind === "openai" && (
+          <Field label={t("dialog.service")} htmlFor="pv-service" hint={t("dialog.serviceHint")}>
+            <Select id="pv-service" value={form.service} onChange={(e) => set("service", e.target.value as FormState["service"])}>
+              <option value="">{t("dialog.serviceDetect", { name: t(`services.${detectService(form.base_url)}`) })}</option>
+              {SERVICES.map((sv) => (
+                <option key={sv} value={sv}>
+                  {t(`services.${sv}`)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {form.kind === "openai" && (form.service || detectService(form.base_url)) === "anthropic" && (
+          <p className="rounded-lg bg-subtle px-3 py-2 text-caption text-muted" role="note">
+            {t("dialog.anthropicCompat")}
+          </p>
+        )}
         <Field label={t("dialog.apiKey")} htmlFor="pv-key" hint={provider?.has_api_key ? t("dialog.keyStored") : t("dialog.keyHint")}>
           <div className="flex gap-2">
             <Input

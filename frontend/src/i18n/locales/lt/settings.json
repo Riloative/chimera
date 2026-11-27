@@ -50,7 +50,9 @@
     "params": "Numatytieji generavimo parametrai",
     "paramsHelp": "Palikite lauką tuščią, jei norite naudoti serverio numatytąją reikšmę. Parametrai siunčiami tik tada, kai ryšys juos palaiko.",
     "paramsHelpProvider": "Palikite lauką tuščią, jei norite naudoti serverio numatytąją reikšmę. Parametrai siunčiami tik tada, kai ryšys juos palaiko (tikrinama pagal „{{name}}“).",
-    "saved": "Pokalbių nustatymai išsaugoti"
+    "saved": "Pokalbių nustatymai išsaugoti",
+    "thinkingDefault": "Mąstymas naujuose pokalbiuose",
+    "thinkingDefaultHelp": "Naudojamas, kai modelis tai palaiko. Kitaip naudojamas artimiausias modelio siūlomas lygis arba nesiunčiama nieko. Kiekviename pokalbyje galite jį pakeisti."
   },
   "documents": {
     "attachments": "Priedai",

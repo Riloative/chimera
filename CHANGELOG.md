@@ -10,6 +10,89 @@ changes.
 
 ## [Unreleased]
 
+## [1.3.0] - Unreleased
+
+A **Thinking** control next to the model picker, a native Anthropic
+connection, and a fix for the context indicator showing another
+conversation's numbers.
+
+### Added
+- **Thinking per conversation**, stored on the server like web search. The
+  control next to the model picker adapts to the model: a menu of levels
+  (Default, Off, Low, Medium, High, Max — only those the model supports, each
+  with a one-line explanation), a single on/off button, a quiet "Always
+  thinks", or nothing when the model has no thinking control. A level the
+  model can't do is shown as the nearest one actually used, with a note in the
+  menu; switching models keeps the conversation's level. **Settings → Chat →
+  Thinking in new conversations** sets the default (Default: the model
+  decides, as before).
+- Thinking works with **llama-server** (the chat template's `enable_thinking`
+  switch or gpt-oss levels, detected from `/props`), **Ollama** (`think`,
+  detected from `/api/show`), and the hosted services **OpenAI, Mistral,
+  Google Gemini, DeepSeek, xAI and OpenRouter** through their
+  OpenAI-compatible endpoints (recognised from the URL, or chosen under
+  *Service* on the connection). The mapping and detection are described in
+  docs/ARCHITECTURE.md ("Thinking").
+- **Anthropic connections** (native Messages API, no SDK): effort levels with
+  adaptive thinking (a thinking budget on Claude 4.5 and earlier) and
+  thinking summaries shown under *Thought process*. Anthropic's
+  OpenAI-compatible endpoint can't set or show thinking, so the connection
+  form suggests this type.
+- **Models page**: each model shows what its thinking control can do, and the
+  connection's editor can override it ("Detect", "Not supported", "On or
+  off", "Levels").
+- API (additive): `thinking` on `GET/PATCH /api/conversations/{id}` and
+  `POST /api/conversations` (default: the user's `thinking_default`); each
+  model in `GET /api/models` carries `thinking` (`shape`, `levels`,
+  `default`, `source`); connections accept `kind: "anthropic"`, `service`
+  and `model_settings`; answers record `metrics.thinking` (requested,
+  applied, rejected). Export and import keep each conversation's level.
+
+### Fixed
+- **The context indicator showed the same numbers in different
+  conversations.** The top bar stays mounted when you switch, and the
+  indicator kept the previous conversation's estimate until the new one
+  arrived; while the conversation you switched to was answering it didn't
+  fetch at all, so a short chat could show a long chat's 5.2K for the whole
+  answer. Estimates are now kept per conversation, fetched while an answer
+  streams, and a late reply can't land in another conversation. Your draft
+  only counts in its own conversation.
+- **Titles, summaries and search queries on hosted reasoning models** came
+  back empty or failed: only llama-server was asked not to think for these
+  short requests. They now use each model's cheapest setting (off where
+  possible) with room for the answer.
+- **OpenAI reasoning models rejected Chimera's requests** because of
+  `max_tokens` and `temperature`; Chimera now sends `max_completion_tokens`
+  and leaves out the parameters these models reject (titles failed silently,
+  and a conversation with a token limit failed every message).
+- **A half-written message followed you into another conversation.** Each
+  conversation now keeps its own draft.
+- **Thinking left inline** (`<think>…</think>` at the start of an answer, from
+  servers that don't separate it) is shown under *Thought process* instead of
+  inside the answer.
+- **Mistral's thinking** (sent as content chunks) was dropped; it is shown
+  under *Thought process*.
+- **Ollama vision** is detected from `/api/show`, so image input works
+  without setting it to "on" manually.
+
+### Not verified against live services
+The hosted services' rules (which levels each model accepts, which
+parameters it rejects, how thinking comes back) come from their current
+documentation and are tested against mocks only: OpenAI, Anthropic, Mistral,
+Google Gemini, DeepSeek, xAI and OpenRouter. Unknown models and servers get
+no thinking control and are sent nothing new; a provider that rejects the
+setting anyway gets one retry without it.
+
+### Upgrade notes
+- **Database migration 6** (a backup is written first): adds
+  `conversations.thinking` (existing conversations: `default`, i.e. no
+  change), `providers.service` and `providers.model_settings`. Additive: an
+  older Chimera ignores them.
+- No new environment variables. No breaking API changes.
+- Existing OpenAI-compatible connections to `api.anthropic.com` keep working
+  without a thinking control; edit the connection and choose the *Anthropic*
+  type to get it.
+
 ## [1.2.0] - 2026-11-27
 
 Web search per conversation with an Auto mode, a calmer look (the "Ink"

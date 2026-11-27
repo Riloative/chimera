@@ -24,9 +24,25 @@ def _validate_url(value: str | None) -> str | None:
     return value.rstrip("/")
 
 
+Kind = Literal["llamacpp", "openai", "ollama", "anthropic"]
+Service = Literal["openai", "mistral", "gemini", "deepseek", "xai", "openrouter", "anthropic", "other"]
+Thinking = Literal["default", "off", "on", "low", "medium", "high", "max"]
+
+
+class ModelSetting(Strict):
+    # Thinking control for this model: detect it, or the user says what it can do.
+    thinking: Literal["detect", "none", "toggle", "levels"] = "detect"
+
+
+def _model_keys(value):
+    if value is not None and any(not k.strip() or len(k) > 500 for k in value):
+        raise ValueError("model ids must be 1 to 500 characters")
+    return value
+
+
 class ProviderCreate(Strict):
     name: str = Field(min_length=1, max_length=80)
-    kind: Literal["llamacpp", "openai", "ollama"]
+    kind: Kind
     base_url: str = Field(max_length=500)
     api_path: str | None = Field(None, max_length=200)
     api_key: str | None = Field(None, max_length=4000)
@@ -37,13 +53,17 @@ class ProviderCreate(Strict):
     manual_models: list[str] = Field(default_factory=list, max_length=200)
     shared: bool = False
     context_override: int | None = Field(None, ge=256, le=4_000_000)
+    # OpenAI-compatible connections: the hosted service; null = recognise it by host.
+    service: Service | None = None
+    model_settings: dict[str, ModelSetting] = Field(default_factory=dict, max_length=500)
 
     _url = field_validator("base_url")(_validate_url)
+    _models = field_validator("model_settings")(_model_keys)
 
 
 class ProviderUpdate(Strict):
     name: str | None = Field(None, min_length=1, max_length=80)
-    kind: Literal["llamacpp", "openai", "ollama"] | None = None
+    kind: Kind | None = None
     base_url: str | None = Field(None, max_length=500)
     api_path: str | None = Field(None, max_length=200)
     api_key: str | None = Field(None, max_length=4000)
@@ -54,8 +74,12 @@ class ProviderUpdate(Strict):
     manual_models: list[str] | None = Field(None, max_length=200)
     shared: bool | None = None
     context_override: int | None = Field(None, ge=256, le=4_000_000)
+    service: Service | None = None
+    # Replaces the stored per-model settings (keys are model ids).
+    model_settings: dict[str, ModelSetting] | None = Field(None, max_length=500)
 
     _url = field_validator("base_url")(_validate_url)
+    _models = field_validator("model_settings")(_model_keys)
 
 
 class ProviderTest(ProviderCreate):
@@ -74,6 +98,8 @@ class ConversationCreate(Strict):
     context_strategy: Literal["sliding", "summarize", "off"] | None = None
     # Web search for this conversation; null = the user's default.
     web_search: Literal["off", "on", "auto"] | None = None
+    # Thinking level for this conversation; null = the user's default.
+    thinking: Thinking | None = None
 
 
 class ConversationUpdate(Strict):
@@ -87,6 +113,7 @@ class ConversationUpdate(Strict):
     # null = the user's default strategy
     context_strategy: Literal["sliding", "summarize", "off"] | None = None
     web_search: Literal["off", "on", "auto"] | None = None
+    thinking: Thinking | None = None
 
 
 class Target(Strict):

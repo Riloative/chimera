@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import codecs
 import json
+import re
 import time
 from typing import Any, AsyncIterator
 
@@ -17,6 +19,7 @@ from .base import (
     error_from_response,
     translate_http_error,
 )
+from . import reasoning
 
 PARAM_MAP = {
     "temperature": "temperature",
@@ -86,6 +89,7 @@ class OllamaProvider(Provider):
                 report.capabilities["build"] = version
         except Exception:  # noqa: BLE001
             pass
+        await self._show_all(report.models)
         report.capabilities.update({"chat": True, "streaming": True, "params": list(self.supported_params)})
         override = self.vision_override()
         if override is not None:
@@ -93,8 +97,36 @@ class OllamaProvider(Provider):
         report.ok = True
         return report
 
+    async def _show(self, model: ModelInfo) -> None:
+        """``/api/show`` lists a model's capabilities ("thinking", "vision")."""
+        try:
+            resp = await self.client.post(f"{self.root_url}/api/show", json={"model": model.id}, headers=self.headers(),
+                                          timeout=self.timeout(read=15))
+            data = resp.json() if resp.status_code == 200 else None
+        except Exception:  # noqa: BLE001 - detection is best effort
+            return
+        if not isinstance(data, dict):
+            return
+        caps = data.get("capabilities") if isinstance(data.get("capabilities"), list) else []
+        if model.vision is None and caps:
+            model.vision = "vision" in caps
+        if "thinking" not in caps:
+            model.reasoning = reasoning.Caps(source="detected").to_dict()
+            return
+        details = data.get("details") if isinstance(data.get("details"), dict) else {}
+        values = (data.get("thinking") or {}).get("values") if isinstance(data.get("thinking"), dict) else None
+        names = tuple(v for v in values if v in reasoning.ORDER) if isinstance(values, list) else ()
+        if names or re.match(r"gpt-?oss", model.id.lower()) or str(details.get("family", "")).lower() in ("gptoss", "gpt-oss"):
+            # Thinks with levels and can't be turned off (gpt-oss).
+            model.reasoning = reasoning.levels("ollama", "detected", names or ("low", "medium", "high"), default="medium").to_dict()
+        else:
+            model.reasoning = reasoning.toggle("ollama", "detected").to_dict()
+
+    async def _show_all(self, models: list[ModelInfo]) -> None:
+        await asyncio.gather(*(self._show(m) for m in models[:100]))
+
     def build_body(self, request: ChatRequest) -> dict[str, Any]:
-        allow_images = self.vision_override() is True
+        allow_images = self.vision_override() is not False
         messages = []
         for m in request.messages:
             entry: dict[str, Any] = {"role": m.role, "content": m.content}
@@ -105,10 +137,26 @@ class OllamaProvider(Provider):
         body: dict[str, Any] = {"model": request.model, "messages": messages, "stream": True}
         if options:
             body["options"] = options
+        caps, level = self.thinking_level(request)
+        body.update(reasoning.ollama_fields(caps, level))
         return body
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[StreamEvent]:
         body = self.build_body(request)
+        try:
+            async for event in self._stream(body):
+                yield event
+        except ProviderError as exc:
+            # "think" on a model that can't: one retry without it.
+            if exc.status != 400 or "think" not in body or "think" not in f"{exc.message} {exc.params.get('detail') or ''}".lower():
+                raise
+            body.pop("think")
+            reasoning.mark_rejected(self.config.id, request.model)
+            request.notes.setdefault("thinking", {}).update(applied="default", rejected=True)
+            async for event in self._stream(body):
+                yield event
+
+    async def _stream(self, body: dict[str, Any]) -> AsyncIterator[StreamEvent]:
         try:
             async with self.client.stream(
                 "POST", f"{self.root_url}/api/chat", json=body, headers=self.headers(), timeout=self.timeout()

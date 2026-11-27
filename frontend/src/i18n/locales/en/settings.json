@@ -50,7 +50,9 @@
     "params": "Default generation parameters",
     "paramsHelp": "Leave a field empty to use the server's own default. Parameters are only sent when the connection supports them.",
     "paramsHelpProvider": "Leave a field empty to use the server's own default. Parameters are only sent when the connection supports them (checked against {{name}}).",
-    "saved": "Chat settings saved"
+    "saved": "Chat settings saved",
+    "thinkingDefault": "Thinking in new conversations",
+    "thinkingDefaultHelp": "Used when the model supports it. Otherwise the nearest level it offers is used, or nothing is sent. You can change it in each conversation."
   },
   "documents": {
     "attachments": "Attachments",

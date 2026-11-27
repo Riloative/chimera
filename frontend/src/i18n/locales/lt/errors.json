@@ -96,7 +96,8 @@
     "provider_missing": "Šio ryšio nebėra.",
     "interrupted": "Serveris buvo paleistas iš naujo nebaigus šio atsakymo.",
     "provider_error": "Modelio serveris pranešė apie problemą.",
-    "context_exceeded": "Modelio serveris atmetė užklausą kaip per ilgą jo konteksto langui ({{n_prompt_tokens}} iš {{n_ctx}} žetonų), net ir išsiuntus mažiau istorijos. Sutrumpinkite žinutę, pašalinkite priedus, pasirinkite modelį su didesniu kontekstu arba paleiskite llama-server su didesniu -c."
+    "context_exceeded": "Modelio serveris atmetė užklausą kaip per ilgą jo konteksto langui ({{n_prompt_tokens}} iš {{n_ctx}} žetonų), net ir išsiuntus mažiau istorijos. Sutrumpinkite žinutę, pašalinkite priedus, pasirinkite modelį su didesniu kontekstu arba paleiskite llama-server su didesniu -c.",
+    "refusal": "{{name}} atsisakė atsakyti į šią užklausą."
   },
   "web": {
     "disabled": "Šiame serveryje prieiga prie interneto išjungta.",

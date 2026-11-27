@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { useUpdates } from "@/components/UpdateNotice";
 import { errorText, providerErrorText } from "@/lib/errors";
 import { relativeTime } from "@/lib/time";
-import type { AppSettings, GenerationParams } from "@/lib/types";
+import type { AppSettings, GenerationParams, ThinkingLevel } from "@/lib/types";
 import { UPDATE_DOCS } from "@/components/UpdateNotice";
 import { cn, downloadUrl, formatBytes } from "@/lib/utils";
 import { AccountSettings } from "@/pages/settings/AccountSettings";
@@ -182,7 +182,7 @@ function Appearance({ settings }: { settings: AppSettings }) {
 }
 
 function ChatSettings({ settings }: { settings: AppSettings }) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation(["settings", "chat"]);
   const save = useSave();
   const entries = useModels((s) => s.entries);
   const [prompt, setPrompt] = useState(settings.default_system_prompt);
@@ -202,6 +202,21 @@ function ChatSettings({ settings }: { settings: AppSettings }) {
         <Switch label={t("chat.stream")} description={t("chat.streamHelp")} checked={settings.stream} onChange={(v) => save({ stream: v })} />
         <Switch label={t("chat.autoTitle")} description={t("chat.autoTitleHelp")} checked={settings.auto_title} onChange={(v) => save({ auto_title: v })} />
         <Switch label={t("chat.showReasoning")} description={t("chat.showReasoningHelp")} checked={settings.show_reasoning} onChange={(v) => save({ show_reasoning: v })} />
+        <div className="pt-2 sm:max-w-xs">
+          <Field label={t("chat.thinkingDefault")} htmlFor="thinking-default" hint={t("chat.thinkingDefaultHelp")}>
+            <Select
+              id="thinking-default"
+              value={settings.thinking_default ?? "default"}
+              onChange={(e) => save({ thinking_default: e.target.value as ThinkingLevel })}
+            >
+              {(["default", "off", "low", "medium", "high", "max"] as const).map((level) => (
+                <option key={level} value={level}>
+                  {t(`chat:thinking.levels.${level}`)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
       </Group>
       <Group title={t("chat.systemPrompt")} description={t("chat.systemPromptHelp")}>
         <Textarea

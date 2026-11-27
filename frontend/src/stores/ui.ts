@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { GenerationParams, ModelRef } from "@/lib/types";
+import type { GenerationParams, ModelRef, ThinkingLevel } from "@/lib/types";
 
 export interface Toast {
   id: number;
@@ -14,6 +14,8 @@ export interface Draft {
   params: GenerationParams;
   collectionIds: string[];
   contextStrategy?: "sliding" | "summarize" | "off" | null;
+  /** Thinking chosen on the start page; undefined = the user's default. */
+  thinking?: ThinkingLevel;
 }
 
 interface UIState {
@@ -23,9 +25,12 @@ interface UIState {
   composerInsert: string | null;
   selectedModel: ModelRef | null;
   draft: Draft;
-  /** Length of the composer text (for the context indicator's draft estimate). */
-  draftChars: number;
-  setDraftChars: (n: number) => void;
+  /** Length of the composer text and the conversation it belongs to (the context indicator's draft estimate). */
+  draftChars: { key: string; n: number };
+  setDraftChars: (key: string, n: number) => void;
+  /** Unsent composer text per conversation ("new" = the start page), so a draft never follows you into another chat. */
+  composerDrafts: Record<string, string>;
+  setComposerDraft: (key: string, text: string) => void;
   setMobileSidebar: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
   toast: (t: Omit<Toast, "id">) => void;
@@ -76,8 +81,17 @@ export const useUI = create<UIState>((set) => ({
   },
   setDraft: (d) => set((s) => ({ draft: { ...s.draft, ...d } })),
   resetDraft: () => set({ draft: emptyDraft }),
-  draftChars: 0,
-  setDraftChars: (n) => set((s) => (s.draftChars === n ? s : { draftChars: n })),
+  draftChars: { key: "", n: 0 },
+  setDraftChars: (key, n) => set((s) => (s.draftChars.key === key && s.draftChars.n === n ? s : { draftChars: { key, n } })),
+  composerDrafts: {},
+  setComposerDraft: (key, text) =>
+    set((s) => {
+      if ((s.composerDrafts[key] ?? "") === text) return s;
+      const next = { ...s.composerDrafts };
+      if (text) next[key] = text;
+      else delete next[key];
+      return { composerDrafts: next };
+    }),
 }));
 
 export const toast = (message: string, tone: Toast["tone"] = "default", action?: Toast["action"]) =>

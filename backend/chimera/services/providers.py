@@ -19,6 +19,7 @@ import httpx
 
 from ..crypto import SecretBox
 from ..db import Database, dumps, loads, new_id, now_iso
+from ..providers import reasoning
 from ..providers import (
     DEFAULTS,
     PROVIDER_CLASSES,
@@ -31,7 +32,8 @@ from ..providers import (
 
 log = logging.getLogger("chimera.providers")
 
-EDITABLE = ("name", "kind", "base_url", "api_path", "api_key", "auth_header", "timeout", "enabled", "vision", "manual_models", "shared", "context_override")
+EDITABLE = ("name", "kind", "base_url", "api_path", "api_key", "auth_header", "timeout", "enabled", "vision", "manual_models", "shared",
+            "context_override", "service", "model_settings")
 HEALTH_CODES = ("connection", "connect_timeout", "connection_closed", "timeout", "unavailable", "auth", "config")
 
 
@@ -96,6 +98,10 @@ class ProviderRegistry:
             "capabilities": loads(row["capabilities"], {}),
             # Manual context size; null = use what the server reports (see services/context.py).
             "context_override": row.get("context_override"),
+            # OpenAI-compatible: the hosted service (null = recognised by host, see "detected_service").
+            "service": row.get("service"),
+            "detected_service": reasoning.service_of(row["base_url"]) if row["kind"] == "openai" else None,
+            "model_settings": loads(row.get("model_settings"), {}),
             "supported_params": list(cls.supported_params) if cls else [],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -110,8 +116,8 @@ class ProviderRegistry:
         position = (self.db.one("SELECT COALESCE(MAX(position), 0) + 1 AS p FROM providers") or {"p": 1})["p"]
         self.db.execute(
             """INSERT INTO providers (id, user_id, shared, name, kind, base_url, api_path, api_key, auth_header, timeout,
-                   enabled, vision, manual_models, position, context_override, created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   enabled, vision, manual_models, position, context_override, service, model_settings, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 pid,
                 user_id,
@@ -128,6 +134,8 @@ class ProviderRegistry:
                 dumps(data.get("manual_models") or []),
                 position,
                 data.get("context_override"),
+                data.get("service"),
+                dumps(_model_settings(data.get("model_settings"))),
                 ts,
                 ts,
             ),
@@ -154,6 +162,8 @@ class ProviderRegistry:
                 value = 1 if value else 0
             elif key == "manual_models":
                 value = dumps(value or [])
+            elif key == "model_settings":
+                value = dumps(_model_settings(value))
             elif key in ("base_url", "api_path", "auth_header", "kind"):
                 connection_changed = connection_changed or value != row.get(key)
             sets.append(f"{key} = ?")
@@ -199,7 +209,16 @@ class ProviderRegistry:
             timeout=row["timeout"],
             enabled=bool(row["enabled"]),
             vision=row["vision"],
+            service=row.get("service"),
         )
+
+    def build(self, row: dict) -> Provider:
+        """A provider for a stored connection, with what thinking detection needs."""
+        provider = build_provider(self.config_from(row), self.client)
+        provider.hints = {m["id"]: m for m in loads(row.get("cached_models"), []) if isinstance(m, dict) and m.get("id")}
+        provider.overrides = loads(row.get("model_settings"), {}) or {}
+        provider.server_caps = loads(row.get("capabilities"), {}) or {}
+        return provider
 
     def provider(self, user: dict, provider_id: str) -> Provider:
         row = self.visible(user, provider_id)
@@ -207,7 +226,10 @@ class ProviderRegistry:
             raise ProviderError("The selected connection no longer exists.", code="provider_missing")
         if not row["enabled"]:
             raise ProviderError(f"The connection '{row['name']}' is disabled.", code="disabled", name=row["name"])
-        return build_provider(self.config_from(row), self.client)
+        return self.build(row)
+
+    def thinking_caps(self, row: dict, model: str) -> reasoning.Caps:
+        return self.build(row).reasoning_caps(model)
 
     def mark_ok(self, provider_id: str, latency_ms: float | None = None) -> None:
         self.db.execute(
@@ -271,6 +293,7 @@ class ProviderRegistry:
             auth_header=data.get("auth_header"),
             timeout=float(data.get("timeout") or 300),
             vision=data.get("vision") or "auto",
+            service=data.get("service"),
         )
         report = await build_provider(config, self.client).check()
         return report_dict(report)
@@ -306,13 +329,27 @@ class ProviderRegistry:
         models = list(cached)
         known = {m["id"] for m in models}
         models += [m.to_dict() for m in self._manual_models(row) if m.id not in known]
-        result["models"] = models
-        result["provider"] = self.public(self.row(row["id"]) or row, user)
+        fresh = self.row(row["id"]) or row
+        provider = self.build(fresh)
+        # What the thinking control can offer for each model (never the provider's values).
+        result["models"] = [{**{k: v for k, v in m.items() if k != "reasoning"}, "thinking": provider.reasoning_caps(m["id"]).public()}
+                            for m in models]
+        result["provider"] = self.public(fresh, user)
         return result
 
     async def discover_all(self, user: dict, refresh: bool) -> list[dict[str, Any]]:
         rows = self.rows(user)
         return list(await asyncio.gather(*(self.discover(r, refresh, user) for r in rows)))
+
+
+def _model_settings(value: Any) -> dict[str, dict]:
+    """Per-model settings as stored: only non-default choices."""
+    out: dict[str, dict] = {}
+    for model, setting in (value or {}).items():
+        choice = setting.get("thinking") if isinstance(setting, dict) else getattr(setting, "thinking", None)
+        if isinstance(model, str) and model.strip() and choice in reasoning.OVERRIDES and choice != "detect":
+            out[model[:500]] = {"thinking": choice}
+    return out
 
 
 def report_dict(report) -> dict[str, Any]:

@@ -168,7 +168,7 @@ describe("ContextIndicator", () => {
   it("shows usage and a breakdown that includes the draft", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(estimate)));
     useChat.setState({ convs: { c1: { messages: TREE, activePath: ["u1", "a1"], loaded: true, streaming: false, webSources: {} } as never } });
-    useUI.setState({ draftChars: 350 });
+    useUI.setState({ draftChars: { key: "c1", n: 350 } });
     render(<ContextIndicator conversationId="c1" />);
     const button = await screen.findByRole("button", { name: /^Context window usage: 3\.1K \/ 8\.2K$/ });
     await userEvent.click(button);
@@ -176,7 +176,38 @@ describe("ContextIndicator", () => {
     expect(screen.getByText("Your draft")).toBeInTheDocument();
     expect(screen.getByText(/Context window: 8,192 tokens \(reported by the server\)/)).toBeInTheDocument();
     expect(screen.getByText(/Counted with the model's own tokenizer/)).toBeInTheDocument();
-    useUI.setState({ draftChars: 0 });
+    useUI.setState({ draftChars: { key: "", n: 0 } });
+  });
+
+  it("regression: never shows another conversation's numbers when you switch, even while it is answering", async () => {
+    // Short chat c1 answers at once; long chat c2 is generating and answers late.
+    let releaseLong: (r: Response) => void = () => {};
+    const fetchMock = vi.fn((url: string) =>
+      url.includes("/c2/") ? new Promise<Response>((r) => (releaseLong = r)) : Promise.resolve(json({ ...estimate, used: 76 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    useChat.setState({
+      convs: {
+        c1: { messages: TREE, activePath: ["u1", "a1"], loaded: true, streaming: false, webSources: {} },
+        c2: { messages: TREE, activePath: ["u1", "a1"], loaded: true, streaming: true, webSources: {} },
+      } as never,
+    });
+    useUI.setState({ draftChars: { key: "c1", n: 0 } });
+    const { rerender } = render(<ContextIndicator conversationId="c1" />);
+    expect(await screen.findByRole("button", { name: /: 76 \/ 8\.2K$/ })).toBeInTheDocument();
+    rerender(<ContextIndicator conversationId="c2" />);
+    // c2's estimate is still on its way: nothing is shown rather than c1's 76.
+    expect(screen.queryByTestId("context-indicator")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/c2/"), expect.anything()); // fetched while it streams
+    await act(async () => releaseLong(json({ ...estimate, used: 5000 })));
+    expect(await screen.findByRole("button", { name: /: 5K \/ 8\.2K$/ })).toBeInTheDocument();
+    // Back to c1: its own numbers straight away, and c1's draft never counts in c2.
+    rerender(<ContextIndicator conversationId="c1" />);
+    expect(screen.getByRole("button", { name: /: 76 \/ 8\.2K$/ })).toBeInTheDocument();
+    useUI.setState({ draftChars: { key: "c1", n: 3500 } });
+    rerender(<ContextIndicator conversationId="c2" />);
+    expect(await screen.findByRole("button", { name: /: 5K \/ 8\.2K$/ })).toBeInTheDocument();
+    useUI.setState({ draftChars: { key: "", n: 0 } });
   });
 });
 

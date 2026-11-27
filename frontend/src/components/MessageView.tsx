@@ -388,6 +388,11 @@ export function AssistantMessage({
             {m.tokens_per_second ? <span className="ml-2 max-sm:hidden">· {t("message.tokensPerSecond", { value: formatNumber(Number(m.tokens_per_second.toFixed(1))) })}</span> : null}
             {m.completion_tokens ? <span className="ml-2">· {t("message.tokens", { count: m.completion_tokens })}</span> : null}
             {m.finish_reason === "length" && <span className="ml-2 text-warning">· {t("message.hitMaxTokens")}</span>}
+            {m.thinking?.rejected ? (
+              <span className="ml-2" data-testid="thinking-note">· {t("thinking.meta.rejected")}</span>
+            ) : m.thinking && m.thinking.requested !== "default" && m.thinking.applied !== m.thinking.requested && m.thinking.applied !== "default" ? (
+              <span className="ml-2" data-testid="thinking-note">· {t("thinking.meta.clamped", { level: t(`thinking.levels.${m.thinking.applied}`).toLocaleLowerCase() })}</span>
+            ) : null}
           </span>
         </div>
         </div>

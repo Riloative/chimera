@@ -142,16 +142,46 @@
     "default": "default",
     "useDefault": "Use the default",
     "reset": "Reset {{name}}",
-    "temperature": { "label": "Temperature", "hint": "Randomness. Lower is more focused." },
-    "top_p": { "label": "Top-p", "hint": "Nucleus sampling probability mass." },
-    "top_k": { "label": "Top-k", "hint": "Sample from the k most likely tokens." },
-    "min_p": { "label": "Min-p", "hint": "Drop tokens below this relative probability." },
-    "max_tokens": { "label": "Max output tokens", "hint": "Upper bound on response length." },
-    "repeat_penalty": { "label": "Repeat penalty", "hint": "Penalize repeated tokens (1 = off)." },
-    "presence_penalty": { "label": "Presence penalty", "hint": "Encourage new topics." },
-    "frequency_penalty": { "label": "Frequency penalty", "hint": "Discourage frequent tokens." },
-    "seed": { "label": "Seed", "hint": "Fixed seed for reproducible output (-1 = random)." },
-    "stop": { "label": "Stop sequences", "hint": "One per line (up to 8). Generation stops when any of them appears." }
+    "temperature": {
+      "label": "Temperature",
+      "hint": "Randomness. Lower is more focused."
+    },
+    "top_p": {
+      "label": "Top-p",
+      "hint": "Nucleus sampling probability mass."
+    },
+    "top_k": {
+      "label": "Top-k",
+      "hint": "Sample from the k most likely tokens."
+    },
+    "min_p": {
+      "label": "Min-p",
+      "hint": "Drop tokens below this relative probability."
+    },
+    "max_tokens": {
+      "label": "Max output tokens",
+      "hint": "Upper bound on response length."
+    },
+    "repeat_penalty": {
+      "label": "Repeat penalty",
+      "hint": "Penalize repeated tokens (1 = off)."
+    },
+    "presence_penalty": {
+      "label": "Presence penalty",
+      "hint": "Encourage new topics."
+    },
+    "frequency_penalty": {
+      "label": "Frequency penalty",
+      "hint": "Discourage frequent tokens."
+    },
+    "seed": {
+      "label": "Seed",
+      "hint": "Fixed seed for reproducible output (-1 = random)."
+    },
+    "stop": {
+      "label": "Stop sequences",
+      "hint": "One per line (up to 8). Generation stops when any of them appears."
+    }
   },
   "branch": {
     "versionOf": "Version {{n}} of {{total}}",
@@ -160,5 +190,47 @@
     "nextVersion": "Next version",
     "previousResponse": "Previous response",
     "nextResponse": "Next response"
+  },
+  "thinking": {
+    "name": "Thinking",
+    "menuTitle": "Thinking in this conversation",
+    "levelsTip": "How much the model thinks before it answers",
+    "levels": {
+      "default": "Default",
+      "off": "Off",
+      "on": "On",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "max": "Max"
+    },
+    "hints": {
+      "default": "The model's usual amount.",
+      "defaultKnown": "The model's usual amount ({{level}}).",
+      "off": "Answers straight away.",
+      "low": "A quick think first.",
+      "medium": "Balanced.",
+      "high": "Thinks it through. Slower, and uses more tokens.",
+      "max": "As much as the model allows. The slowest.",
+      "on": "Thinks before answering."
+    },
+    "buttonName": {
+      "default": "Thinking: the model's default",
+      "off": "Off: answers without thinking",
+      "low": "Low thinking",
+      "medium": "Medium thinking",
+      "high": "High thinking",
+      "max": "Max thinking",
+      "on": "On: thinks before answering"
+    },
+    "toggleOn": "Thinks before answering. Click to answer straight away.",
+    "toggleOff": "Answers straight away. Click to think first.",
+    "always": "Always thinks",
+    "alwaysTip": "This model always thinks before it answers.",
+    "clamped": "{{wanted}} isn't available for this model, so {{used}} is used.",
+    "meta": {
+      "clamped": "{{level}} thinking",
+      "rejected": "sent without thinking (not supported)"
+    }
   }
 }

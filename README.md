@@ -2,8 +2,8 @@
 
 A minimalist, self-hosted AI chat workspace for **your own local language models**.
 Chimera pairs a calm, editorial interface with first-class support for
-[llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`, plus Ollama
-and any OpenAI-compatible server. Everything (conversations, documents,
+[llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`, plus Ollama,
+Anthropic and any OpenAI-compatible server. Everything (conversations, documents,
 settings) stays on your machine.
 
 ![Chimera conversation view](docs/screenshots/chat-light.png)
@@ -174,7 +174,7 @@ surface used, multi-server setups, embeddings and vision.
 | **Branching** | Editing a message or regenerating an answer keeps the old version as a branch; an inline `‹ 2 / 3 ›` navigator switches between versions, the chosen path is stored per conversation, search jumps to the branch a hit is on, export/import keeps the whole tree |
 | **Context window** | Window size read from llama-server per slot (or set per connection); exact token counts via `/tokenize`; system prompt → latest message (with pages) → pinned messages → recent history in whole exchanges; leave-out (default), summarize or off; prompt-cache-friendly trimming; one tighter retry when the server still rejects; a usage indicator, a marker where history stops being sent, and pinning |
 | **Rendering** | GitHub-flavored Markdown, tables, task lists, syntax highlighting, KaTeX math (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`), safe links; raw HTML and remote images are never rendered |
-| **Models** | Multiple connections (llama-server, OpenAI-compatible, Ollama), live discovery, cached last-known list, manual model IDs, per-connection timeout / API key / custom auth header / API path, honest status (*Not tested / Connected / Unreachable*), diagnostics view |
+| **Models** | Multiple connections (llama-server, OpenAI-compatible, Ollama, Anthropic), a **Thinking** control per conversation (levels or on/off, detected per model), live discovery, cached last-known list, manual model IDs, per-connection timeout / API key / custom auth header / API path, honest status (*Not tested / Connected / Unreachable*), diagnostics view |
 | **Resilience** | Generations run server-side: closing or reloading the tab doesn't lose an answer, the UI re-attaches to the live stream. Interrupted generations are marked as such after a restart; nothing stays stuck "loading" |
 | **Conversations** | SQLite persistence, Today / Yesterday / 7 / 30 days / Older grouping, pin, rename, delete, full-text search of titles and content (indexed), model-generated titles with fallback, Markdown export |
 | **Parameters** | Temperature, top-p, top-k, min-p, max tokens, stop sequences, repeat / presence / frequency penalty, seed: as global defaults and per conversation. Only parameters the connection supports are sent |
@@ -291,7 +291,7 @@ switch to Lithuanian → reload → sign out → sign in → streaming chat.
 ```
 backend/
   chimera/
-    providers/     provider abstraction + llama.cpp, OpenAI-compatible, Ollama adapters, SSE parser
+    providers/     provider abstraction + llama.cpp, OpenAI-compatible, Ollama, Anthropic adapters, thinking mapping, SSE parser
     web/           hardened fetcher, extraction, search engines, ranking, web-grounded pipeline,
                    browser client and its egress filter proxy
     services/      chat engine (streaming, cancel, reattach), conversations, files, knowledge, settings
@@ -360,8 +360,10 @@ Known limitations and planned work:
 - **Web:** no model-driven ("agentic") search yet, no video transcripts; see
   [docs/WEB.md](docs/WEB.md).
 - **No image generation.**
-- Remote (cloud) providers can be added as *OpenAI-compatible* connections, but
-  none is configured by default.
+- Remote (cloud) providers can be added as *OpenAI-compatible* (or *Anthropic*)
+  connections, but none is configured by default. Their thinking rules are
+  tested against mocks built from each provider's documentation, not against
+  the live services.
 
 ## License
 

@@ -1,5 +1,5 @@
 import * as Popover from "@radix-ui/react-popover";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
 import type { ContextEstimate } from "@/lib/types";
@@ -12,27 +12,34 @@ type Part = "system" | "summary" | "latest" | "pinned" | "history" | "reserved";
 const PARTS: Part[] = ["system", "summary", "pinned", "history", "latest", "reserved"];
 
 /** Quiet "3.2k / 8k" meter: the next request's estimated size and, after an
- * answer, what the server actually reported. Details on click/focus. */
+ * answer, what the server actually reported. Details on click/focus.
+ *
+ * The top bar (and this component) stays mounted when you switch
+ * conversations, so estimates are kept per conversation: another
+ * conversation's numbers are never shown, not even for a moment, and a late
+ * answer for one conversation can't land in another. */
 export function ContextIndicator({ conversationId }: { conversationId: string }) {
   const { t } = useTranslation("context");
   const chat = useChat((s) => s.convs[conversationId]);
-  const draftChars = useUI((s) => s.draftChars);
-  const [estimate, setEstimate] = useState<ContextEstimate | null>(null);
+  const draftChars = useUI((s) => (s.draftChars.key === conversationId ? s.draftChars.n : 0));
+  const [estimates, setEstimates] = useState<Record<string, ContextEstimate | null>>({});
+  const latest = useRef<Record<string, number>>({});
   const pins = chat?.messages.filter((m) => m.pinned).map((m) => m.id).join(",") ?? "";
-  const refreshKey = `${chat?.streaming}|${chat?.activePath.join(",")}|${pins}`;
+  // While an answer streams the estimate covers everything before it (the streaming
+  // message is left out on the server), so it is fetched then too, and again when it ends.
+  const refreshKey = `${chat?.loaded}|${chat?.streaming}|${chat?.activePath.join(",")}|${pins}`;
 
   useEffect(() => {
-    if (!chat?.loaded || chat.streaming) return;
-    let alive = true;
-    api
-      .contextEstimate(conversationId)
-      .then((e) => alive && setEstimate(e))
-      .catch(() => alive && setEstimate(null));
-    return () => {
-      alive = false;
+    if (!chat?.loaded) return;
+    const id = conversationId;
+    const seq = (latest.current[id] = (latest.current[id] ?? 0) + 1);
+    const keep = (e: ContextEstimate | null) => {
+      if (latest.current[id] === seq) setEstimates((all) => ({ ...all, [id]: e })); // only the newest answer counts
     };
+    api.contextEstimate(id).then(keep, () => keep(null));
   }, [conversationId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const estimate = estimates[conversationId] ?? null;
   const lastAnswer = useMemo(() => pathMessages(chat).findLast((m) => m.role === "assistant" && m.status === "complete"), [chat]);
   if (!estimate || !estimate.window) return null;
   const draft = Math.ceil(draftChars / CHARS_PER_TOKEN);

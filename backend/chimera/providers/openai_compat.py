@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from pathlib import PurePosixPath
 from typing import Any, AsyncIterator
@@ -36,6 +37,7 @@ from .base import (
     is_context_overflow,
     translate_http_error,
 )
+from . import reasoning
 from .sse import iter_sse
 
 log = logging.getLogger("chimera.providers")
@@ -67,6 +69,94 @@ def encode_messages(messages: list[ChatMessage], allow_images: bool) -> list[dic
         else:
             out.append({"role": msg.role, "content": msg.content})
     return out
+
+
+class ThinkSplitter:
+    """Moves a leading ``<think>…</think>`` block out of the answer text.
+
+    Some servers leave a model's thinking inline (llama-server with
+    ``--reasoning-format none``, many vLLM or LM Studio setups, DeepSeek-R1
+    distills). Works across arbitrary chunk boundaries; text after the block,
+    or an answer that doesn't start with one, passes through unchanged."""
+
+    OPEN, CLOSE = "<think>", "</think>"
+
+    def __init__(self) -> None:
+        self.state = "start"  # start | think | gap (whitespace after the block) | answer
+        self.buffer = ""
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        out: list[tuple[str, str]] = []
+        self.buffer += text
+        while self.buffer:
+            if self.state == "answer":
+                out.append(("content", self.buffer))
+                self.buffer = ""
+            elif self.state == "gap":
+                self.buffer = self.buffer.lstrip()
+                if self.buffer:
+                    self.state = "answer"
+            elif self.state == "start":
+                head = self.buffer.lstrip()
+                if head.startswith(self.OPEN):
+                    self.buffer = head[len(self.OPEN):]
+                    self.state = "think"
+                elif head and not self.OPEN.startswith(head):
+                    self.state = "answer"
+                else:
+                    break  # only whitespace or part of "<think>" so far
+            else:  # think
+                end = self.buffer.find(self.CLOSE)
+                if end >= 0:
+                    if end:
+                        out.append(("reasoning", self.buffer[:end]))
+                    self.buffer = self.buffer[end + len(self.CLOSE):]
+                    self.state = "gap"
+                    continue
+                keep = next((n for n in range(len(self.CLOSE) - 1, 0, -1) if self.buffer.endswith(self.CLOSE[:n])), 0)
+                if len(self.buffer) > keep:
+                    out.append(("reasoning", self.buffer[: len(self.buffer) - keep]))
+                    self.buffer = self.buffer[len(self.buffer) - keep:]
+                break
+        return out
+
+    def flush(self) -> list[tuple[str, str]]:
+        rest, self.buffer = self.buffer, ""
+        if self.state == "gap":
+            rest = rest.lstrip()
+        if not rest:
+            return []
+        return [("reasoning" if self.state == "think" else "content", rest)]
+
+
+def content_parts(content: Any) -> list[tuple[str, str]]:
+    """A message's content as (kind, text): plain text, or a list of parts
+    such as Mistral's ``{"type": "thinking", "thinking": [...]}`` chunks."""
+    if isinstance(content, str):
+        return [("content", content)] if content else []
+    out: list[tuple[str, str]] = []
+    if isinstance(content, list):
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "thinking":
+                inner = part.get("thinking")
+                if isinstance(inner, str):
+                    out.append(("reasoning", inner))
+                elif isinstance(inner, list):
+                    out += [("reasoning", str(p.get("text") or "")) for p in inner if isinstance(p, dict) and p.get("text")]
+            elif part.get("type") in ("text", None) and isinstance(part.get("text"), str) and part["text"]:
+                out.append(("content", part["text"]))
+    return out
+
+
+# Sampling parameters a service's reasoning models reject (HTTP 400).
+REASONING_REJECTS = {
+    "openai": ("temperature", "top_p", "presence_penalty", "frequency_penalty"),
+    "xai": ("presence_penalty", "frequency_penalty", "stop"),
+}
+QUICK_THINKING_TOKENS = 2048
+RETRY_HINT = re.compile(r"reason|think|effort|template|unsupported|not supported|unknown|unrecogni|not permitted|extra|invalid", re.I)
 
 
 class OpenAICompatibleProvider(Provider):
@@ -114,6 +204,7 @@ class OpenAICompatibleProvider(Provider):
             if isinstance(status, dict) and "value" in status:  # llama-server router mode
                 loaded = status.get("value") == "loaded"
             ctx = meta.get("n_ctx_train") or item.get("context_length") or item.get("max_model_len")
+            found = reasoning.openrouter_caps(item) if self.service == "openrouter" else None
             models.append(
                 ModelInfo(
                     id=model_id,
@@ -122,6 +213,7 @@ class OpenAICompatibleProvider(Provider):
                     context_length=int(ctx) if isinstance(ctx, (int, float)) else None,
                     loaded=loaded,
                     meta={k: v for k, v in meta.items() if isinstance(v, (int, float, str, bool))},
+                    reasoning=found.to_dict() if found else None,
                 )
             )
         return models
@@ -245,6 +337,8 @@ class OpenAICompatibleProvider(Provider):
             caps["model_path"] = body["model_path"]
         if isinstance(body.get("model_alias"), str):
             caps["model_alias"] = body["model_alias"]
+        # What the chat template reads tells whether thinking can be switched (reasoning.py).
+        caps["reasoning"] = reasoning.llama_template_caps(body.get("chat_template")).to_dict()
         return caps
 
     # -- chat ---------------------------------------------------------------
@@ -258,32 +352,98 @@ class OpenAICompatibleProvider(Provider):
         if stream:
             body["stream_options"] = {"include_usage": True}
         body.update(self.filter_params(request.params))
-        if request.quick:
-            body.update(self.quick_body())
+        caps, level = self.thinking_level(request)
+        fields = reasoning.openai_fields(caps, level)
+        if request.quick and not fields:
+            fields = self.quick_body()
+        for key, value in fields.items():
+            if isinstance(value, dict) and isinstance(body.get(key), dict):
+                body[key] = {**body[key], **value}
+            else:
+                body[key] = value
+        self.adjust_for_service(body, caps, request.model)
+        if request.quick and caps.shape != "none" and level != "off":
+            # The model will think first even at its cheapest setting: leave room for the answer.
+            for key in ("max_tokens", "max_completion_tokens"):
+                if isinstance(body.get(key), int):
+                    body[key] = max(body[key], QUICK_THINKING_TOKENS)
         return body
+
+    @property
+    def service(self) -> str:
+        return reasoning.service_of(self.config.base_url, self.config.service) if self.kind == "openai" else self.kind
+
+    def adjust_for_service(self, body: dict[str, Any], caps: reasoning.Caps, model: str) -> None:
+        """Parameters a service's reasoning models reject are never sent."""
+        svc = self.service
+        if caps.shape == "none" or svc not in REASONING_REJECTS:
+            return
+        for key in REASONING_REJECTS[svc]:
+            body.pop(key, None)
+        if svc == "openai":
+            if "max_tokens" in body:  # reasoning models need max_completion_tokens
+                body["max_completion_tokens"] = body.pop("max_tokens")
+            if re.match(r"o[134](-|$)", model.lower()):
+                body.pop("stop", None)
+
+    def without_rejected(self, body: dict[str, Any], exc: ProviderError, request: ChatRequest) -> dict[str, Any] | None:
+        """After an HTTP 400: the same request without what the server said it
+        rejects (thinking fields, or a sampling parameter), or None."""
+        if exc.status != 400 or exc.code == "context_exceeded":
+            return None
+        text = f"{exc.params.get('detail') or ''} {exc.message}"
+        fixed = dict(body)
+        changed = False
+        quoted = set(re.findall(r"['\"`]([a-z_.]+)['\"`]", text))
+        kwargs = fixed.get("chat_template_kwargs")
+        thinking_keys = [k for k in reasoning.REASONING_FIELDS if k in fixed]
+        if (thinking_keys or kwargs) and RETRY_HINT.search(text):
+            for key in thinking_keys:
+                fixed.pop(key)
+            fixed.pop("chat_template_kwargs", None)
+            reasoning.mark_rejected(self.config.id, request.model)
+            note = request.notes.setdefault("thinking", {})
+            note.update(applied="default", rejected=True)
+            changed = True
+        for key in ("temperature", "top_p", "top_k", "min_p", "presence_penalty", "frequency_penalty", "repeat_penalty", "stop", "seed"):
+            if key in quoted and key in fixed:
+                fixed.pop(key)
+                changed = True
+        if "max_tokens" in quoted and "max_completion_tokens" in text and "max_tokens" in fixed:
+            fixed["max_completion_tokens"] = fixed.pop("max_tokens")
+            changed = True
+        if changed:
+            log.info("provider=%s retrying once without rejected fields", self.config.id)
+        return fixed if changed else None
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[StreamEvent]:
         body = self.build_body(request, stream=True)
         headers = {**self.headers(), "Accept": "text/event-stream", "Content-Type": "application/json"}
         url = f"{self.api_url}/chat/completions"
-        try:
-            async with self.client.stream("POST", url, json=body, headers=headers, timeout=self.timeout()) as resp:
-                if resp.status_code != 200:
-                    raw = await resp.aread()
-                    raise error_from_response(resp.status_code, raw, self.config.name)
-                ctype = resp.headers.get("content-type", "")
-                if "text/event-stream" not in ctype and "application/json" in ctype:
-                    # Server ignored ``stream``; fall back to a single response.
-                    raw = await resp.aread()
-                    for event in self._events_from_full_response(raw):
+        for attempt in (1, 2):
+            try:
+                async with self.client.stream("POST", url, json=body, headers=headers, timeout=self.timeout()) as resp:
+                    if resp.status_code != 200:
+                        raw = await resp.aread()
+                        raise error_from_response(resp.status_code, raw, self.config.name)
+                    ctype = resp.headers.get("content-type", "")
+                    if "text/event-stream" not in ctype and "application/json" in ctype:
+                        # Server ignored ``stream``; fall back to a single response.
+                        raw = await resp.aread()
+                        for event in self._events_from_full_response(raw):
+                            yield event
+                        return
+                    async for event in self._parse_stream(resp):
                         yield event
-                    return
-                async for event in self._parse_stream(resp):
-                    yield event
-        except ProviderError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            raise translate_http_error(exc, self.config.name) from exc
+                return
+            except ProviderError as exc:
+                # Nothing was streamed yet: one retry without what was rejected.
+                fixed = self.without_rejected(body, exc, request) if attempt == 1 else None
+                if fixed is None:
+                    raise
+                body = fixed
+            except Exception as exc:  # noqa: BLE001
+                raise translate_http_error(exc, self.config.name) from exc
 
     def _events_from_full_response(self, raw: bytes) -> list[StreamEvent]:
         try:
@@ -297,10 +457,17 @@ class OpenAICompatibleProvider(Provider):
         choice = (data.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         events = []
-        reasoning = message.get("reasoning_content") or message.get("reasoning")
-        if reasoning:
-            events.append(StreamEvent(type="reasoning", text=str(reasoning)))
-        events.append(StreamEvent(type="content", text=str(message.get("content") or "")))
+        thought = message.get("reasoning_content") or message.get("reasoning")
+        if thought:
+            events.append(StreamEvent(type="reasoning", text=str(thought)))
+        parts = content_parts(message.get("content"))
+        if not thought and parts and all(kind == "content" for kind, _ in parts):
+            splitter = ThinkSplitter()
+            parts = splitter.feed("".join(t for _, t in parts)) + splitter.flush()
+        for kind, text in parts:
+            events.append(StreamEvent(type=kind, text=text))
+        if not any(e.type == "content" for e in events):
+            events.append(StreamEvent(type="content", text=""))
         usage = self._usage(data)
         if usage:
             events.append(StreamEvent(type="usage", usage=usage))
@@ -332,6 +499,8 @@ class OpenAICompatibleProvider(Provider):
         saw_done = False
         malformed = 0
         usage: dict[str, Any] = {}
+        # Inline <think> blocks are split off unless the server already separates reasoning.
+        splitter: ThinkSplitter | None = ThinkSplitter()
         async for sse in iter_sse(resp.aiter_bytes()):
             data = sse.data.strip()
             if not data:
@@ -365,14 +534,24 @@ class OpenAICompatibleProvider(Provider):
                 delta = choice.get("delta") or {}
                 if not isinstance(delta, dict):
                     delta = {}
-                reasoning = delta.get("reasoning_content") or delta.get("reasoning")
-                if isinstance(reasoning, str) and reasoning:
-                    yield StreamEvent(type="reasoning", text=reasoning)
-                content = delta.get("content")
-                if isinstance(content, str) and content:
-                    yield StreamEvent(type="content", text=content)
+                thought = delta.get("reasoning_content") or delta.get("reasoning")
+                if isinstance(thought, str) and thought:
+                    if splitter is not None:
+                        for kind, text in splitter.flush():
+                            yield StreamEvent(type=kind, text=text)
+                        splitter = None
+                    yield StreamEvent(type="reasoning", text=thought)
+                for kind, text in content_parts(delta.get("content")):
+                    if kind == "content" and splitter is not None:
+                        for k, t in splitter.feed(text):
+                            yield StreamEvent(type=k, text=t)
+                    else:
+                        yield StreamEvent(type=kind, text=text)
                 if choice.get("finish_reason"):
                     finish_reason = str(choice["finish_reason"])
+        if splitter is not None:
+            for kind, text in splitter.flush():
+                yield StreamEvent(type=kind, text=text)
         if usage:
             yield StreamEvent(type="usage", usage=usage)
         if not saw_done and finish_reason is None:

@@ -15,7 +15,7 @@ dependencies = [
   "cryptography>=42",
   # Web reading: main-content extraction to Markdown (pulls in lxml and
   # charset-normalizer, which are also used directly).
-  "trafilatura>=2.0,<3",
+  "trafilatura>=2.3.1,<3",
   "lxml>=5.0",
   "charset-normalizer>=3.3",
 ]

@@ -22,18 +22,26 @@ describe("Markdown", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
-  it("renders fenced code with language label, highlighting and copy button", () => {
+  it("renders fenced code with language label, highlighting and copy button", async () => {
     const { container } = render(<Markdown content={"```python\ndef f():\n    return 1\n```"} />);
     expect(screen.getByText("python")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy code" })).toBeInTheDocument();
-    expect(container.querySelector("code.hljs, code .hljs-keyword")).not.toBeNull();
+    // highlight.js loads on first use, then the code is coloured.
+    await vi.waitFor(() => expect(container.querySelector("code.hljs, code .hljs-keyword")).not.toBeNull());
   });
 
-  it("renders GFM tables, task lists and math", () => {
+  it("renders GFM tables, task lists and math", async () => {
     const { container } = render(<Markdown content={"| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] done\n\n$E=mc^2$"} />);
     expect(container.querySelector("table")).not.toBeNull();
     expect(container.querySelector('input[type="checkbox"]')).not.toBeNull();
-    expect(container.querySelector(".katex")).not.toBeNull();
+    await vi.waitFor(() => expect(container.querySelector(".katex")).not.toBeNull()); // KaTeX loads on first use
+  });
+
+  it("loads neither KaTeX nor highlight.js for plain answers", async () => {
+    const { container } = render(<Markdown content={"Just **text**, a list:\n\n- one\n- `inline code`"} />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container.querySelector(".katex, .hljs")).toBeNull();
+    expect(container.querySelector("strong")).toHaveTextContent("text");
   });
 
   it("normalizes \\( \\) and \\[ \\] math delimiters", () => {

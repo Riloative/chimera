@@ -17,7 +17,7 @@ from typing import Any, Callable
 from ..db import Database, dumps
 from ..providers import ChatMessage, ChatRequest, ProviderError
 from .errors import WebError
-from .prompting import fallback_query, parse_queries, query_prompt, sanitize, source_block, wrap_sources
+from .prompting import DEFAULT_AUTO_PROMPT, fallback_query, parse_decision, parse_queries, query_prompt, sanitize, source_block, wrap_sources
 from .rank import BudgetItem, allocate
 from .service import SourceData, WebService
 from .settings import WebAdminSettings
@@ -26,6 +26,8 @@ from .urls import display_domain
 log = logging.getLogger("chimera.web")
 
 QUERY_TIMEOUT = 30.0
+# Auto: a slow decision must not hold the answer up for long.
+DECIDE_TIMEOUT = 20.0
 MAX_QUERIES = 3
 
 
@@ -33,11 +35,13 @@ MAX_QUERIES = 3
 class WebPlan:
     urls: list[str] = field(default_factory=list)
     search: bool = False
+    # "Auto": the model decides whether this message needs a search.
+    auto: bool = False
     timezone: str | None = None
 
     @property
     def active(self) -> bool:
-        return bool(self.urls or self.search)
+        return bool(self.urls or self.search or self.auto)
 
 
 class WebTurn:
@@ -47,7 +51,7 @@ class WebTurn:
         self.db = db
         self.message_id = message_id
         self._publish = publish
-        self.state: dict[str, Any] = {"search": plan.search, "links": bool(plan.urls), "steps": [], "queries": [], "refs": []}
+        self.state: dict[str, Any] = {"search": plan.search, "auto": plan.auto, "links": bool(plan.urls), "steps": [], "queries": [], "refs": []}
         self.sources: dict[str, dict] = {}
 
     def step(self, kind: str, status: str = "running", code: str | None = None, **params: Any) -> int:
@@ -117,6 +121,28 @@ async def generate_queries(provider, model: str, message: str, history: list[tup
         return fallback, True
     queries = parse_queries(raw, MAX_QUERIES)
     return (queries, False) if queries else (fallback, True)
+
+
+async def decide_search(provider, model: str, message: str, history: list[tuple[str, str]], settings: WebAdminSettings,
+                        tz: str | None) -> tuple[bool, str, list[str]] | None:
+    """Auto mode: ask the model whether this message needs a search (and for
+    the queries if so) in one quick call. None = no usable decision (failed,
+    timed out or unreadable); the answer is then written without searching."""
+    convo = "\n".join(f"{'User' if role == 'user' else 'Assistant'}: {text[:600]}" for role, text in history[-6:])
+    template = settings.auto_prompt.strip() or DEFAULT_AUTO_PROMPT
+    prompt = query_prompt(template, conversation=convo, message=message[:4000], max_queries=MAX_QUERIES, tz_name=tz)
+    request = ChatRequest(model=model, messages=[ChatMessage(role="user", content=prompt)], params={"temperature": 0, "max_tokens": 256},
+                          quick=True)
+    try:
+        raw = await asyncio.wait_for(provider.complete(request), timeout=DECIDE_TIMEOUT)
+    except (ProviderError, asyncio.TimeoutError) as exc:
+        log.info("search decision failed (%s); answering without search", type(exc).__name__)
+        return None
+    decision = parse_decision(raw, MAX_QUERIES)
+    if decision and decision[0] and not decision[2]:
+        fallback = fallback_query(message)
+        decision = (True, decision[1], [fallback] if fallback else [])
+    return decision
 
 
 async def run_search(service: WebService, user: dict, queries: list[str], count: int, settings: WebAdminSettings,

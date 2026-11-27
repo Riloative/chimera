@@ -256,7 +256,7 @@ def test_migration_turns_linear_history_into_chains(tmp_path, monkeypatch):
     with CsrfClient(create_app(cfg), base_url="http://localhost") as c:
         state = c.app.state.chimera
         assert state.db.schema_version() == len(dbmod.MIGRATIONS)
-        assert state.db.last_backup and "pre-migration-v3-to-v4" in state.db.last_backup.name
+        assert state.db.last_backup and f"pre-migration-v3-to-v{len(dbmod.MIGRATIONS)}" in state.db.last_backup.name
         rows = state.db.all("SELECT id, parent_id, position, active_child_id, content, created_at FROM messages WHERE conversation_id = 'c1' ORDER BY position")
         assert [r["id"] for r in rows] == [f"c1-m{i}" for i in range(5)]
         assert [r["parent_id"] for r in rows] == [None] + [f"c1-m{i}" for i in range(4)]

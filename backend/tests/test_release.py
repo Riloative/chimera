@@ -78,13 +78,16 @@ def test_upgrade_from_a_real_older_database(tmp_path, version):
         assert [s["url"] for s in detail["web_sources"]] == ["https://example.org/page"]
         assert any(p["title"] == "Fixture prompt" for p in c.get("/api/prompts").json())
         assert c.get("/api/ready").json()["status"] == "ready"
+        # 1.2: every conversation has a search mode, and the new index finds old messages.
+        assert conv["web_search"] in ("off", "on")
+        hits = c.get("/api/conversations/search", params={"q": "question about the fix"}).json()
+        assert [h["id"] for h in hits] == [conv["id"]] and "fixture" in hits[0]["snippet"]
         state = c.app.state.chimera
         assert state.db.schema_version() == SCHEMA_VERSION
     backups = list((data / "backups").glob("pre-migration-*.sqlite"))
-    if version == "0.3.0":
-        assert len(backups) == 1 and sqlite3.connect(backups[0]).execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 3
-    else:
-        assert backups == []  # 0.4.0 already has the current schema: nothing to migrate
+    # One backup, written before migrating, at the version the file had.
+    assert len(backups) == 1
+    assert sqlite3.connect(backups[0]).execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == {"0.3.0": 3, "0.4.0": 4}[version]
 
 
 # --------------------------------------------------------- downgrade guard

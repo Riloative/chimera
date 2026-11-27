@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { LegacyNotice } from "@/components/LegacyNotice";
-import { UpdateNotice } from "@/components/UpdateNotice";
+import { UpdateNotice, useUpdatesReady } from "@/components/UpdateNotice";
 import { SearchDialog } from "@/components/SearchDialog";
 import { Sidebar } from "@/components/Sidebar";
 import { Toaster } from "@/components/Toaster";
@@ -62,6 +62,7 @@ function Shortcuts() {
 /** The signed-in application. Data loads only after authentication. */
 function AppLayout() {
   const { t } = useTranslation();
+  const ready = useUpdatesReady();
   const loaded = useRef(false);
   useEffect(() => {
     if (loaded.current) return;
@@ -75,13 +76,19 @@ function AppLayout() {
       </a>
       <Sidebar />
       <div id="main" className="flex min-w-0 flex-1 flex-col">
-        <LegacyNotice />
-        <UpdateNotice />
-        <div className="min-h-0 flex-1">
-          <Suspense fallback={<PageFallback />}>
-            <Outlet />
-          </Suspense>
-        </div>
+        {ready ? (
+          <>
+            <LegacyNotice />
+            <UpdateNotice />
+            <div className="min-h-0 flex-1">
+              <Suspense fallback={<PageFallback />}>
+                <Outlet />
+              </Suspense>
+            </div>
+          </>
+        ) : (
+          <PageFallback />
+        )}
       </div>
       <SearchDialog />
       <Shortcuts />

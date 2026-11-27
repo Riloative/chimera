@@ -37,7 +37,7 @@ def chat_requests(mock):
     out = []
     for body in mock.app.state.requests:
         text = json.dumps(body["messages"][-1])
-        if "Write web search queries" not in text and "Write a short, specific title" not in text:
+        if "Write web search queries" not in text and "Write a short, specific title" not in text and "needs a web search" not in text:
             out.append(body)
     return out
 
@@ -245,8 +245,9 @@ def test_searxng_json_disabled_is_explained(client, conversation, web):
     assert msg["error_code"] == "web.searxng_json_disabled"
 
 
-def test_regenerate_repeats_search_and_flags_invalid_citations(client, conversation, web):
-    msg = final(send(client, conversation["id"], "festival [badcite]", web_search=True))
+def test_regenerate_follows_the_conversation_and_flags_invalid_citations(client, conversation, web):
+    client.patch(f"/api/conversations/{conversation['id']}", json={"web_search": "on"})
+    msg = final(send(client, conversation["id"], "festival [badcite]"))
     assert msg["web"]["citations"]["invalid"] == [42]
     count = len(web.server.app.state.searches)
     with client.stream("POST", f"/api/conversations/{conversation['id']}/regenerate", json={}) as resp:

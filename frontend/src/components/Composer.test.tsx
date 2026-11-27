@@ -28,7 +28,7 @@ describe("Composer", () => {
     await userEvent.type(input, "line one{Shift>}{Enter}{/Shift}line two");
     expect(input.value).toBe("line one\nline two");
     await userEvent.keyboard("{Enter}");
-    expect(onSend).toHaveBeenCalledWith("line one\nline two", [], { urls: null, web_search: false });
+    expect(onSend).toHaveBeenCalledWith("line one\nline two", [], { urls: null, web_search: null });
     expect(input.value).toBe("");
   });
 
@@ -51,7 +51,7 @@ describe("Composer", () => {
     await userEvent.type(input, "hi{Enter}");
     expect(onSend).not.toHaveBeenCalled();
     await userEvent.keyboard("{Control>}{Enter}{/Control}");
-    expect(onSend).toHaveBeenCalledWith("hi\n", [], { urls: null, web_search: false });
+    expect(onSend).toHaveBeenCalledWith("hi\n", [], { urls: null, web_search: null });
   });
 
   it("shows a stop button while streaming and Escape stops", async () => {

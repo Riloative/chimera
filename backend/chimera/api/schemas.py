@@ -72,6 +72,8 @@ class ConversationCreate(Strict):
     params: GenerationParams | None = None
     collection_ids: list[str] = Field(default_factory=list, max_length=20)
     context_strategy: Literal["sliding", "summarize", "off"] | None = None
+    # Web search for this conversation; null = the user's default.
+    web_search: Literal["off", "on", "auto"] | None = None
 
 
 class ConversationUpdate(Strict):
@@ -84,6 +86,7 @@ class ConversationUpdate(Strict):
     pinned: bool | None = None
     # null = the user's default strategy
     context_strategy: Literal["sliding", "summarize", "off"] | None = None
+    web_search: Literal["off", "on", "auto"] | None = None
 
 
 class Target(Strict):
@@ -95,6 +98,7 @@ class Target(Strict):
 class WebOptions(Target):
     # Links (found in the message) to read; null = apply the user's default.
     urls: list[str] | None = Field(None, max_length=20)
+    # A one-off override for this message; null = the conversation's search mode.
     web_search: bool | None = None
     # IANA time zone of the browser, used for dates in web-grounded answers.
     timezone: str | None = Field(None, max_length=64)
@@ -107,7 +111,7 @@ class SendMessage(WebOptions):
 
 class Regenerate(Target):
     message_id: str | None = None
-    # null = search again only if the replaced answer used search.
+    # A one-off override; null = the conversation's search mode.
     web_search: bool | None = None
     timezone: str | None = Field(None, max_length=64)
 

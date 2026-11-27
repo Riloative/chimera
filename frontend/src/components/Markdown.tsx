@@ -1,12 +1,9 @@
 import { Check, Copy, ExternalLink, ImageOff, WrapText } from "lucide-react";
-import { createContext, memo, useContext, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown, { type Components } from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import "katex/dist/katex.min.css";
 import { cn, copyText } from "@/lib/utils";
 import { Tooltip } from "./ui";
 
@@ -31,7 +28,7 @@ export function CodeBlock({ language, code, children }: { language: string; code
   return (
     <div className="group/code relative mb-4 overflow-hidden rounded-xl border border-[var(--code-border)] bg-code">
       <div className="flex h-9 items-center justify-between border-b border-[var(--code-border)] pr-1.5 pl-3.5">
-        <span className="font-mono text-[0.72rem] text-faint">{language || t("code.plainText")}</span>
+        <span className="font-mono text-caption text-faint">{language || t("code.plainText")}</span>
         <div className="flex items-center gap-0.5">
           <button
             type="button"
@@ -52,14 +49,14 @@ export function CodeBlock({ language, code, children }: { language: string; code
               }
             }}
             aria-label={copied ? t("code.copied") : t("code.copy")}
-            className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[0.72rem] text-faint transition-colors hover:bg-hover hover:text-fg"
+            className="flex h-7 items-center gap-1.5 rounded-md px-2 text-caption text-faint transition-colors hover:bg-hover hover:text-fg"
           >
             {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
             {copied ? t("code.copiedShort") : t("code.copyShort")}
           </button>
         </div>
       </div>
-      <pre className={cn("overflow-x-auto px-4 py-3.5 font-mono text-[0.8125rem] leading-[1.65]", wrap && "break-words whitespace-pre-wrap")}>
+      <pre className={cn("overflow-x-auto px-4 py-3.5 font-mono text-ui leading-[1.65]", wrap && "break-words whitespace-pre-wrap")}>
         {children}
       </pre>
     </div>
@@ -76,7 +73,7 @@ function BlockedImage({ alt, src }: { alt?: string; src?: string }) {
   const { t } = useTranslation(["web", "chat"]);
   const remote = typeof src === "string" && /^https?:\/\//i.test(src);
   return (
-    <span className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-dashed border-line px-1.5 py-0.5 align-middle text-[0.8125rem] text-muted">
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-dashed border-line px-1.5 py-0.5 align-middle text-ui text-muted">
       <ImageOff className="size-3.5 shrink-0" aria-hidden />
       <span className="truncate">{alt ? t("web:image.blocked", { alt }) : t("web:image.blockedNoAlt")}</span>
       {remote && (
@@ -153,7 +150,7 @@ function Citation({ n, target }: { n: number; target: CitationTarget }) {
         rel="noopener noreferrer nofollow"
         aria-label={t("sources.cite", { n, title: target.title })}
         data-citation={n}
-        className="citation mx-px inline-flex h-[1.15rem] min-w-[1.15rem] -translate-y-px items-center justify-center rounded-md bg-subtle px-1 align-middle font-mono text-[0.68rem] font-medium text-muted no-underline transition-colors hover:bg-accent-soft hover:text-accent-text focus-visible:bg-accent-soft focus-visible:text-accent-text"
+        className="citation mx-px inline-flex h-[1.15rem] min-w-[1.15rem] -translate-y-px items-center justify-center rounded-md bg-subtle px-1 align-middle font-mono text-caption font-medium text-muted no-underline transition-colors hover:bg-accent-soft hover:text-accent-text focus-visible:bg-accent-soft focus-visible:text-accent-text"
       >
         {n}
       </a>
@@ -208,10 +205,56 @@ const components: Components = {
 };
 
 const remarkPlugins: ComponentProps<typeof ReactMarkdown>["remarkPlugins"] = [remarkGfm, [remarkMath, { singleDollarTextMath: true }]];
-const rehypePlugins: ComponentProps<typeof ReactMarkdown>["rehypePlugins"] = [
-  [rehypeKatex, { throwOnError: false, strict: "ignore", trust: false }],
-  [rehypeHighlight, { detect: false, ignoreMissing: true }],
-];
+type Plugins = NonNullable<ComponentProps<typeof ReactMarkdown>["rehypePlugins"]>;
+type Pluggable = Plugins[number];
+
+/*
+ * KaTeX and highlight.js are more than half of the Markdown code, and most
+ * answers need neither: each loads the first time an answer contains maths or
+ * code. Until then maths shows as written and code without colours (both in
+ * their final boxes, so little moves when they arrive).
+ */
+const lazyPlugin = (load: () => Promise<Pluggable>) => {
+  let plugin: Pluggable | null = null;
+  let pending: Promise<Pluggable> | null = null;
+  return {
+    get: () => plugin,
+    load: () => (pending ??= load().then((p) => (plugin = p))),
+  };
+};
+const katexPlugin = lazyPlugin(async () => {
+  const [{ default: rehypeKatex }] = await Promise.all([import("rehype-katex"), import("katex/dist/katex.min.css")]);
+  return [rehypeKatex, { throwOnError: false, strict: "ignore", trust: false }] as Pluggable;
+});
+const highlightPlugin = lazyPlugin(async () => {
+  const { default: rehypeHighlight } = await import("rehype-highlight");
+  return [rehypeHighlight, { detect: false, ignoreMissing: true }] as Pluggable;
+});
+
+const MATH_RE = /\$|\\\(|\\\[/;
+const CODE_RE = /```|~~~/; // only fenced code carries a language to highlight
+
+/** The rehype plugins this text needs; re-renders once a missing one has loaded. */
+function useRehypePlugins(text: string): Plugins {
+  const needsMath = MATH_RE.test(text);
+  const needsCode = CODE_RE.test(text);
+  const [, setLoaded] = useState(0);
+  const missing = (needsMath && !katexPlugin.get()) || (needsCode && !highlightPlugin.get());
+  useEffect(() => {
+    if (!missing) return;
+    let alive = true;
+    const waits = [needsMath && katexPlugin.load(), needsCode && highlightPlugin.load()].filter(Boolean) as Promise<unknown>[];
+    Promise.all(waits)
+      .then(() => alive && setLoaded((n) => n + 1))
+      .catch(() => undefined); // offline mid-session: keep the plain rendering
+    return () => {
+      alive = false;
+    };
+  }, [missing, needsMath, needsCode]);
+  const math = needsMath ? katexPlugin.get() : null;
+  const code = needsCode ? highlightPlugin.get() : null;
+  return useMemo(() => [math, code].filter((p): p is Pluggable => !!p), [math, code]);
+}
 
 /** Normalize \( \) and \[ \] math delimiters that many local models emit. */
 export function normalizeMath(text: string): string {
@@ -236,11 +279,13 @@ export const Markdown = memo(function Markdown({
     const valid = new Set(Object.keys(citations ?? {}).map(Number));
     return valid.size ? [...(remarkPlugins ?? []), [remarkCitations, { valid }] as never] : remarkPlugins;
   }, [citations]);
+  const text = normalizeMath(content);
+  const rehypePlugins = useRehypePlugins(text);
   return (
     <div className={cn("prose-chimera", streaming && "is-streaming", className)}>
       <CitationContext.Provider value={citations ?? null}>
         <ReactMarkdown remarkPlugins={plugins} rehypePlugins={rehypePlugins} components={components}>
-          {normalizeMath(content)}
+          {text}
         </ReactMarkdown>
       </CitationContext.Provider>
     </div>

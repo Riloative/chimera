@@ -82,13 +82,14 @@ test("admin configures the search engine, then links are read and search cites s
   const sources = answer.getByTestId("web-sources").getByRole("link");
   await expect(sources.first()).toHaveAttribute("rel", /noreferrer/);
   expect(await sources.count()).toBeGreaterThanOrEqual(3);
-  // Search turns itself off after the message.
-  await expect(page.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "false");
+  // Search stays on for this conversation (1.2: stored per conversation)...
+  await expect(page.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "true");
 
-  // --- the reloaded conversation shows the same steps and sources
+  // --- ...also after a reload, which shows the same steps and sources
   await page.reload();
   await expect(page.getByRole("link", { name: /^Source 1: / }).last()).toBeVisible();
   await expect(page.getByTestId("web-steps").last()).toContainText(/Used \d sources/);
+  await expect(page.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "true");
 });
 
 test("Lithuanian: web UI strings switch instantly, stop works, narrow layout holds", async ({ page }) => {
@@ -96,7 +97,7 @@ test("Lithuanian: web UI strings switch instantly, stop works, narrow layout hol
   await page.getByRole("combobox", { name: "Language" }).selectOption("lt");
   await expect(page.locator("html")).toHaveAttribute("lang", "lt");
   await page.goto("/");
-  await expect(page.getByTestId("search-toggle")).toHaveAccessibleName("Paieška internete šiai žinutei");
+  await expect(page.getByTestId("search-toggle")).toHaveAccessibleName("Paieška internete šiame pokalbyje");
 
   await page.getByTestId("search-toggle").click();
   await composer(page).fill("festivalis [slow]");
@@ -106,10 +107,11 @@ test("Lithuanian: web UI strings switch instantly, stop works, narrow layout hol
   await page.getByRole("button", { name: "Sustabdyti generavimą" }).click();
   await expect(page.getByText("Sustabdyta").first()).toBeVisible();
   await expect(page.getByText("Šaltiniai").first()).toBeVisible();
-  // The conversation is usable again.
+  // The conversation is usable again; search is still on for it (1.2), so the answer cites sources.
   await composer(page).fill("po sustabdymo");
   await page.keyboard.press("Enter");
-  await expect(page.getByText("You said: po sustabdymo")).toBeVisible();
+  await expect(page.getByText("According to").last()).toBeVisible();
+  await expect(page.getByTestId("search-toggle")).toHaveAttribute("aria-pressed", "true");
 
   // Narrow phone width: composer toggle, chips, steps, sources and settings must not overflow.
   await page.setViewportSize({ width: 360, height: 740 });

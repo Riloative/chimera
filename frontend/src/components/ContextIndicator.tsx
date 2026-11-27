@@ -49,7 +49,7 @@ export function ContextIndicator({ conversationId }: { conversationId: string })
           type="button"
           aria-label={`${t("indicator.label")}: ${value}`}
           data-testid="context-indicator"
-          className="flex h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-[0.72rem] text-faint tabular-nums transition-colors hover:bg-hover hover:text-muted data-[state=open]:bg-hover"
+          className="flex h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-caption text-faint tabular-nums transition-colors hover:bg-hover hover:text-muted data-[state=open]:bg-hover"
         >
           <span className="relative h-1 w-10 overflow-hidden rounded-full bg-subtle" aria-hidden>
             <span
@@ -64,7 +64,7 @@ export function ContextIndicator({ conversationId }: { conversationId: string })
         <Popover.Content
           align="end"
           sideOffset={6}
-          className="animate-pop-in z-50 w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border border-line bg-elevated p-3.5 text-[0.8125rem] shadow-pop focus:outline-none"
+          className="animate-pop-in z-50 w-[min(20rem,calc(100vw-1.5rem))] rounded-xl border border-line bg-elevated p-3.5 text-ui shadow-pop focus:outline-none"
         >
           <p className="font-medium text-fg">{t("indicator.estimate")}</p>
           <p className="mt-0.5 text-muted">{value}</p>
@@ -86,13 +86,13 @@ export function ContextIndicator({ conversationId }: { conversationId: string })
               </div>
             )}
           </dl>
-          <p className="mt-3 text-[0.75rem] leading-relaxed text-faint">
+          <p className="mt-3 text-caption leading-relaxed text-faint">
             {t("indicator.window", { window: formatNumber(estimate.window), source: t(`indicator.source.${estimate.window_source}`) })}{" "}
             {estimate.exact ? t("indicator.exact") : t("indicator.estimated")}
           </p>
-          {estimate.strategy && <p className="mt-1 text-[0.75rem] text-faint">{t(`indicator.strategy.${estimate.strategy}`)}</p>}
+          {estimate.strategy && <p className="mt-1 text-caption text-faint">{t(`indicator.strategy.${estimate.strategy}`)}</p>}
           {actual != null && (
-            <p className="mt-2 border-t border-line pt-2 text-[0.75rem] text-muted">
+            <p className="mt-2 border-t border-line pt-2 text-caption text-muted">
               {t("indicator.actual")}: {formatNumber(actual)}
             </p>
           )}
@@ -120,20 +120,20 @@ export function ContextMarker({
   const [open, setOpen] = useState(false);
   return (
     <div className="my-1" data-testid="context-marker" role="note">
-      <div className="flex items-center gap-3 text-[0.75rem] text-faint">
+      <div className="flex items-center gap-3 text-caption text-faint">
         <span className="h-px flex-1 border-t border-dashed border-line-strong" aria-hidden />
         <span className="max-w-[85%] text-center leading-relaxed">
           {summary ? t("marker.summarized", { count: dropped }) : t("marker.dropped", { count: dropped })}
           {summaryFailed && <> {t("marker.summaryFailed")}</>}
           {retried && <> {t("marker.retried")}</>}{" "}
           {summary && (
-            <button type="button" className="text-accent-text hover:underline" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            <button type="button" className="link" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
               {open ? t("marker.hideSummary") : t("marker.showSummary")}
             </button>
           )}
           {summary && onChangeStrategy && " · "}
           {onChangeStrategy && (
-            <button type="button" className="text-accent-text hover:underline" onClick={onChangeStrategy}>
+            <button type="button" className="link" onClick={onChangeStrategy}>
               {t("marker.change")}
             </button>
           )}
@@ -142,9 +142,9 @@ export function ContextMarker({
       </div>
       {open && summary && (
         <section className="mx-auto mt-2 max-w-[90%] rounded-xl border border-line bg-subtle px-4 py-3" aria-label={t("marker.summaryTitle")}>
-          <p className="text-[0.75rem] font-medium text-muted">{t("marker.summaryTitle")}</p>
-          <p className="mt-0.5 text-[0.72rem] text-faint">{t("marker.summaryHelp")}</p>
-          <p className="mt-2 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-fg">{summary}</p>
+          <p className="text-caption font-medium text-muted">{t("marker.summaryTitle")}</p>
+          <p className="mt-0.5 text-caption text-faint">{t("marker.summaryHelp")}</p>
+          <p className="mt-2 text-ui leading-relaxed whitespace-pre-wrap text-fg">{summary}</p>
         </section>
       )}
     </div>

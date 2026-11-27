@@ -38,8 +38,8 @@ export function Section({ title, description, children, actions }: { title: Reac
     <section className="mb-10">
       <div className="mb-3 flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-[0.9375rem] font-medium text-fg">{title}</h2>
-          {description && <p className="mt-0.5 text-[0.8125rem] leading-relaxed text-muted">{description}</p>}
+          <h2 className="text-lead font-medium text-fg">{title}</h2>
+          {description && <p className="mt-0.5 text-ui leading-relaxed text-muted">{description}</p>}
         </div>
         {actions}
       </div>
@@ -51,8 +51,8 @@ export function Section({ title, description, children, actions }: { title: Reac
 export function Group({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
   return (
     <section className="mb-10 last:mb-0">
-      <h2 className="text-[0.9375rem] font-medium text-fg">{title}</h2>
-      {description && <p className="mt-0.5 text-[0.8125rem] leading-relaxed text-muted">{description}</p>}
+      <h2 className="text-lead font-medium text-fg">{title}</h2>
+      {description && <p className="mt-0.5 text-ui leading-relaxed text-muted">{description}</p>}
       <div className="mt-4 space-y-5">{children}</div>
     </section>
   );

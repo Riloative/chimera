@@ -4,15 +4,15 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { errorText } from "@/lib/errors";
 import { PageHeader, PageShell } from "@/components/Page";
-import { Button, ConfirmDialog, Dialog, Field, Input, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, Spinner, Textarea } from "@/components/ui";
+import { Button, ConfirmDialog, Dialog, Field, Input, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, LoadState, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useLoad } from "@/lib/useLoad";
 import type { Prompt } from "@/lib/types";
 import { copyText } from "@/lib/utils";
 import { toast, useUI } from "@/stores/ui";
 
 export function PromptsPage() {
   const { t } = useTranslation(["prompts", "common"]);
-  const [items, setItems] = useState<Prompt[] | null>(null);
   const [filter, setFilter] = useState("");
   const [editing, setEditing] = useState<Prompt | "new" | null>(null);
   const [deleting, setDeleting] = useState<Prompt | null>(null);
@@ -20,10 +20,7 @@ export function PromptsPage() {
   const insert = useUI((s) => s.insertIntoComposer);
   const setDraft = useUI((s) => s.setDraft);
 
-  const load = () => api.prompts().then(setItems).catch((e) => toast(errorText(e), "error"));
-  useEffect(() => {
-    void load();
-  }, []);
+  const { data: items, error: loadError, reload: load } = useLoad(api.prompts);
 
   const groups = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -53,7 +50,7 @@ export function PromptsPage() {
         <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("filter")} aria-label={t("filter")} className="mb-6 max-w-sm" />
       )}
       {items === null ? (
-        <Spinner />
+        <LoadState error={loadError} onRetry={() => void load()} />
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line-strong px-6 py-12 text-center">
           <BookOpen className="mx-auto mb-3 size-6 text-faint" />
@@ -63,13 +60,13 @@ export function PromptsPage() {
       ) : (
         groups.map(([category, prompts]) => (
           <section key={category} className="mb-8">
-            <h2 className="mb-2 text-[0.75rem] font-medium text-faint">{category || t("uncategorized")}</h2>
+            <h2 className="mb-2 text-caption font-medium text-faint">{category || t("uncategorized")}</h2>
             <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-elevated">
               {prompts.map((p) => (
                 <li key={p.id} className="group flex items-start gap-3 px-4 py-3.5">
                   <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setEditing(p)}>
                     <span className="block truncate text-sm font-medium text-fg">{p.title}</span>
-                    <span className="mt-0.5 line-clamp-2 block text-[0.8125rem] leading-relaxed text-muted">{p.description || p.content}</span>
+                    <span className="mt-0.5 line-clamp-2 block text-ui leading-relaxed text-muted">{p.description || p.content}</span>
                   </button>
                   <Button
                     size="sm"
@@ -192,7 +189,7 @@ function PromptDialog({ prompt, open, categories, onClose, onSaved }: { prompt: 
           <Input id="pr-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} maxLength={1000} placeholder={t("fields.optional")} />
         </Field>
         <Field label={t("fields.content")} htmlFor="pr-content">
-          <Textarea id="pr-content" rows={10} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="font-mono text-[0.8125rem]" />
+          <Textarea id="pr-content" rows={10} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="font-mono text-ui" />
         </Field>
       </div>
     </Dialog>

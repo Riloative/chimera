@@ -1,8 +1,9 @@
 import { Copy, KeyRound, MoreHorizontal, Plus, Shield, ShieldOff, Trash2, UserCheck, UserX } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, ConfirmDialog, Dialog, Field, Input, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, Select, Spinner, Textarea } from "@/components/ui";
+import { Button, ConfirmDialog, Dialog, Field, Input, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, LoadState, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useLoad } from "@/lib/useLoad";
 import { errorText } from "@/lib/errors";
 import { relativeTime } from "@/lib/time";
 import type { AdminSettings, User } from "@/lib/types";
@@ -14,24 +15,22 @@ import { toast } from "@/stores/ui";
 export function AdminUsers() {
   const { t } = useTranslation(["admin", "common"]);
   const me = useAuth((s) => s.user);
-  const [users, setUsers] = useState<User[] | null>(null);
-  const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [allowlist, setAllowlist] = useState("");
+  const { data: users, error: usersError, reload: load } = useLoad(api.adminUsers);
+  const {
+    data: settings,
+    setData: setSettings,
+    error: settingsError,
+    reload: reloadSettings,
+  } = useLoad(async () => {
+    const s = await api.adminSettings();
+    setAllowlist(s.provider_url_allowlist.join("\n"));
+    return s;
+  });
   const [creating, setCreating] = useState(false);
   const [temporary, setTemporary] = useState<{ username: string; password: string } | null>(null);
   const [deleting, setDeleting] = useState<User | null>(null);
 
-  const load = () => api.adminUsers().then(setUsers).catch((e) => toast(errorText(e), "error"));
-  useEffect(() => {
-    void load();
-    api
-      .adminSettings()
-      .then((s) => {
-        setSettings(s);
-        setAllowlist(s.provider_url_allowlist.join("\n"));
-      })
-      .catch((e) => toast(errorText(e), "error"));
-  }, []);
 
   const saveSettings = async (patch: Partial<AdminSettings>) => {
     try {
@@ -63,7 +62,7 @@ export function AdminUsers() {
             </Select>
           </Field>
         ) : (
-          <Spinner />
+          <LoadState error={settingsError} onRetry={() => void reloadSettings()} />
         )}
       </Group>
 
@@ -74,23 +73,23 @@ export function AdminUsers() {
           </Button>
         </div>
         {users === null ? (
-          <Spinner />
+          <LoadState error={usersError} onRetry={() => void load()} />
         ) : (
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-elevated">
             {users.map((u) => (
               <li key={u.id} className="flex items-center gap-3 px-4 py-3">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-subtle text-[0.72rem] font-semibold text-fg" aria-hidden>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-subtle text-caption font-semibold text-fg" aria-hidden>
                   {u.username.slice(0, 2).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-x-2 text-sm">
                     <span className={cn("truncate font-medium", u.active ? "text-fg" : "text-muted line-through")}>{u.username}</span>
-                    {u.role === "admin" && <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[0.7rem] text-accent-text">{t("users.admin")}</span>}
-                    {!u.active && <span className="rounded-md bg-subtle px-1.5 py-0.5 text-[0.7rem] text-muted">{t("users.disabled")}</span>}
-                    {u.must_change_password && <span className="rounded-md bg-subtle px-1.5 py-0.5 text-[0.7rem] text-muted">{t("users.mustChange")}</span>}
-                    {u.id === me?.id && <span className="text-[0.75rem] text-faint">{t("users.you")}</span>}
+                    {u.role === "admin" && <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-caption text-accent-text">{t("users.admin")}</span>}
+                    {!u.active && <span className="rounded-md bg-subtle px-1.5 py-0.5 text-caption text-muted">{t("users.disabled")}</span>}
+                    {u.must_change_password && <span className="rounded-md bg-subtle px-1.5 py-0.5 text-caption text-muted">{t("users.mustChange")}</span>}
+                    {u.id === me?.id && <span className="text-caption text-faint">{t("users.you")}</span>}
                   </p>
-                  <p className="truncate text-[0.75rem] text-muted">
+                  <p className="truncate text-caption text-muted">
                     {u.email} · {u.last_login_at ? t("users.lastLogin", { when: relativeTime(u.last_login_at) }) : t("users.neverLoggedIn")}
                   </p>
                 </div>
@@ -248,7 +247,7 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: { open: boolean; on
             <option value="admin">{t("create.roleAdmin")}</option>
           </Select>
         </Field>
-        {error && <p className="text-[0.8125rem] text-danger">{error}</p>}
+        {error && <p className="text-ui text-danger">{error}</p>}
         <button type="submit" className="hidden" />
       </form>
     </Dialog>

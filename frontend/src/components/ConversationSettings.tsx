@@ -108,7 +108,7 @@ export function ConversationSettings({
             {t("settings.useDefault")}
           </label>
           {useDefault ? (
-            <p className="rounded-lg bg-subtle px-3 py-2.5 text-[0.8125rem] leading-relaxed whitespace-pre-wrap text-muted">
+            <p className="rounded-lg bg-subtle px-3 py-2.5 text-ui leading-relaxed whitespace-pre-wrap text-muted">
               {settings?.default_system_prompt || t("settings.noDefault")}
             </p>
           ) : (
@@ -123,13 +123,13 @@ export function ConversationSettings({
               />
               {prompts.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[0.75rem] text-faint">{t("settings.fromLibrary")}</span>
+                  <span className="text-caption text-faint">{t("settings.fromLibrary")}</span>
                   {prompts.slice(0, 8).map((p) => (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => setSystemPrompt(p.content)}
-                      className="h-6 rounded-md border border-line px-2 text-[0.75rem] text-muted hover:bg-hover hover:text-fg"
+                      className="h-6 rounded-md border border-line px-2 text-caption text-muted hover:bg-hover hover:text-fg"
                     >
                       {p.title}
                     </button>
@@ -158,7 +158,7 @@ export function ConversationSettings({
 
       {tab === "knowledge" && (
         <div className="pb-2">
-          <p className="mb-3 text-[0.8125rem] leading-relaxed text-muted">
+          <p className="mb-3 text-ui leading-relaxed text-muted">
             {t("settings.knowledgeHelp")}
           </p>
           {collections === null ? (
@@ -167,7 +167,7 @@ export function ConversationSettings({
             <div className="rounded-xl border border-dashed border-line-strong px-4 py-6 text-center text-sm text-muted">
               <Library className="mx-auto mb-2 size-5 text-faint" />
               {t("settings.noCollections")}{" "}
-              <Link to="/knowledge" className="text-accent-text hover:underline" onClick={() => onOpenChange(false)}>
+              <Link to="/knowledge" className="link" onClick={() => onOpenChange(false)}>
                 {t("settings.createCollection")}
               </Link>
             </div>
@@ -191,7 +191,7 @@ export function ConversationSettings({
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm text-fg">{c.name}</span>
-                        <span className="block text-[0.75rem] text-faint">
+                        <span className="block text-caption text-faint">
                           {t("knowledge:documents", { count: c.document_count })} · {t("knowledge:chunks", { count: c.chunk_count })}
                         </span>
                       </span>

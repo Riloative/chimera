@@ -3,12 +3,13 @@ import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Group } from "@/components/Page";
-import { Button, Field, Input, Select, Spinner, Switch, Textarea } from "@/components/ui";
+import { Button, Field, Input, LoadState, Select, Switch, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useLoad } from "@/lib/useLoad";
 import { errorText, providerErrorText } from "@/lib/errors";
 import { relativeTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { AppSettings, WebAdminSettings, WebAdminView, WebEngineKind, WebEngineTest, WebUserSettings } from "@/lib/types";
+import type { AppSettings, SearchMode, WebAdminSettings, WebAdminView, WebEngineKind, WebEngineTest, WebUserSettings } from "@/lib/types";
 import { useAuth } from "@/stores/auth";
 import { useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
@@ -41,11 +42,20 @@ function UserWebSettings({ settings }: { settings: AppSettings }) {
 
   return (
     <Group title={t("settings.user.title")} description={t("settings.user.help")}>
-      {status && !status.enabled && <p className="rounded-lg bg-subtle px-3 py-2 text-[0.8125rem] text-muted">{t("settings.user.disabled")}</p>}
-      {status?.enabled && !status.search_available && <p className="rounded-lg bg-subtle px-3 py-2 text-[0.8125rem] text-muted">{t("settings.user.noSearch")}</p>}
+      {status && !status.enabled && <p className="rounded-lg bg-subtle px-3 py-2 text-ui text-muted">{t("settings.user.disabled")}</p>}
+      {status?.enabled && !status.search_available && <p className="rounded-lg bg-subtle px-3 py-2 text-ui text-muted">{t("settings.user.noSearch")}</p>}
       <Switch label={t("settings.user.autoRead")} description={t("settings.user.autoReadHelp")} checked={w.auto_read_links} onChange={(v) => save({ auto_read_links: v })} />
-      <Switch label={t("settings.user.searchDefault")} description={t("settings.user.searchDefaultHelp")} checked={w.search_by_default} onChange={(v) => save({ search_by_default: v })} />
-      <Switch label={t("settings.user.keepOn")} description={t("settings.user.keepOnHelp")} checked={w.keep_search_on} onChange={(v) => save({ keep_search_on: v })} />
+      <Field
+        label={t("settings.user.searchDefault")}
+        htmlFor="web-search-default"
+        hint={w.search_default === "auto" && status && !status.auto_available && status.search_available ? t("settings.user.searchDefaultAutoOff") : t("settings.user.searchDefaultHelp")}
+      >
+        <Select id="web-search-default" value={w.search_default} onChange={(e) => save({ search_default: e.target.value as SearchMode })}>
+          <option value="off">{t("settings.user.searchDefaultOff")}</option>
+          <option value="on">{t("settings.user.searchDefaultOn")}</option>
+          {(status?.auto_available || w.search_default === "auto") && <option value="auto">{t("settings.user.searchDefaultAuto")}</option>}
+        </Select>
+      </Field>
       <Switch label={t("settings.user.expandSteps")} checked={w.expand_steps} onChange={(v) => save({ expand_steps: v })} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("settings.user.results")} htmlFor="web-results" hint={t("settings.user.resultsHelp", { max })}>
@@ -82,7 +92,7 @@ function UserWebSettings({ settings }: { settings: AppSettings }) {
         </Select>
       </Field>
       {w.privacy_acknowledged && (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[0.8125rem] text-muted">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-ui text-muted">
           <span>{t("settings.user.privacyAcknowledged")}</span>
           <Button size="sm" variant="ghost" onClick={() => save({ privacy_acknowledged: false })}>
             {t("settings.user.privacyShow")}
@@ -96,12 +106,8 @@ function UserWebSettings({ settings }: { settings: AppSettings }) {
 /* ----------------------------------------------------------------- admin */
 function AdminWebSettings() {
   const { t } = useTranslation(["web", "common"]);
-  const [view, setView] = useState<WebAdminView | null>(null);
+  const { data: view, setData: setView, error: loadError, reload } = useLoad(api.adminWeb);
   const reloadStatus = useWeb((s) => s.load);
-
-  useEffect(() => {
-    api.adminWeb().then(setView).catch((e) => toast(errorText(e), "error"));
-  }, []);
 
   const save = async (data: { settings?: Partial<WebAdminSettings>; engine_keys?: Partial<Record<WebEngineKind, string | null>> }, quiet = false) => {
     try {
@@ -116,7 +122,7 @@ function AdminWebSettings() {
     }
   };
 
-  if (!view) return <Spinner />;
+  if (!view) return <LoadState error={loadError} onRetry={() => void reload()} />;
   const s = view.settings;
   return (
     <>
@@ -146,7 +152,7 @@ function BrowserSettings({ view, save }: { view: WebAdminView; save: Save }) {
   return (
     <Group title={t("settings.admin.browserTitle")} description={t("settings.admin.browserHelp")}>
       <p
-        className={cn("flex items-center gap-2 rounded-lg bg-subtle px-3 py-2 text-[0.8125rem]", state === "ready" ? "text-fg" : "text-muted")}
+        className={cn("flex items-center gap-2 rounded-lg bg-subtle px-3 py-2 text-ui", state === "ready" ? "text-fg" : "text-muted")}
         data-testid="browser-status"
       >
         {state === "ready" ? <CheckCircle2 className="size-4 text-success" aria-hidden /> : <XCircle className="size-4 text-faint" aria-hidden />}
@@ -270,7 +276,7 @@ function EngineSettings({ view, save }: { view: WebAdminView; save: Save }) {
         )}
       </div>
       {engine && (
-        <p className="flex items-start gap-2 text-[0.8125rem] text-muted" role="status" aria-live="polite" data-testid="engine-status">
+        <p className="flex items-start gap-2 text-ui text-muted" role="status" aria-live="polite" data-testid="engine-status">
           {last ? (
             last.ok && !last.error_code ? (
               <>
@@ -321,7 +327,7 @@ function PromptField({ id, label, value, fallback, onSave }: { id: string; label
   const changed = text.trim() !== (value || fallback).trim();
   return (
     <Field label={label} htmlFor={id}>
-      <Textarea id={id} rows={8} value={text} onChange={(e) => setText(e.target.value)} className="font-mono text-[0.78rem]" />
+      <Textarea id={id} rows={8} value={text} onChange={(e) => setText(e.target.value)} className="font-mono text-ui" />
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="primary" disabled={!changed} onClick={() => onSave(text.trim() === fallback.trim() ? "" : text)}>
           {t("common:save")}
@@ -345,6 +351,15 @@ function PipelineSettings({ settings, defaults, save }: { settings: WebAdminSett
         onChange={(v) => save({ settings: { query_generation: v } })}
       />
       <PromptField id="web-query-prompt" label={t("settings.admin.queryPrompt")} value={settings.query_prompt} fallback={defaults.query_prompt} onSave={(v) => save({ settings: { query_prompt: v } })} />
+      <Switch
+        label={t("settings.admin.autoSearch")}
+        description={t("settings.admin.autoSearchHelp")}
+        checked={settings.auto_search}
+        onChange={(v) => save({ settings: { auto_search: v } })}
+      />
+      {settings.auto_search && (
+        <PromptField id="web-auto-prompt" label={t("settings.admin.autoPrompt")} value={settings.auto_prompt} fallback={defaults.auto_prompt} onSave={(v) => save({ settings: { auto_prompt: v } })} />
+      )}
       <PromptField
         id="web-grounding-prompt"
         label={t("settings.admin.groundingPrompt")}

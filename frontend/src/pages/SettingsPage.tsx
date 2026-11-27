@@ -5,11 +5,12 @@ import { Link, NavLink, useParams } from "react-router-dom";
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { Group, PageHeader, PageShell } from "@/components/Page";
 import { ParamsEditor, cleanParams } from "@/components/ParamsEditor";
-import { Button, ConfirmDialog, Field, Input, SegmentedControl, Select, Spinner, Switch, Textarea } from "@/components/ui";
+import { Button, ConfirmDialog, Field, Input, LoadState, SegmentedControl, Select, Switch, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useUpdates } from "@/components/UpdateNotice";
 import { errorText, providerErrorText } from "@/lib/errors";
 import { relativeTime } from "@/lib/time";
-import type { AppSettings, GenerationParams, UpdateView } from "@/lib/types";
+import type { AppSettings, GenerationParams } from "@/lib/types";
 import { UPDATE_DOCS } from "@/components/UpdateNotice";
 import { cn, downloadUrl, formatBytes } from "@/lib/utils";
 import { AccountSettings } from "@/pages/settings/AccountSettings";
@@ -32,6 +33,8 @@ export function SettingsPage() {
   const { t } = useTranslation("settings");
   const { section = "account" } = useParams();
   const settings = useSettings((s) => s.settings);
+  const settingsError = useSettings((s) => s.error);
+  const reloadSettings = useSettings((s) => s.load);
   const isAdmin = useAuth((s) => s.user?.role === "admin");
   const visible = SECTIONS.filter((s) => s !== "users" || isAdmin);
   const current = (visible as readonly string[]).includes(section) ? (section as SectionId) : "account";
@@ -40,18 +43,36 @@ export function SettingsPage() {
     document.title = `${t("title")} · Chimera`;
   }, [t]);
 
+  const tabsRef = useRef<HTMLElement>(null);
+  const [moreRight, setMoreRight] = useState(false);
+  const updateFade = () => {
+    const el = tabsRef.current;
+    setMoreRight(!!el && el.scrollWidth - el.scrollLeft - el.clientWidth > 4);
+  };
+  useEffect(() => {
+    updateFade();
+    window.addEventListener("resize", updateFade);
+    return () => window.removeEventListener("resize", updateFade);
+  }, []);
+
   return (
     <PageShell wide>
       <PageHeader title={t("title")} />
       <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
-        <nav aria-label={t("sections")} className="-mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 lg:w-48 lg:flex-col">
+        <nav
+          aria-label={t("sections")}
+          ref={tabsRef}
+          onScroll={updateFade}
+          // Narrow screens: a scrolling row of tabs; the fade says there's more to the right.
+          className={cn("-mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 lg:w-48 lg:flex-col", moreRight && "fade-right")}
+        >
           {visible.map((s) => (
             <NavLink
               key={s}
               to={`/settings/${s}`}
               className={({ isActive }) =>
                 cn(
-                  "flex h-8 shrink-0 items-center rounded-lg px-3 text-[0.8125rem] whitespace-nowrap transition-colors",
+                  "flex h-8 shrink-0 items-center rounded-lg px-3 text-ui whitespace-nowrap transition-colors",
                   isActive || current === s ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
                 )
               }
@@ -59,7 +80,7 @@ export function SettingsPage() {
               {t(`nav.${s}`)}
             </NavLink>
           ))}
-          <Link to="/models" className="flex h-8 shrink-0 items-center rounded-lg px-3 text-[0.8125rem] whitespace-nowrap text-muted transition-colors hover:bg-hover hover:text-fg">
+          <Link to="/models" className="flex h-8 shrink-0 items-center rounded-lg px-3 text-ui whitespace-nowrap text-muted transition-colors hover:bg-hover hover:text-fg">
             {t("nav.models")} →
           </Link>
         </nav>
@@ -73,7 +94,7 @@ export function SettingsPage() {
           ) : current === "data" ? (
             <DataSettings />
           ) : !settings ? (
-            <Spinner />
+            <LoadState error={settingsError} onRetry={() => void reloadSettings()} />
           ) : current === "appearance" ? (
             <Appearance settings={settings} />
           ) : current === "chat" ? (
@@ -99,7 +120,7 @@ function Row({ label, description, children }: { label: string; description?: st
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
         <p className="text-sm font-medium text-fg">{label}</p>
-        {description && <p className="text-[0.8125rem] text-muted">{description}</p>}
+        {description && <p className="text-ui text-muted">{description}</p>}
       </div>
       {children}
     </div>
@@ -338,13 +359,13 @@ function DataSettings() {
   return (
     <>
       <Group title={t("data.private")}>
-        <ul className="space-y-2 text-[0.8125rem] leading-relaxed text-muted">
+        <ul className="space-y-2 text-ui leading-relaxed text-muted">
           <li>• {t("data.point1")}</li>
           <li>• {t("data.point2")}</li>
           <li>• {t("data.point3")}</li>
         </ul>
         {info && isAdmin && info.database && (
-          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 rounded-xl bg-subtle px-4 py-3 text-[0.8125rem]">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 rounded-xl bg-subtle px-4 py-3 text-ui">
             <dt className="text-muted">{t("data.database")}</dt>
             <dd className="truncate font-mono text-fg" title={info.database}>
               {info.database}
@@ -480,7 +501,7 @@ function About() {
   return (
     <>
       <Group title="Chimera" description={t("about.tagline")}>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-[0.8125rem]">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-ui">
           <dt className="text-muted">{t("about.version")}</dt>
           <dd className="font-mono text-fg" data-testid="about-version">{info?.version ?? "…"}</dd>
           <dt className="text-muted">{t("about.build")}</dt>
@@ -498,11 +519,13 @@ function About() {
 
 function UpdateSettings() {
   const { t } = useTranslation(["settings", "errors"]);
-  const [view, setView] = useState<UpdateView | null>(null);
+  // Shared with the notice at the top, so an answer here updates both.
+  const view = useUpdates((st) => st.view);
+  const setView = useUpdates((st) => st.setView);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     api.adminUpdates().then(setView).catch(() => undefined);
-  }, []);
+  }, [setView]);
   if (!view) return null;
   const last = view.last_check;
   return (
@@ -524,19 +547,19 @@ function UpdateSettings() {
         }}
       />
       {view.available && (
-        <p className="rounded-lg bg-subtle px-3 py-2 text-[0.8125rem] text-fg" data-testid="about-update">
+        <p className="rounded-lg bg-subtle px-3 py-2 text-ui text-fg" data-testid="about-update">
           {t("updates.available", { version: view.available.version })}{" "}
-          <a href={view.available.url} target="_blank" rel="noopener noreferrer" className="text-accent-text hover:underline">
+          <a href={view.available.url} target="_blank" rel="noopener noreferrer" className="link">
             {t("updates.releaseNotes")}
           </a>
           {" · "}
-          <a href={UPDATE_DOCS} target="_blank" rel="noopener noreferrer" className="text-accent-text hover:underline">
+          <a href={UPDATE_DOCS} target="_blank" rel="noopener noreferrer" className="link">
             {t("updates.howTo")}
           </a>
         </p>
       )}
       {view.enabled && (
-        <p className="text-[0.75rem] text-faint" data-testid="update-last-check">
+        <p className="text-caption text-faint" data-testid="update-last-check">
           {!last?.checked_at
             ? t("updates.neverChecked")
             : last.ok
@@ -546,7 +569,7 @@ function UpdateSettings() {
               : t("updates.checkFailed", { when: relativeTime(last.checked_at), reason: providerErrorText(last.error, {}, last.error ?? "") })}
         </p>
       )}
-      <p className="text-[0.75rem] leading-relaxed text-faint">{t("updates.never")}</p>
+      <p className="text-caption leading-relaxed text-faint">{t("updates.never")}</p>
     </Group>
   );
 }

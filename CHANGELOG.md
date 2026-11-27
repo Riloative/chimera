@@ -10,6 +10,91 @@ changes.
 
 ## [Unreleased]
 
+## [1.2.0] - Unreleased
+
+Web search per conversation with an Auto mode, a calmer look (the "Ink"
+accent and a simpler stop button), and a round of accessibility, error-state
+and speed fixes.
+
+### Added
+- **Web search per conversation**, stored on the server (so it survives
+  reloads and other devices): the composer's **Search** button switches it on
+  or off for the whole conversation. The menu beside it offers **Auto** and a
+  **one-off choice for the next message** ("Search the web for the next
+  message" / "Don't search for the next message"), drawn with a dashed outline
+  and explained under the composer. Regenerate and edit follow the
+  conversation unless you choose otherwise.
+- **Auto mode**: one short model call decides whether a message needs a
+  search and writes the queries in the same reply. The answer shows the
+  decision ("No web search needed: …") with **Search the web** one click
+  away. It never blocks an answer: an unusable decision or a failed search
+  answers without the web and says so. Administrators can turn Auto off and
+  edit its instructions (Settings → Web).
+- `GET/PATCH /api/conversations/{id}` carry `web_search` (`off`, `on`,
+  `auto`); `POST /api/conversations` accepts it (default: the user's setting).
+  The message, regenerate and edit endpoints' `web_search` is now a one-off
+  override (unset = the conversation's mode).
+
+### Changed
+- **Accent "Ink"** (warm graphite) replaces terracotta. Colour is now left to
+  meaning (errors, warnings, success); links are always underlined; code
+  keywords are bold. Every accent token passes WCAG contrast on every surface
+  in both themes (terracotta text on its tint was 4.33:1, and in dark mode it
+  was nearly the danger red).
+- **Stop button**: the same size, place and colour as Send with a small stop
+  mark, so nothing moves when they swap; no spinner (the answer area already
+  shows progress).
+- **Settings → Web**: one choice, "Web search in new conversations" (Off, On,
+  Auto), replaces "Turn on web search for new messages" and "Keep web search
+  on for the whole conversation".
+- **Faster first chat load**: KaTeX and highlight.js load only for answers with
+  maths or code. The Markdown code every chat loads drops from 610 kB to
+  172 kB; Lighthouse (mobile, a chat with maths and code) 56 → 58, desktop
+  88 → 92.
+- **Conversation search** (Ctrl+K) uses a full-text index: a rare word in
+  10,000 conversations takes 7 ms instead of 405 ms. Matching is unchanged
+  ("contains", any case).
+- One type scale (12, 13, 14 and 15 px plus headings) replaces 13 hand-picked
+  text sizes.
+
+### Fixed
+- **Focus ring** below 3:1 contrast (55–60% transparent): now solid.
+- **Editing a message never searched**, even with search on.
+- **Failed loads** (prompts, collections, sessions, users, settings, the
+  conversation list) showed a toast and then a spinner forever, and the
+  sidebar said "No conversations yet": they now say what went wrong and offer
+  **Try again**.
+- **Model picker**: arrow keys, Home/End and Enter work; Escape returns focus
+  to the picker instead of the page; correct listbox roles.
+- **Menus** hid the rest of the page from screen readers while its controls
+  stayed focusable (now non-modal).
+- The administrators' **update question** pushed the page down after it
+  loaded; it is now part of the first frame. Its close button is 28 px (was
+  16).
+- **Touch screens**: conversation options (⋯) in the sidebar were invisible
+  except for the open chat.
+- **Find in page** (Ctrl/Cmd+F) couldn't see earlier messages of a long
+  conversation that weren't shown yet; they are now shown first.
+- Faint text on highlighted rows (model picker, search) was below 4.5:1 in
+  dark mode.
+- The Settings tab row on tablets gives no sign that it scrolls: it now fades
+  at the edge.
+
+### Upgrade notes
+- **Database migration 5** (a backup is written first, as always): adds each
+  conversation's search mode, set from its owner's "search by default" (what a
+  reload showed before), and a full-text index of message text (FTS5,
+  trigram). The index takes about 1.7 times the size of the message text
+  (measured: 29 MB for 17 MB of text) and is built once during the upgrade
+  (about 0.7 s per 20,000 messages). On
+  SQLite without the trigram tokenizer (before 3.34; the published images have
+  it) search keeps scanning as before.
+- "Search by default" becomes `search_default` (`off`/`on`); "keep search on"
+  is retired: a conversation's mode now always stays as set.
+- No new environment variables. API clients that sent `web_search: false` to
+  mean "no search" still get no search; clients that sent nothing now get the
+  conversation's mode instead of no search.
+
 ## [1.1.0] - 2026-11-18
 
 Polish, bug fixes and speed: titles appear live, one calm waiting

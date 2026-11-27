@@ -81,6 +81,20 @@ def mock_queries(prompt: str) -> str:
     return "<think>planning</think>" + json.dumps({"queries": [base, f"{base} latest"]})
 
 
+def mock_decision(prompt: str) -> str:
+    """Answer an Auto search decision: search for "[auto-yes]" and for
+    time-sensitive words; "[auto-fail]" gives an unusable reply."""
+    message = prompt.rsplit("Latest user message:", 1)[-1].strip()
+    if "[auto-fail]" in message:
+        return "Hmm, hard to say."
+    needed = "[auto-yes]" in message or bool(re.search(r"\b(latest|news|today|weather|festival|price)\b", message, re.I))
+    words = re.sub(r"https?://\S+|\[[a-z-]+\]", " ", message).split()
+    base = " ".join(words[:6]) or "query"
+    return "<think>deciding</think>" + json.dumps(
+        {"search": needed, "reason": "current information" if needed else "general question", "queries": [base] if needed else []}
+    )
+
+
 def mock_grounded_answer(text: str) -> str:
     """Cite every source the app provided, quoting the first line of each, and
     say so truthfully when a source could not be read."""
@@ -265,6 +279,8 @@ def create_mock_app(
             app.state.summaries += 1
             words = re.findall(r"text\d+|\w+", text.rsplit("Messages to summarize:", 1)[-1])
             answer = f"SUMMARY#{app.state.summaries}: " + " ".join(words[:12])
+        elif "needs a web search" in text and "Latest user message:" in text:
+            answer = mock_decision(text)
         elif "Write web search queries" in text:
             answer = mock_queries(text)
             if "[slowquery]" in text:

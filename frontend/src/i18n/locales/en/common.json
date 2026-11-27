@@ -22,5 +22,7 @@
   "offline": {
     "title": "Cannot reach the Chimera server.",
     "body": "Make sure it is running, then try again."
-  }
+  },
+  "loadError": "This couldn't be loaded.",
+  "tryAgain": "Try again"
 }

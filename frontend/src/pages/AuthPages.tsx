@@ -37,7 +37,7 @@ export function AuthShell({ title, subtitle, children, footer }: { title: string
 function FieldRow({ id, label, error, hint, children }: { id: string; label: string; error?: string | null; hint?: ReactNode; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-[0.8125rem] font-medium text-fg">
+      <label htmlFor={id} className="block text-ui font-medium text-fg">
         {label}
       </label>
       {children}
@@ -175,7 +175,7 @@ export function LoginPage() {
         registrationOpen ? (
           <>
             {t("noAccount")}{" "}
-            <Link to={`/register${params.get("next") ? `?next=${encodeURIComponent(params.get("next")!)}` : ""}`} className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current">
+            <Link to={`/register${params.get("next") ? `?next=${encodeURIComponent(params.get("next")!)}` : ""}`} className="link">
               {t("register")}
             </Link>
           </>
@@ -207,7 +207,7 @@ export function LoginPage() {
           {t("rememberMe")}
         </label>
         {formError && (
-          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[0.8125rem] text-danger">
+          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-ui text-danger">
             {formError}
           </p>
         )}
@@ -241,7 +241,7 @@ export function RegisterPage() {
         title={t("registrationClosedTitle")}
         subtitle={t("registrationClosedBody")}
         footer={
-          <Link to="/login" className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current">
+          <Link to="/login" className="link">
             {t("backToSignIn")}
           </Link>
         }
@@ -291,7 +291,7 @@ export function RegisterPage() {
         needsSetup ? null : (
           <>
             {t("haveAccount")}{" "}
-            <Link to="/login" className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current">
+            <Link to="/login" className="link">
               {t("signIn")}
             </Link>
           </>
@@ -332,7 +332,7 @@ export function RegisterPage() {
           {t("rememberMe")}
         </label>
         {formError && (
-          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[0.8125rem] text-danger">
+          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-ui text-danger">
             {formError}
           </p>
         )}
@@ -371,7 +371,7 @@ export function ChangePasswordScreen() {
       title={t("mustChangeTitle")}
       subtitle={t("mustChangeSubtitle", { username: user?.username ?? "" })}
       footer={
-        <button type="button" className="text-accent-text underline decoration-accent-text/40 underline-offset-2 hover:decoration-current" onClick={() => logout()}>
+        <button type="button" className="link" onClick={() => logout()}>
           {t("signOut")}
         </button>
       }
@@ -387,7 +387,7 @@ export function ChangePasswordScreen() {
           <PasswordInput id="confirm-password" value={form.confirm} onChange={(v) => setForm({ ...form, confirm: v })} autoComplete="new-password" />
         </FieldRow>
         {formError && (
-          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[0.8125rem] text-danger">
+          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-ui text-danger">
             {formError}
           </p>
         )}

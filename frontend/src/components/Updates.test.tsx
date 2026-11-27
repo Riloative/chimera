@@ -7,7 +7,20 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { useAuth } from "@/stores/auth";
 import { Route, Routes } from "react-router-dom";
 import { TooltipProvider } from "./ui";
-import { UpdateNotice } from "./UpdateNotice";
+import { UpdateNotice, useUpdates, useUpdatesReady } from "./UpdateNotice";
+
+/** Like AppLayout: the page waits for the update check, then renders the notice and the content together. */
+function Shell() {
+  const ready = useUpdatesReady();
+  return ready ? (
+    <>
+      <UpdateNotice />
+      <p>Page content</p>
+    </>
+  ) : (
+    <p>Loading the page</p>
+  );
+}
 
 const ADMIN = { id: "a", username: "admin", email: "a@x.io", role: "admin", language: "en", active: true, must_change_password: false, last_login_at: null, created_at: "" };
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -30,6 +43,8 @@ function mockApi(view: UpdateView) {
   return calls;
 }
 
+beforeEach(() => useUpdates.setState({ view: null, settled: false }));
+
 afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
@@ -45,7 +60,7 @@ describe("update notice (administrators)", () => {
   it("asks once at first run and saves the answer", async () => {
     useAuth.setState({ status: "authenticated", user: ADMIN as never });
     const calls = mockApi({ ...VIEW, asked: false, enabled: false });
-    render(<UpdateNotice />);
+    render(<Shell />);
     expect(await screen.findByText("Check for new Chimera versions?")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "No, thanks" }));
     expect(calls.find((c) => c.body)?.body).toBe(JSON.stringify({ enabled: false }));
@@ -55,7 +70,7 @@ describe("update notice (administrators)", () => {
   it("shows a quiet, dismissible notice with release notes and instructions", async () => {
     useAuth.setState({ status: "authenticated", user: ADMIN as never });
     mockApi({ ...VIEW, available: { version: "1.1.0", url: "https://github.com/Riloative/chimera/releases/tag/v1.1.0" } });
-    render(<UpdateNotice />);
+    render(<Shell />);
     const notice = await screen.findByTestId("update-notice");
     expect(notice).toHaveTextContent("Chimera 1.1.0 is available.");
     expect(screen.getByRole("link", { name: "Release notes" })).toHaveAttribute("href", "https://github.com/Riloative/chimera/releases/tag/v1.1.0");
@@ -64,11 +79,35 @@ describe("update notice (administrators)", () => {
     expect(screen.queryByTestId("update-notice")).toBeNull();
   });
 
+  it("is part of the first frame: the content never moves down when it appears", async () => {
+    useAuth.setState({ status: "authenticated", user: ADMIN as never });
+    let answer: (r: Response) => void = () => {};
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => (answer = r))));
+    render(<Shell />);
+    expect(screen.getByText("Loading the page")).toBeInTheDocument();
+    expect(screen.queryByText("Page content")).toBeNull();
+    await act(async () => answer(json({ ...VIEW, asked: false, enabled: false })));
+    // Both arrive in the same render.
+    expect(screen.getByText("Page content")).toBeInTheDocument();
+    expect(screen.getByTestId("update-ask")).toBeInTheDocument();
+  });
+
+  it("doesn't hold the page up for long when the check is slow", async () => {
+    vi.useFakeTimers();
+    useAuth.setState({ status: "authenticated", user: ADMIN as never });
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(<Shell />);
+    await act(async () => vi.advanceTimersByTime(900));
+    expect(screen.getByText("Page content")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it("shows nothing to regular users and makes no request", () => {
     useAuth.setState({ status: "authenticated", user: { ...ADMIN, role: "user" } as never });
     const calls = mockApi(VIEW);
-    const { container } = render(<UpdateNotice />);
-    expect(container).toBeEmptyDOMElement();
+    render(<Shell />);
+    expect(screen.getByText("Page content")).toBeInTheDocument(); // no waiting either
+    expect(screen.queryByTestId("update-ask")).toBeNull();
     expect(calls).toEqual([]);
   });
 
@@ -76,7 +115,7 @@ describe("update notice (administrators)", () => {
     await act(() => i18n.changeLanguage("lt"));
     useAuth.setState({ status: "authenticated", user: ADMIN as never });
     mockApi({ ...VIEW, available: { version: "1.1.0", url: "https://github.com/Riloative/chimera/releases/tag/v1.1.0" } });
-    render(<UpdateNotice />);
+    render(<Shell />);
     expect(await screen.findByTestId("update-notice")).toHaveTextContent("Išleista Chimera 1.1.0.");
   });
 });

@@ -20,7 +20,7 @@ from .errors import WebError
 from .extract import extract_page
 from .fetcher import FetchPolicy, FetchResult, SafeFetcher
 from .netguard import Allowlist
-from .prompting import DEFAULT_GROUNDING_PROMPT, DEFAULT_QUERY_PROMPT
+from .prompting import DEFAULT_AUTO_PROMPT, DEFAULT_GROUNDING_PROMPT, DEFAULT_QUERY_PROMPT
 from .search import ENGINE_KINDS, EngineConfig, SearchEngine, SearchResult, build_engine, probe_engine
 from .settings import WebAdminSettings
 from .urls import canonical_url, display_domain, domain_matches, host_of, rewrite, strip_tracking
@@ -197,7 +197,7 @@ class WebService:
         return {
             "settings": settings.model_dump(),
             "engines": engines,
-            "defaults": {"query_prompt": DEFAULT_QUERY_PROMPT, "grounding_prompt": DEFAULT_GROUNDING_PROMPT},
+            "defaults": {"query_prompt": DEFAULT_QUERY_PROMPT, "grounding_prompt": DEFAULT_GROUNDING_PROMPT, "auto_prompt": DEFAULT_AUTO_PROMPT},
         }
 
     def browser_available(self, settings: WebAdminSettings) -> bool:
@@ -216,6 +216,7 @@ class WebService:
             "enabled": settings.enabled,
             "browser_available": self.browser_available(settings),
             "search_available": self.search_available(settings),
+            "auto_available": self.search_available(settings) and settings.auto_search,
             "engine": settings.engine if self.search_available(settings) else None,
             "max_urls_per_message": settings.max_urls_per_message,
             "max_results": settings.max_results,

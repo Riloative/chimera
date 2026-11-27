@@ -46,6 +46,22 @@ Conversation (most recent last):
 Latest user message:
 {message}"""
 
+DEFAULT_AUTO_PROMPT = """Today is {date}. Decide whether a good answer to the user's latest message needs a web search.
+
+Search when the answer depends on information that may be missing from your training or may have changed: news and recent events, prices, schedules, opening hours, weather, releases and versions, or specific facts about particular places, products, organisations or people. Also search when the user asks you to look something up or to check sources.
+Do not search for greetings, opinions, advice, writing, editing, translation, coding, maths, general knowledge that doesn't change, or questions about this conversation.
+
+Respond with JSON only, in one of these forms:
+{{"search": true, "reason": "a few words", "queries": ["first query", "second query"]}}
+{{"search": false, "reason": "a few words", "queries": []}}
+When searching, give between 1 and {max_queries} short, specific queries (usually 2 to 8 words each). Resolve references like "it" using the conversation.
+
+Conversation (most recent last):
+{conversation}
+
+Latest user message:
+{message}"""
+
 # Control tokens of common chat templates (ChatML, Llama 2/3, Gemma, Mistral, Phi, DeepSeek…).
 SPECIAL_TOKEN_RE = re.compile(
     r"<\|[^<>|\n]{1,64}\|>|<｜[^<>｜\n]{1,64}｜>|\[/?INST\]|<</?SYS>>|</?s>|<(?:start|end)_of_turn>|<\|?im_(?:start|end)\|?>"
@@ -175,6 +191,27 @@ def parse_queries(raw: str, max_queries: int) -> list[str]:
         if queries:
             break
     return queries[:max_queries]
+
+
+def parse_decision(raw: str, max_queries: int) -> tuple[bool, str, list[str]] | None:
+    """Read an Auto decision ({"search": bool, "reason": str, "queries": [...]}).
+    Returns None when the reply holds no usable decision; the caller then
+    answers without searching (it never blocks the answer)."""
+    if not raw:
+        return None
+    text = re.sub(r"<think>[\s\S]*?(</think>|$)", "", raw, flags=re.I).strip()
+    for m in re.finditer(r"\{[\s\S]*?\}(?=\s*$|\s*\n|\s*`)|\{[\s\S]*\}", text):
+        try:
+            data = json.loads(m.group(0))
+        except ValueError:
+            continue
+        if not isinstance(data, dict) or not isinstance(data.get("search"), bool):
+            continue
+        reason = data.get("reason") if isinstance(data.get("reason"), str) else ""
+        reason = re.sub(r"\s+", " ", SPECIAL_TOKEN_RE.sub("", reason)).strip()[:160]
+        queries = parse_queries(json.dumps({"queries": data.get("queries") or []}), max_queries) if data["search"] else []
+        return data["search"], reason, queries
+    return None
 
 
 def fallback_query(message: str, limit: int = 200) -> str:

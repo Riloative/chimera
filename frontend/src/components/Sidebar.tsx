@@ -29,7 +29,7 @@ import { findProvider, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { toast, useUI } from "@/stores/ui";
 import { Logo, LogoMark } from "./Logo";
-import { ConfirmDialog, IconButton, Kbd, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, StatusDot, Tooltip } from "./ui";
+import { ConfirmDialog, IconButton, Kbd, LoadState, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger, StatusDot, Tooltip } from "./ui";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
 export function Sidebar() {
@@ -103,7 +103,7 @@ function CollapsedRail({ onToggle }: { onToggle: () => void }) {
 }
 
 function NavItem({ to, icon, children, onClick, shortcut }: { to?: string; icon: ReactNode; children: ReactNode; onClick?: () => void; shortcut?: string }) {
-  const className = "group flex h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-[0.8125rem] text-muted transition-colors hover:bg-hover hover:text-fg";
+  const className = "group flex h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-ui text-muted transition-colors hover:bg-hover hover:text-fg";
   const content = (
     <>
       <span className="flex size-4 shrink-0 items-center justify-center [&>svg]:size-4">{icon}</span>
@@ -132,7 +132,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   const { t } = useTranslation(["sidebar", "common"]);
   const navigate = useNavigate();
   const setSearchOpen = useUI((s) => s.setSearchOpen);
-  const { items, loaded } = useConversations();
+  const { items, loaded, error: listError, load: reloadList } = useConversations();
   const groups = useMemo(() => groupConversations(items), [items]);
   const hasMore = useConversations((s) => s.hasMore);
   const loadingMore = useConversations((s) => s.loadingMore);
@@ -153,7 +153,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         <button
           type="button"
           onClick={() => navigate("/")}
-          className="group mb-1 flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-[0.8125rem] font-medium text-fg transition-colors hover:bg-hover"
+          className="group mb-1 flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-ui font-medium text-fg transition-colors hover:bg-hover"
         >
           <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent">
             <Plus className="size-3.5" strokeWidth={2.5} />
@@ -178,10 +178,14 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
       </nav>
 
       <nav className="mt-4 min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label={t("conversations")}>
-        {loaded && items.length === 0 && <p className="px-2 py-2 text-[0.8125rem] text-faint">{t("empty")}</p>}
+        {loaded && listError && items.length === 0 ? (
+          <LoadState error={listError} onRetry={() => void reloadList()} className="mx-1 flex-col items-start" />
+        ) : (
+          loaded && items.length === 0 && <p className="px-2 py-2 text-ui text-faint">{t("empty")}</p>
+        )}
         {groups.map((g) => (
           <section key={g.key} className="mb-4">
-            <h2 className="px-2 pb-1 text-[0.72rem] font-medium text-faint">{t(`groups.${g.key}`)}</h2>
+            <h2 className="px-2 pb-1 text-caption font-medium text-faint">{t(`groups.${g.key}`)}</h2>
             <ul className="space-y-px">
               {g.items.map((c) => (
                 <ConversationItem key={c.id} conversation={c} />
@@ -194,7 +198,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
             type="button"
             onClick={() => void loadMore()}
             disabled={loadingMore}
-            className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[0.8125rem] text-muted transition-colors hover:bg-hover hover:text-fg disabled:opacity-60"
+            className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-ui text-muted transition-colors hover:bg-hover hover:text-fg disabled:opacity-60"
           >
             {loadingMore && <ThinkingIndicator size="sm" />}
             {t("showOlder")}
@@ -263,7 +267,7 @@ function ConversationItem({ conversation: c }: { conversation: Conversation }) {
               setRenaming(false);
             }
           }}
-          className="h-8 w-full rounded-lg border border-accent bg-elevated px-2 text-[0.8125rem] text-fg focus:outline-none"
+          className="h-8 w-full rounded-lg border border-accent bg-elevated px-2 text-ui text-fg focus:outline-none"
           maxLength={200}
         />
       ) : (
@@ -271,7 +275,7 @@ function ConversationItem({ conversation: c }: { conversation: Conversation }) {
           to={`/c/${c.id}`}
           title={c.title}
           className={cn(
-            "flex h-8 items-center gap-2 rounded-lg pr-8 pl-2 text-[0.8125rem] transition-colors",
+            "flex h-8 items-center gap-2 rounded-lg pr-8 pl-2 text-ui transition-colors",
             active ? "bg-active text-fg" : "text-muted hover:bg-hover hover:text-fg",
           )}
           onDoubleClick={startRename}
@@ -296,7 +300,8 @@ function ConversationItem({ conversation: c }: { conversation: Conversation }) {
               aria-label={t("optionsFor", { title: c.title })}
               className={cn(
                 "absolute top-1 right-1 flex size-6 items-center justify-center rounded-md text-muted transition-opacity hover:bg-active hover:text-fg data-[state=open]:opacity-100",
-                active ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                // Touch screens have no hover: always shown there.
+                active ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100",
               )}
             >
               <MoreHorizontal className="size-4" />
@@ -348,7 +353,7 @@ function AccountMenu({ compact }: { compact?: boolean }) {
         <MenuTrigger asChild>
           <button
             type="button"
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[0.72rem] font-semibold text-muted transition-colors hover:bg-hover hover:text-fg data-[state=open]:bg-hover"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-caption font-semibold text-muted transition-colors hover:bg-hover hover:text-fg data-[state=open]:bg-hover"
           >
             {/* The initials are decoration: the name comes from the text read out instead. */}
             <span aria-hidden className="flex size-6 items-center justify-center rounded-full bg-subtle text-fg">
@@ -360,8 +365,8 @@ function AccountMenu({ compact }: { compact?: boolean }) {
       </Tooltip>
       <MenuContent align={compact ? "start" : "end"} side={compact ? "right" : "top"}>
         <div className="px-2.5 pt-1.5 pb-2">
-          <p className="truncate text-[0.8125rem] font-medium text-fg">{user.username}</p>
-          <p className="truncate text-[0.75rem] text-muted">{user.email}</p>
+          <p className="truncate text-ui font-medium text-fg">{user.username}</p>
+          <p className="truncate text-caption text-muted">{user.email}</p>
         </div>
         <MenuSeparator />
         <MenuItem icon={<UserRound />} onSelect={() => navigate("/settings/account")}>
@@ -402,10 +407,10 @@ function SidebarFooter() {
               <LogoMark className="size-4" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[0.8125rem] font-medium text-fg" title={model ?? undefined}>
+              <span className="block truncate text-ui font-medium text-fg" title={model ?? undefined}>
                 {model ? modelLabel(model) : t("noModel")}
               </span>
-              <span className="block truncate text-[0.72rem] text-muted">
+              <span className="block truncate text-caption text-muted">
                 {provider ? <StatusDot status={provider.status} withLabel /> : t("setUpConnection")}
                 {provider && <span className="text-faint"> · {provider.name}</span>}
               </span>

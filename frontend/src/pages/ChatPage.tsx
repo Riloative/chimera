@@ -13,7 +13,7 @@ import { Button, ConfirmDialog, Dialog, IconButton, Input, MenuContent, MenuItem
 import { api } from "@/lib/api";
 import { useActiveModel } from "@/lib/hooks";
 import { greetingKey } from "@/lib/time";
-import type { Attachment, Conversation, Message, ModelRef } from "@/lib/types";
+import type { Attachment, Conversation, Message, ModelRef, SearchMode } from "@/lib/types";
 import { cn, modelLabel } from "@/lib/utils";
 import { pathMessages, siblingsOf, useChat } from "@/stores/chat";
 import { useConversations } from "@/stores/conversations";
@@ -72,7 +72,14 @@ export function ChatPage() {
 
   const onSend = async (content: string, attachments: Attachment[], web: WebChoice) => {
     if (!model) return;
-    const body = { content, attachments: attachments.map((a) => a.id), ...target(model), ...web, timezone: browserTimeZone() };
+    const body = {
+      content,
+      attachments: attachments.map((a) => a.id),
+      ...target(model),
+      urls: web.urls,
+      ...(web.web_search === null ? {} : { web_search: web.web_search }),
+      timezone: browserTimeZone(),
+    };
     let convId = id;
     if (!convId) {
       const created = await api
@@ -83,6 +90,7 @@ export function ChatPage() {
           params: draft.params,
           collection_ids: draft.collectionIds,
           context_strategy: draft.contextStrategy ?? null,
+          web_search: searchMode,
         })
         .catch((err) => {
           toast(errorText(err), "error");
@@ -91,7 +99,7 @@ export function ChatPage() {
       useConversations.getState().upsert(created);
       convId = created.id;
       resetDraft();
-      useWeb.getState().moveSearch("new", convId);
+      useWeb.getState().setDraftMode(null);
       const p = send(convId, body, attachments);
       navigate(`/c/${convId}`, { replace: true });
       // Rejections propagate so the composer restores what was typed.
@@ -99,6 +107,17 @@ export function ChatPage() {
       return;
     }
     await send(convId, body, attachments);
+  };
+
+  // Web search: stored on the conversation; on the start page, a draft until the conversation exists.
+  const draftMode = useWeb((s) => s.draftMode);
+  const searchMode: SearchMode = id ? (conv?.web_search ?? "off") : (draftMode ?? settings?.web?.search_default ?? "off");
+  const onSearchModeChange = (mode: SearchMode) => {
+    if (!id) return useWeb.getState().setDraftMode(mode);
+    useConversations
+      .getState()
+      .patch(id, { web_search: mode })
+      .catch((err) => toast(errorText(err), "error"));
   };
 
   const settingsValue: ConversationSettingsValue = conv
@@ -127,6 +146,8 @@ export function ChatPage() {
 
   const composer = (
     <Composer
+      searchMode={searchMode}
+      onSearchModeChange={onSearchModeChange}
       onSend={onSend}
       onStop={() => id && stop(id)}
       streaming={!!chat?.streaming}
@@ -175,7 +196,7 @@ export function ChatPage() {
                   key={ex}
                   type="button"
                   onClick={() => useUI.getState().insertIntoComposer(t(`examples.${ex}.text`))}
-                  className="h-8 rounded-lg border border-line px-3 text-[0.8125rem] text-muted transition-colors hover:border-line-strong hover:bg-hover hover:text-fg"
+                  className="h-8 rounded-lg border border-line px-3 text-ui text-muted transition-colors hover:border-line-strong hover:bg-hover hover:text-fg"
                 >
                   {t(`examples.${ex}.label`)}
                 </button>
@@ -238,7 +259,7 @@ export function ChatPage() {
             <ProviderBanner providerId={provider.id} name={provider.name} error={providerErrorText(provider.last_error_code, provider.last_error_params, provider.last_error)} />
           )}
           {chat?.sendError && (
-            <div role="alert" className="mb-3 flex items-start gap-2.5 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[0.8125rem]">
+            <div role="alert" className="mb-3 flex items-start gap-2.5 rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-ui">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" />
               <span className="flex-1 text-fg">{chat.sendError}</span>
               <button type="button" aria-label={t("common:dismiss")} onClick={() => clearSendError(id)} className="text-muted hover:text-fg">
@@ -259,17 +280,17 @@ function SetupCard({ noConnections }: { noConnections: boolean }) {
   return (
     <div className="mb-4 rounded-2xl border border-line bg-elevated px-5 py-4">
       <p className="text-sm font-medium text-fg">{noConnections ? t("setup.connectTitle") : t("setup.noModelsTitle")}</p>
-      <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">
+      <p className="mt-1 text-ui leading-relaxed text-muted">
         {noConnections ? (
           <>
-            {t("setup.connectBefore")} <code className="rounded bg-subtle px-1 font-mono text-[0.78rem]">llama-server -m model.gguf --port 8080</code>
+            {t("setup.connectBefore")} <code className="rounded bg-subtle px-1 font-mono text-ui">llama-server -m model.gguf --port 8080</code>
             {t("setup.connectAfter")}
           </>
         ) : (
           t("setup.noModelsBody")
         )}
       </p>
-      <Link to="/models" className="mt-3 inline-flex h-8 items-center rounded-lg bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:opacity-90">
+      <Link to="/models" className="mt-3 inline-flex h-8 items-center rounded-lg bg-fg px-3 text-ui font-medium text-bg hover:opacity-90">
         {noConnections ? t("setup.add") : t("setup.open")}
       </Link>
     </div>
@@ -281,7 +302,7 @@ function ProviderBanner({ providerId, name, error }: { providerId: string; name:
   const [testing, setTesting] = useState(false);
   const loadModels = useModels((s) => s.load);
   return (
-    <div role="status" className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-line bg-elevated px-3.5 py-2.5 text-[0.8125rem]">
+    <div role="status" className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-line bg-elevated px-3.5 py-2.5 text-ui">
       <span className="flex items-center gap-2 text-fg">
         <span className="size-1.5 rounded-full bg-danger" aria-hidden />
         <span className="font-medium">{t("banner.unreachable", { name })}</span>
@@ -307,7 +328,7 @@ function ProviderBanner({ providerId, name, error }: { providerId: string; name:
         >
           {t("banner.retry")}
         </Button>
-        <Link to="/models" className="inline-flex h-8 items-center rounded-lg px-2.5 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg">
+        <Link to="/models" className="inline-flex h-8 items-center rounded-lg px-2.5 text-ui text-muted hover:bg-hover hover:text-fg">
           {t("banner.settings")}
         </Link>
       </span>
@@ -395,7 +416,7 @@ function TopBar({
               </MenuItem>
             </MenuContent>
           </MenuRoot>
-          {model && <span className="hidden truncate text-[0.8125rem] text-faint sm:inline">· {modelLabel(model.model)}</span>}
+          {model && <span className="hidden truncate text-ui text-faint sm:inline">· {modelLabel(model.model)}</span>}
           <div className="ml-auto" />
           <ContextIndicator conversationId={conversation.id} />
         </div>
@@ -617,6 +638,20 @@ export function MessageList({
     el.scrollTop = a.top + (el.scrollHeight - a.height);
   }, [shown]);
 
+  // Find in page (Ctrl/Cmd+F) can only see rendered messages: render them all first.
+  // The key isn't intercepted, so the browser's own find bar still opens.
+  useEffect(() => {
+    if (!hidden) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f")) return;
+      const el = scrollRef.current;
+      if (el) anchor.current = { height: el.scrollHeight, top: el.scrollTop }; // keep the view in place
+      setShown(Number.MAX_SAFE_INTEGER);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hidden]);
+
   // Load earlier messages when the reader nears the top.
   useEffect(() => {
     const root = scrollRef.current;
@@ -726,7 +761,7 @@ export function MessageList({
               stick.current = true;
               scrollToBottom(true);
             }}
-            className="animate-fade-in absolute -top-11 left-1/2 z-10 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-elevated px-3 text-[0.8125rem] text-muted shadow-pop hover:text-fg"
+            className="animate-fade-in absolute -top-11 left-1/2 z-10 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-elevated px-3 text-ui text-muted shadow-pop hover:text-fg"
             aria-label={t("jumpLatest")}
           >
             <ArrowDown className="size-3.5" /> {t("latest")}

@@ -1,17 +1,18 @@
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowUp, BookOpen, FileText, Globe, Image as ImageIcon, Library, Link2, Paperclip, SlidersHorizontal, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, FileText, Image as ImageIcon, Library, Link2, Paperclip, SlidersHorizontal, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { errorText } from "@/lib/errors";
 import { api } from "@/lib/api";
-import type { Attachment, ModelRef, Prompt } from "@/lib/types";
+import type { Attachment, ModelRef, Prompt, SearchMode } from "@/lib/types";
 import { dedupeKey, findUrls, shortUrl } from "@/lib/urls";
 import { cn, formatBytes, modKey } from "@/lib/utils";
 import { useSettings } from "@/stores/settings";
 import { useUI } from "@/stores/ui";
 import { useWeb } from "@/stores/web";
 import { ModelPicker } from "./ModelPicker";
+import { SearchControl } from "./SearchControl";
 import { Button, Dialog, IconButton, Tooltip } from "./ui";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
@@ -31,7 +32,8 @@ const ACCEPT =
 /** What the composer asks the server to do on the web for this message. */
 export interface WebChoice {
   urls: string[] | null;
-  web_search: boolean;
+  /** A one-off choice for this message; null = the conversation's search mode. */
+  web_search: boolean | null;
 }
 
 export interface ComposerProps {
@@ -47,6 +49,9 @@ export interface ComposerProps {
   autoFocus?: boolean;
   placeholder?: string;
   conversationKey?: string;
+  /** Web search in this conversation (or the start page's choice). */
+  searchMode?: SearchMode;
+  onSearchModeChange?: (mode: SearchMode) => void;
 }
 
 export function Composer({
@@ -62,6 +67,8 @@ export function Composer({
   autoFocus,
   placeholder,
   conversationKey,
+  searchMode = "off",
+  onSearchModeChange,
 }: ComposerProps) {
   const { t } = useTranslation(["chat", "web"]);
   const [text, setText] = useState("");
@@ -76,10 +83,12 @@ export function Composer({
   const webStatus = useWeb((s) => s.status);
   const webPrefs = useSettings((s) => s.settings?.web);
   const key = conversationKey ?? "new";
-  const searchState = useWeb((s) => s.search[key]);
-  const setSearch = useWeb((s) => s.setSearch);
-  const searchOn = !!webStatus?.search_available && (searchState ?? webPrefs?.search_by_default ?? false);
+  const override = useWeb((s) => s.override[key]);
+  const setOverride = useWeb((s) => s.setOverride);
+  const searchAvailable = !!webStatus?.search_available;
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  // What to do once the user has read what web search sends (first use only).
+  const pendingConsent = useRef<(() => void) | null>(null);
   // Links the user chose to (not) read, by normalized URL.
   const [linkChoice, setLinkChoice] = useState<Record<string, boolean>>({});
   const detected = useMemo(() => findUrls(text, 20), [text]);
@@ -141,13 +150,13 @@ export function Composer({
   const hasErrors = files.some((f) => f.status === "error");
   const canSend = !streaming && !submitting && !uploading && !hasBlockedImage && !hasErrors && !!model && (text.trim().length > 0 || ready.length > 0);
 
-  const toggleSearch = () => {
-    if (!webStatus?.search_available) return;
-    if (!searchOn && !webPrefs?.privacy_acknowledged) {
+  const withConsent = (turnsSearchOn: boolean, action: () => void) => {
+    if (turnsSearchOn && !webPrefs?.privacy_acknowledged) {
+      pendingConsent.current = action;
       setPrivacyOpen(true);
       return;
     }
-    setSearch(key, !searchOn);
+    action();
   };
 
   const submit = async () => {
@@ -156,14 +165,14 @@ export function Composer({
     const snapshot = files;
     const web: WebChoice = {
       urls: webEnabled ? shownLinks.filter(linkSelected) : null,
-      web_search: searchOn,
+      web_search: searchAvailable && override !== undefined ? override : null,
     };
     setSubmitting(true);
     setText("");
     setFiles([]);
-    // Search is per message unless the user keeps it on for the conversation.
-    // Reset now (before a new conversation takes over this state), restore on failure.
-    if (!webPrefs?.keep_search_on) setSearch(key, webPrefs?.search_by_default ?? false);
+    // A one-off choice applies to this message only. Clear it now (before a new
+    // conversation takes over), restore it if sending fails.
+    if (override !== undefined) setOverride(key, null);
     try {
       await onSend(content, ready, web);
       snapshot.forEach((f) => f.previewUrl && URL.revokeObjectURL(f.previewUrl));
@@ -172,7 +181,7 @@ export function Composer({
       // Restore what the user typed so nothing is lost.
       setText((t) => (t ? t : content));
       setFiles((f) => (f.length ? f : snapshot));
-      setSearch(key, web.web_search);
+      if (web.web_search !== null) setOverride(key, web.web_search);
     } finally {
       setSubmitting(false);
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -212,6 +221,7 @@ export function Composer({
   if (!model) hint = t("composer.selectModel");
   else if (hasBlockedImage) hint = t("composer.noVision");
   else if (hasErrors) hint = t("composer.removeFailed");
+  else if (searchAvailable && override !== undefined) hint = override ? t("web:composer.oneOffOn") : t("web:composer.oneOffOff");
   else if (webStatus && !webEnabled && detected.urls.length) hint = t("web:composer.linksOff");
   else if (webEnabled && detected.total > maxLinks) hint = t("web:composer.overLimit", { count: maxLinks });
 
@@ -263,7 +273,7 @@ export function Composer({
           onPaste={onPaste}
           rows={1}
           placeholder={placeholder ?? t("composer.placeholder")}
-          className="block max-h-[40vh] min-h-[3.25rem] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[0.95rem] leading-relaxed text-fg placeholder:text-faint focus:outline-none focus-visible:outline-none"
+          className="block max-h-[40vh] min-h-[3.25rem] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-lead leading-relaxed text-fg placeholder:text-faint focus:outline-none focus-visible:outline-none"
           aria-describedby="composer-hint"
         />
         <div className="flex items-center gap-1 px-2 pb-2">
@@ -282,7 +292,17 @@ export function Composer({
             <Paperclip className="size-[18px]" />
           </IconButton>
           <PromptInsert onInsert={(p) => setText((t) => (t.trim() ? `${t}\n\n${p.content}` : p.content))} />
-          {webEnabled && <SearchToggle on={searchOn} available={!!webStatus?.search_available} isAdmin={!!webStatus?.is_admin} sticky={!!webPrefs?.keep_search_on} onToggle={toggleSearch} />}
+          {webEnabled && (
+            <SearchControl
+              mode={searchMode}
+              override={searchAvailable ? override : undefined}
+              available={searchAvailable}
+              autoAvailable={!!webStatus?.auto_available}
+              isAdmin={!!webStatus?.is_admin}
+              onModeChange={(m) => withConsent(m !== "off", () => onSearchModeChange?.(m))}
+              onOverrideChange={(v) => withConsent(v === true, () => setOverride(key, v))}
+            />
+          )}
           {onOpenSettings && (
             <IconButton label={t("settings.title")} onClick={onOpenSettings} active={settingsActive}>
               <SlidersHorizontal className="size-[18px]" />
@@ -293,7 +313,7 @@ export function Composer({
               <button
                 type="button"
                 onClick={onOpenSettings}
-                className="ml-0.5 flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2 text-[0.75rem] font-medium text-accent-text"
+                className="ml-0.5 flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2 text-caption font-medium text-accent-text"
               >
                 <Library className="size-3.5" /> {knowledgeCount}
               </button>
@@ -302,21 +322,20 @@ export function Composer({
           <div className="flex-1" />
           <ModelPicker value={model} onChange={onModelChange} compact />
           {streaming ? (
+            // Same size, shape and colour as Send, so nothing moves when they swap; only the glyph changes.
             <IconButton
               label={t("composer.stop")}
               shortcut="Esc"
               onClick={onStop}
-              className="ml-1 size-8 rounded-lg bg-fg text-bg hover:bg-fg hover:text-bg hover:opacity-85"
+              data-testid="stop-button"
+              className="ml-1 size-8 rounded-lg bg-accent text-on-accent hover:bg-accent-hover hover:text-on-accent"
             >
-              {/* Generating: the shared indicator orbits the stop square. */}
-              <span className="relative flex size-full items-center justify-center">
-                <ThinkingIndicator core={false} className="absolute text-[1.375rem]" />
-                <Square className="size-3 fill-current" />
-              </span>
+              <span aria-hidden className="size-2.5 rounded-[2.5px] bg-current" />
             </IconButton>
           ) : (
             <IconButton
               label={t("composer.send")}
+              data-testid="send-button"
               shortcut={enterToSend ? "Enter" : `${modKey} ↵`}
               onClick={submit}
               disabled={!canSend}
@@ -330,7 +349,7 @@ export function Composer({
           )}
         </div>
       </div>
-      <p id="composer-hint" className={cn("min-h-5 px-2 pt-1.5 text-center text-[0.72rem]", hint ? "text-muted" : "text-faint")} aria-live="polite">
+      <p id="composer-hint" className={cn("min-h-5 px-2 pt-1.5 text-center text-caption", hint ? "text-muted" : "text-faint")} aria-live="polite">
         {hint ?? (enterToSend ? t("composer.hintEnter") : t("composer.hintMod", { key: modKey }))}
       </p>
       <PrivacyNotice
@@ -339,7 +358,8 @@ export function Composer({
         engine={webStatus?.engine ?? null}
         onAccept={() => {
           setPrivacyOpen(false);
-          setSearch(key, true);
+          pendingConsent.current?.();
+          pendingConsent.current = null;
           void useSettings
             .getState()
             .update({ web: { ...(webPrefs ?? ({} as NonNullable<typeof webPrefs>)), privacy_acknowledged: true } })
@@ -362,53 +382,16 @@ function LinkChip({ url, selected, onToggle }: { url: string; selected: boolean;
           aria-pressed={selected}
           aria-label={selected ? t("composer.skipLink", { url }) : t("composer.readLink", { url })}
           className={cn(
-            "flex h-7 max-w-[min(18rem,calc(100vw-5rem))] items-center gap-1.5 rounded-lg border pr-1.5 pl-2 text-[0.75rem] transition-colors",
+            "flex h-7 max-w-[min(18rem,calc(100vw-5rem))] items-center gap-1.5 rounded-lg border pr-1.5 pl-2 text-caption transition-colors",
             selected ? "border-line bg-bg text-fg hover:bg-hover" : "border-dashed border-line text-faint hover:text-muted",
           )}
         >
           <Link2 className={cn("size-3.5 shrink-0", selected ? "text-accent" : "")} aria-hidden />
           <span className={cn("truncate", !selected && "line-through")}>{short}</span>
-          <span className="ml-0.5 shrink-0 rounded px-1 text-[0.68rem] text-muted">{selected ? <X className="size-3" aria-hidden /> : t("composer.read")}</span>
+          <span className="ml-0.5 shrink-0 rounded px-1 text-caption text-muted">{selected ? <X className="size-3" aria-hidden /> : t("composer.read")}</span>
         </button>
       </Tooltip>
     </li>
-  );
-}
-
-function SearchToggle({ on, available, isAdmin, sticky, onToggle }: { on: boolean; available: boolean; isAdmin: boolean; sticky: boolean; onToggle: () => void }) {
-  const { t } = useTranslation("web");
-  const navigate = useNavigate();
-  const label = !available
-    ? isAdmin
-      ? t("composer.searchUnavailableAdmin")
-      : t("composer.searchUnavailableUser")
-    : on
-      ? sticky
-        ? t("composer.searchStickyTooltip")
-        : t("composer.searchOnTooltip")
-      : t("composer.searchTooltip");
-  return (
-    <Tooltip label={label}>
-      <button
-        type="button"
-        aria-pressed={available ? on : undefined}
-        aria-disabled={!available || undefined}
-        aria-label={t("composer.searchTooltip")}
-        onClick={() => (available ? onToggle() : isAdmin && navigate("/settings/web"))}
-        data-testid="search-toggle"
-        className={cn(
-          "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[0.8125rem] transition-colors",
-          !available
-            ? "cursor-not-allowed text-faint opacity-60"
-            : on
-              ? "bg-accent-soft font-medium text-accent-text"
-              : "text-muted hover:bg-hover hover:text-fg",
-        )}
-      >
-        <Globe className="size-[18px] shrink-0" />
-        <span className={cn(on ? "inline" : "hidden sm:inline")}>{t("composer.search")}</span>
-      </button>
-    </Tooltip>
   );
 }
 
@@ -475,8 +458,8 @@ function AttachmentChip({ file, visionSupported, onRemove }: { file: PendingFile
         )}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[0.8125rem] font-medium text-fg">{file.name}</span>
-        <span className={cn("block truncate text-[0.72rem]", file.status === "error" || blocked ? "text-danger" : "text-faint")}>
+        <span className="block truncate text-ui font-medium text-fg">{file.name}</span>
+        <span className={cn("block truncate text-caption", file.status === "error" || blocked ? "text-danger" : "text-faint")}>
           {file.status === "error"
             ? file.error
             : blocked
@@ -552,7 +535,7 @@ function PromptInsert({ onInsert }: { onInsert: (p: Prompt) => void }) {
                 className="block w-full rounded-lg px-3 py-2 text-left hover:bg-hover"
               >
                 <span className="block truncate text-sm text-fg">{p.title}</span>
-                <span className="block truncate text-[0.75rem] text-faint">{p.description || p.content}</span>
+                <span className="block truncate text-caption text-faint">{p.description || p.content}</span>
               </button>
             ))}
           </div>
@@ -563,7 +546,7 @@ function PromptInsert({ onInsert }: { onInsert: (p: Prompt) => void }) {
                 setOpen(false);
                 navigate("/prompts");
               }}
-              className="flex h-8 w-full items-center rounded-lg px-3 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg"
+              className="flex h-8 w-full items-center rounded-lg px-3 text-ui text-muted hover:bg-hover hover:text-fg"
             >
               {t("composer.managePrompts")}
             </button>

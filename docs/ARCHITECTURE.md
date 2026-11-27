@@ -140,6 +140,7 @@ providers(id, name, kind, base_url, api_path, api_key, auth_header, timeout, ena
           checked_at, capabilities, ...)
 conversations(id, title, title_source, provider_id, model, system_prompt, params,
               collection_ids, pinned, active_leaf_id, context_strategy, context_state,
+              web_search (off|on|auto),
               created_at, updated_at)
 messages(id, conversation_id → conversations, parent_id, active_child_id, position (= depth),
          role, content, reasoning, status, error, provider_id, model, attachments, sources,
@@ -156,6 +157,7 @@ collections(id, name, description, ...)
 documents(id, collection_id → collections, filename, chunk_count, embedding_model, warning, ...)
 chunks(id, document_id → documents, collection_id, idx, text, embedding BLOB)
 chunks_fts                               -- FTS5 external-content index, kept in sync by triggers
+messages_fts                             -- FTS5 trigram index of message text (conversation search), kept in sync by triggers
 schema_version(version)
 ```
 

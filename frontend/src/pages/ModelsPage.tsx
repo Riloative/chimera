@@ -106,7 +106,7 @@ export function ModelsPage() {
           <div className="rounded-2xl border border-dashed border-line-strong px-6 py-10 text-center">
             <p className="font-medium text-fg">{t("empty.title")}</p>
             <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-muted">
-              {t("empty.before")} <code className="rounded bg-subtle px-1 font-mono text-[0.8rem]">llama-server -m model.gguf --port 8080</code> {t("empty.after")}
+              {t("empty.before")} <code className="rounded bg-subtle px-1 font-mono text-ui">llama-server -m model.gguf --port 8080</code> {t("empty.after")}
             </p>
             <Button className="mt-4" variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing("new")}>
               {t("add")}
@@ -184,14 +184,14 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
             <span className={cn("truncate text-sm font-medium", p.enabled ? "text-fg" : "text-muted")} title={p.name}>
               {p.name}
             </span>
-            <span className="shrink-0 rounded-md bg-subtle px-1.5 py-0.5 text-[0.7rem] text-muted">{t(`kinds.${p.kind}.label`)}</span>
+            <span className="shrink-0 rounded-md bg-subtle px-1.5 py-0.5 text-caption text-muted">{t(`kinds.${p.kind}.label`)}</span>
             {p.shared && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-[0.7rem] text-accent-text">
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-caption text-accent-text">
                 <Users className="size-3" aria-hidden /> {t("shared")}
               </span>
             )}
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.75rem] text-muted">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-caption text-muted">
             <span className="truncate font-mono">{p.base_url}</span>
             <StatusDot status={p.status} withLabel />
             {p.latency_ms != null && p.status === "connected" && <span>{t("ms", { value: Math.round(p.latency_ms) })}</span>}
@@ -199,7 +199,7 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
             {p.status !== "disabled" && <span className="text-faint">{t("modelCount", { count: entry.models.length })}</span>}
           </div>
           {p.status === "error" && (p.last_error || p.last_error_code) && (
-            <p className="mt-1 text-[0.75rem] text-danger">{providerErrorText(p.last_error_code, p.last_error_params, p.last_error)}</p>
+            <p className="mt-1 text-caption text-danger">{providerErrorText(p.last_error_code, p.last_error_params, p.last_error)}</p>
           )}
         </div>
         <Button size="sm" variant="outline" onClick={test} loading={testing} disabled={!p.enabled}>
@@ -229,10 +229,10 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
       </div>
 
       {open && (
-        <div className="animate-fade-in border-t border-line bg-bg/60 px-4 py-4 text-[0.8125rem] sm:pl-14">
+        <div className="animate-fade-in border-t border-line bg-bg/60 px-4 py-4 text-ui sm:pl-14">
           <div className="grid gap-6 md:grid-cols-2">
             <div className="min-w-0">
-              <h4 className="mb-2 text-[0.72rem] font-medium tracking-wide text-faint uppercase">{t("diagnostics")}</h4>
+              <h4 className="mb-2 text-caption font-medium tracking-wide text-faint uppercase">{t("diagnostics")}</h4>
               {result ? (
                 <ul className="space-y-1.5">
                   {result.checks.map((c) => (
@@ -248,7 +248,7 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
                       <span className="min-w-0 break-words text-fg">
                         <CheckText check={c} />
                         {c.ok === false && serverDetail(c.params) && (
-                          <span className="block font-mono text-[0.75rem] text-faint">{serverDetail(c.params)}</span>
+                          <span className="block font-mono text-caption text-faint">{serverDetail(c.params)}</span>
                         )}
                       </span>
                       {c.latency_ms != null && <span className="shrink-0 text-faint">{t("ms", { value: Math.round(c.latency_ms) })}</span>}
@@ -290,11 +290,11 @@ function ConnectionRow({ entry, onEdit }: { entry: ProviderModels; onEdit: () =>
                   </>
                 )}
                 <dt>{t("parameters")}</dt>
-                <dd className="font-mono text-[0.75rem] break-words text-fg">{formatList(p.supported_params)}</dd>
+                <dd className="font-mono text-caption break-words text-fg">{formatList(p.supported_params)}</dd>
               </dl>
             </div>
             <div className="min-w-0">
-              <h4 className="mb-2 text-[0.72rem] font-medium tracking-wide text-faint uppercase">{t("title")}</h4>
+              <h4 className="mb-2 text-caption font-medium tracking-wide text-faint uppercase">{t("title")}</h4>
               {entry.error && <p className="mb-2 text-danger">{providerErrorText(entry.error_code, entry.error_params, entry.error)}</p>}
               {entry.models.length === 0 ? (
                 <p className="text-muted">{t("noModelsReported")}</p>
@@ -538,12 +538,12 @@ function ProviderDialog({ open, provider, onClose }: { open: boolean; provider: 
             <input type="checkbox" checked={form.shared} onChange={(e) => set("shared", e.target.checked)} className="mt-1 accent-[var(--accent)]" />
             <span>
               {t("dialog.share")}
-              <span className="block text-[0.75rem] text-muted">{t("dialog.shareHint")}</span>
+              <span className="block text-caption text-muted">{t("dialog.shareHint")}</span>
             </span>
           </label>
         )}
 
-        <button type="button" onClick={() => setAdvanced((a) => !a)} className="flex items-center gap-1 text-[0.8125rem] text-muted hover:text-fg" aria-expanded={advanced}>
+        <button type="button" onClick={() => setAdvanced((a) => !a)} className="flex items-center gap-1 text-ui text-muted hover:text-fg" aria-expanded={advanced}>
           <ChevronRight className={cn("size-3.5 transition-transform", advanced && "rotate-90")} /> {t("dialog.advanced")}
         </button>
         {advanced && (
@@ -585,9 +585,9 @@ function ProviderDialog({ open, provider, onClose }: { open: boolean; provider: 
         <button type="submit" className="hidden" />
       </form>
 
-      {error && <p className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-[0.8125rem] text-danger">{error}</p>}
+      {error && <p className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-ui text-danger">{error}</p>}
       {result && (
-        <div className={cn("mb-3 rounded-xl border px-3.5 py-3 text-[0.8125rem]", result.ok ? "border-success/30" : "border-danger/30 bg-danger-soft")}>
+        <div className={cn("mb-3 rounded-xl border px-3.5 py-3 text-ui", result.ok ? "border-success/30" : "border-danger/30 bg-danger-soft")}>
           <p className="flex items-center gap-2 font-medium text-fg">
             {result.ok ? <CheckCircle2 className="size-4 text-success" /> : <XCircle className="size-4 text-danger" />}
             {result.ok

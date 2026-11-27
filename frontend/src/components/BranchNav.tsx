@@ -22,7 +22,7 @@ export function BranchNav({
   const label = kind === "assistant" ? t("branch.responseOf", { n: index + 1, total }) : t("branch.versionOf", { n: index + 1, total });
   const button = "flex size-6 items-center justify-center rounded-md text-faint transition-colors hover:bg-hover hover:text-fg disabled:opacity-35 disabled:hover:bg-transparent";
   return (
-    <div role="group" aria-label={label} className={cn("flex items-center gap-0.5 text-[0.72rem] text-muted tabular-nums", className)} data-testid="branch-nav">
+    <div role="group" aria-label={label} className={cn("flex items-center gap-0.5 text-caption text-muted tabular-nums", className)} data-testid="branch-nav">
       <button
         type="button"
         className={button}

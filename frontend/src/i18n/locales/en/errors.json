@@ -96,7 +96,8 @@
     "provider_missing": "The connection no longer exists.",
     "interrupted": "The server restarted before this response finished.",
     "provider_error": "The model server reported a problem.",
-    "context_exceeded": "The model server rejected the request as too long for its context window ({{n_prompt_tokens}} of {{n_ctx}} tokens), even after sending less history. Shorten the message, remove attachments, choose a model with a larger context, or restart llama-server with a larger -c."
+    "context_exceeded": "The model server rejected the request as too long for its context window ({{n_prompt_tokens}} of {{n_ctx}} tokens), even after sending less history. Shorten the message, remove attachments, choose a model with a larger context, or restart llama-server with a larger -c.",
+    "refusal": "{{name}} declined to answer this request."
   },
   "web": {
     "disabled": "Web access is turned off on this server.",

@@ -33,6 +33,7 @@ def conversation_out(row: dict) -> dict[str, Any]:
         "active_leaf_id": row.get("active_leaf_id"),
         "context_strategy": row.get("context_strategy"),
         "web_search": row.get("web_search") or "off",
+        "thinking": row.get("thinking") or "default",
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -87,7 +88,7 @@ class ConversationStore:
         cid, ts = new_id(), now_iso()
         self.db.execute(
             """INSERT INTO conversations(id, user_id, title, provider_id, model, system_prompt, params, collection_ids,
-                   context_strategy, web_search, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   context_strategy, web_search, thinking, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 cid,
                 user_id,
@@ -99,6 +100,7 @@ class ConversationStore:
                 dumps(data.get("collection_ids") or []),
                 data.get("context_strategy"),
                 data.get("web_search") or "off",
+                data.get("thinking") or "default",
                 ts,
                 ts,
             ),
@@ -111,7 +113,7 @@ class ConversationStore:
         sets: list[str] = []
         values: list[Any] = []
         for key in ("title", "provider_id", "model", "system_prompt", "pinned", "params", "collection_ids", "context_strategy",
-                    "web_search"):
+                    "web_search", "thinking"):
             if key not in data:
                 continue
             value = data[key]

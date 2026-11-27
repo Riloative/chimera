@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { errorText } from "@/lib/errors";
 import { api } from "@/lib/api";
-import type { Attachment, ModelRef, Prompt, SearchMode } from "@/lib/types";
+import type { Attachment, ModelRef, Prompt, SearchMode, ThinkingCaps, ThinkingLevel } from "@/lib/types";
 import { dedupeKey, findUrls, shortUrl } from "@/lib/urls";
 import { cn, formatBytes, modKey } from "@/lib/utils";
 import { useSettings } from "@/stores/settings";
@@ -13,6 +13,7 @@ import { useUI } from "@/stores/ui";
 import { useWeb } from "@/stores/web";
 import { ModelPicker } from "./ModelPicker";
 import { SearchControl } from "./SearchControl";
+import { ThinkingControl } from "./ThinkingControl";
 import { Button, Dialog, IconButton, Tooltip } from "./ui";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
@@ -52,6 +53,10 @@ export interface ComposerProps {
   /** Web search in this conversation (or the start page's choice). */
   searchMode?: SearchMode;
   onSearchModeChange?: (mode: SearchMode) => void;
+  /** Thinking in this conversation and what the current model can do. */
+  thinking?: ThinkingLevel;
+  thinkingCaps?: ThinkingCaps;
+  onThinkingChange?: (level: ThinkingLevel) => void;
 }
 
 export function Composer({
@@ -69,9 +74,14 @@ export function Composer({
   conversationKey,
   searchMode = "off",
   onSearchModeChange,
+  thinking = "default",
+  thinkingCaps,
+  onThinkingChange,
 }: ComposerProps) {
   const { t } = useTranslation(["chat", "web"]);
-  const [text, setText] = useState("");
+  const key = conversationKey ?? "new";
+  // Each conversation keeps its own unsent text (the composer stays mounted when you switch).
+  const [text, setText] = useState(() => useUI.getState().composerDrafts[key] ?? "");
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -82,7 +92,6 @@ export function Composer({
   const clearInsert = useUI((s) => s.insertIntoComposer);
   const webStatus = useWeb((s) => s.status);
   const webPrefs = useSettings((s) => s.settings?.web);
-  const key = conversationKey ?? "new";
   const override = useWeb((s) => s.override[key]);
   const setOverride = useWeb((s) => s.setOverride);
   const searchAvailable = !!webStatus?.search_available;
@@ -99,10 +108,31 @@ export function Composer({
   const linkSelected = (url: string) => linkChoice[dedupeKey(url)] ?? autoRead;
 
   const setDraftChars = useUI((s) => s.setDraftChars);
+  const setComposerDraft = useUI((s) => s.setComposerDraft);
+  const shownKey = useRef(key);
+  const textNow = useRef(text);
+  textNow.current = text;
+  const submittingNow = useRef(false);
+  // Switching conversations: keep this draft, show the other conversation's.
+  // A message being sent from the start page moves with its new conversation.
+  useLayoutEffect(() => {
+    const previous = shownKey.current;
+    if (previous === key) return;
+    shownKey.current = key;
+    if (previous === "new" && submittingNow.current) {
+      setComposerDraft("new", "");
+      return;
+    }
+    setComposerDraft(previous, textNow.current);
+    setText(useUI.getState().composerDrafts[key] ?? "");
+    setFiles([]);
+    setLinkChoice({});
+  }, [key, setComposerDraft]);
   useEffect(() => {
-    const id = setTimeout(() => setDraftChars(text.length), 250);
+    setComposerDraft(shownKey.current, text);
+    const id = setTimeout(() => setDraftChars(shownKey.current, text.length), 250);
     return () => clearTimeout(id);
-  }, [text, setDraftChars]);
+  }, [text, setDraftChars, setComposerDraft]);
 
   // Auto-grow the textarea up to a comfortable maximum.
   useLayoutEffect(() => {
@@ -168,6 +198,7 @@ export function Composer({
       web_search: searchAvailable && override !== undefined ? override : null,
     };
     setSubmitting(true);
+    submittingNow.current = true;
     setText("");
     setFiles([]);
     // A one-off choice applies to this message only. Clear it now (before a new
@@ -184,7 +215,12 @@ export function Composer({
       if (web.web_search !== null) setOverride(key, web.web_search);
     } finally {
       setSubmitting(false);
-      requestAnimationFrame(() => textareaRef.current?.focus());
+      submittingNow.current = false;
+      // Back to the message box, unless the user has moved on (e.g. opened a menu meanwhile).
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body || active === textareaRef.current) textareaRef.current?.focus();
+      });
     }
   };
 
@@ -320,6 +356,7 @@ export function Composer({
             </Tooltip>
           )}
           <div className="flex-1" />
+          {onThinkingChange && <ThinkingControl caps={thinkingCaps} level={thinking} onChange={onThinkingChange} />}
           <ModelPicker value={model} onChange={onModelChange} compact />
           {streaming ? (
             // Same size, shape and colour as Send, so nothing moves when they swap; only the glyph changes.

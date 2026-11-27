@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { Composer } from "./Composer";
 import { TooltipProvider } from "./ui";
 import { useSettings } from "@/stores/settings";
+import { useUI } from "@/stores/ui";
 import type { AppSettings } from "@/lib/types";
 
 function setup(props: Partial<React.ComponentProps<typeof Composer>> = {}) {
@@ -20,6 +21,7 @@ function setup(props: Partial<React.ComponentProps<typeof Composer>> = {}) {
 
 beforeEach(() => {
   useSettings.setState({ settings: { enter_to_send: true } as AppSettings });
+  useUI.setState({ composerDrafts: {} });
 });
 
 describe("Composer", () => {

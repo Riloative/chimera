@@ -114,6 +114,21 @@ def _migrate_search_mode(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_thinking(conn: sqlite3.Connection) -> None:
+    """6 — thinking per conversation (1.3).
+
+    Each conversation stores Chimera's own thinking level (``default``, ``off``,
+    ``on``, ``low``, ``medium``, ``high``, ``max``; never a provider's value).
+    Existing conversations start at ``default`` (the model decides, which is
+    what every earlier version did). Connections gain ``service`` (the hosted
+    service behind an OpenAI-compatible URL; NULL = recognise it by host) and
+    ``model_settings`` (per-model overrides of the detected thinking control).
+    Additive: an older Chimera ignores the new columns."""
+    conn.execute("ALTER TABLE conversations ADD COLUMN thinking TEXT NOT NULL DEFAULT 'default'")
+    conn.execute("ALTER TABLE providers ADD COLUMN service TEXT")
+    conn.execute("ALTER TABLE providers ADD COLUMN model_settings TEXT NOT NULL DEFAULT '{}'")
+
+
 MIGRATIONS: list[str | Callable[[sqlite3.Connection], None]] = [
     # 1 — initial schema
     """
@@ -361,6 +376,7 @@ MIGRATIONS: list[str | Callable[[sqlite3.Connection], None]] = [
     """,
     _migrate_tree,
     _migrate_search_mode,
+    _migrate_thinking,
 ]
 
 

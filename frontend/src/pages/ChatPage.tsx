@@ -13,11 +13,11 @@ import { Button, ConfirmDialog, Dialog, IconButton, Input, MenuContent, MenuItem
 import { api } from "@/lib/api";
 import { useActiveModel } from "@/lib/hooks";
 import { greetingKey } from "@/lib/time";
-import type { Attachment, Conversation, Message, ModelRef, SearchMode } from "@/lib/types";
+import type { Attachment, Conversation, Message, ModelRef, SearchMode, ThinkingLevel } from "@/lib/types";
 import { cn, modelLabel } from "@/lib/utils";
 import { pathMessages, siblingsOf, useChat } from "@/stores/chat";
 import { useConversations } from "@/stores/conversations";
-import { findProvider, modelSupportsVision, useModels } from "@/stores/models";
+import { findModel, findProvider, modelSupportsVision, useModels } from "@/stores/models";
 import { useSettings } from "@/stores/settings";
 import { toast, useUI } from "@/stores/ui";
 import { browserTimeZone, useWeb } from "@/stores/web";
@@ -91,6 +91,7 @@ export function ChatPage() {
           collection_ids: draft.collectionIds,
           context_strategy: draft.contextStrategy ?? null,
           web_search: searchMode,
+          thinking,
         })
         .catch((err) => {
           toast(errorText(err), "error");
@@ -106,6 +107,8 @@ export function ChatPage() {
       await p;
       return;
     }
+    // A level or search mode chosen a moment ago must be saved before this message uses it.
+    await useConversations.getState().settled(convId);
     await send(convId, body, attachments);
   };
 
@@ -117,6 +120,17 @@ export function ChatPage() {
     useConversations
       .getState()
       .patch(id, { web_search: mode })
+      .catch((err) => toast(errorText(err), "error"));
+  };
+
+  // Thinking: stored on the conversation; on the start page, part of the draft.
+  const thinking: ThinkingLevel = id ? (conv?.thinking ?? "default") : (draft.thinking ?? settings?.thinking_default ?? "default");
+  const thinkingCaps = findModel(entries, model)?.thinking;
+  const onThinkingChange = (level: ThinkingLevel) => {
+    if (!id) return setDraft({ thinking: level });
+    useConversations
+      .getState()
+      .patch(id, { thinking: level })
       .catch((err) => toast(errorText(err), "error"));
   };
 
@@ -148,6 +162,9 @@ export function ChatPage() {
     <Composer
       searchMode={searchMode}
       onSearchModeChange={onSearchModeChange}
+      thinking={thinking}
+      thinkingCaps={thinkingCaps}
+      onThinkingChange={onThinkingChange}
       onSend={onSend}
       onStop={() => id && stop(id)}
       streaming={!!chat?.streaming}
@@ -247,11 +264,19 @@ export function ChatPage() {
         expandSteps={settings?.web?.expand_steps ?? false}
         webSources={chat?.webSources}
         onRegenerate={(mid, webSearch) =>
-          regenerate(id, mid, { ...target(model), timezone: browserTimeZone(), ...(webSearch === undefined ? {} : { web_search: webSearch }) }).catch((e) =>
-            toast(errorText(e), "error"),
-          )
+          useConversations
+            .getState()
+            .settled(id)
+            .then(() => regenerate(id, mid, { ...target(model), timezone: browserTimeZone(), ...(webSearch === undefined ? {} : { web_search: webSearch }) }))
+            .catch((e) => toast(errorText(e), "error"))
         }
-        onEdit={(mid, content) => edit(id, mid, content, { ...target(model), timezone: browserTimeZone() }).catch((e) => toast(errorText(e), "error"))}
+        onEdit={(mid, content) =>
+          useConversations
+            .getState()
+            .settled(id)
+            .then(() => edit(id, mid, content, { ...target(model), timezone: browserTimeZone() }))
+            .catch((e) => toast(errorText(e), "error"))
+        }
         onDelete={(mid) => deleteMessage(id, mid).catch((e) => toast(errorText(e), "error"))}
       >
         <div className="mx-auto w-full max-w-[var(--chat-width)] px-4 pb-3 md:px-6">

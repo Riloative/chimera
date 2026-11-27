@@ -14,6 +14,8 @@ interface ConversationsState {
   loadMore: () => Promise<void>;
   upsert: (c: Partial<Conversation> & { id: string }) => void;
   patch: (id: string, data: Partial<Conversation>) => Promise<Conversation>;
+  /** Resolves once every change started for this conversation has been saved (or failed). */
+  settled: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
 }
 
@@ -24,6 +26,10 @@ export const PAGE_SIZE = 500;
  * chat): applied on top of the response so a slower, older list never undoes
  * them. */
 let pendingChanges: Map<string, Partial<Conversation>> | null = null;
+
+/** Saves in flight per conversation, so a message sent right after changing a
+ * setting (thinking, web search) is only sent once the server has it. */
+const inFlight = new Map<string, Set<Promise<unknown>>>();
 
 export const useConversations = create<ConversationsState>((set, get) => ({
   items: [],
@@ -81,14 +87,23 @@ export const useConversations = create<ConversationsState>((set, get) => ({
   patch: async (id, data) => {
     const prev = get().items.find((i) => i.id === id);
     if (prev) get().upsert({ ...prev, ...data });
+    const request = api.updateConversation(id, data as Record<string, unknown>);
+    const set = inFlight.get(id) ?? new Set();
+    inFlight.set(id, set.add(request));
     try {
-      const updated = await api.updateConversation(id, data as Record<string, unknown>);
+      const updated = await request;
       get().upsert(updated);
       return updated;
     } catch (err) {
       if (prev) get().upsert(prev);
       throw err;
+    } finally {
+      set.delete(request);
+      if (!set.size) inFlight.delete(id);
     }
+  },
+  settled: async (id) => {
+    await Promise.allSettled([...(inFlight.get(id) ?? [])]);
   },
   remove: async (id) => {
     await api.deleteConversation(id);

@@ -14,6 +14,12 @@ user message:
 * ``[reasoning]``        – emits ``reasoning_content`` deltas first
 * ``[markdown]``         – returns a rich Markdown sample
 
+Hosted services' rules can be imitated per model with ``app.state.rules``
+(see :func:`check_rules`): parameters a model rejects, the reasoning efforts
+it accepts and how it returns its thinking (``reasoning_content``, Mistral's
+content chunks, or inline ``<think>`` tags). ``app.state.chat_template``
+sets what ``/props`` reports, so thinking detection can be tested.
+
 Run standalone for development::
 
     python tests/mock_llama_server.py --port 8080
@@ -138,6 +144,53 @@ def configure_context(app, n_ctx: int = 8192, slots: int = 1) -> None:
     app.state.summaries = 0
     app.state.summary_fail = False
     app.state.think_titles = False
+    app.state.chat_template = "{{ messages }}"
+    # model -> {"reject": [params], "efforts": [values] | None, "style": "reasoning_content" | "mistral" | "inline",
+    #           "no_reasoning": bool (any thinking field is an unknown argument)}
+    app.state.rules = {}
+    app.state.model_extra = {}  # model -> extra fields in /v1/models (OpenRouter's "reasoning", ...)
+
+
+def thinking_requested(body: dict) -> str | None:
+    """Which thinking the request asked for, in any of the supported shapes."""
+    kwargs = body.get("chat_template_kwargs") or {}
+    if kwargs.get("enable_thinking") is False:
+        return None
+    if kwargs.get("reasoning_effort"):
+        return str(kwargs["reasoning_effort"])
+    if kwargs.get("enable_thinking") is True:
+        return "on"
+    if (body.get("thinking") or {}).get("type") == "disabled":
+        return None
+    effort = body.get("reasoning_effort") or (body.get("reasoning") or {}).get("effort")
+    if (body.get("reasoning") or {}).get("enabled") is False or effort in ("none", "minimal"):
+        return None
+    if effort:
+        return str(effort)
+    if (body.get("thinking") or {}).get("type") == "enabled":
+        return "on"
+    return None
+
+
+def check_rules(app, body: dict) -> JSONResponse | None:
+    """Answer like a hosted service that rejects what this model doesn't take."""
+    rule = app.state.rules.get(body.get("model")) or {}
+    thinking_keys = [k for k in ("reasoning_effort", "reasoning", "thinking") if k in body]
+    if rule.get("no_reasoning") and thinking_keys:
+        return JSONResponse({"error": {"message": f"Unrecognized request argument supplied: {thinking_keys[0]}",
+                                       "type": "invalid_request_error", "param": thinking_keys[0]}}, 400)
+    for param in rule.get("reject") or []:
+        if param in body:
+            hint = " Use 'max_completion_tokens' instead." if param == "max_tokens" else ""
+            return JSONResponse({"error": {"message": f"Unsupported parameter: '{param}' is not supported with this model.{hint}",
+                                           "type": "invalid_request_error", "param": param, "code": "unsupported_parameter"}}, 400)
+    efforts = rule.get("efforts")
+    effort = body.get("reasoning_effort")
+    if efforts is not None and effort is not None and effort not in efforts:
+        return JSONResponse({"error": {"message": f"Unsupported value: 'reasoning_effort' does not support '{effort}' with this model. "
+                                                  f"Supported values are: {', '.join(efforts)}.", "type": "invalid_request_error",
+                                       "param": "reasoning_effort", "code": "unsupported_value"}}, 400)
+    return None
 
 
 def embed_text(text: str, dims: int = 64) -> list[float]:
@@ -183,7 +236,7 @@ def create_mock_app(
             "default_generation_settings": {"n_ctx": app.state.n_ctx // app.state.slots, "params": {"temperature": 0.8, "top_k": 40}},
             "total_slots": app.state.slots,
             "model_path": f"/models/{app.state.models[0]}",
-            "chat_template": "{{ messages }}",
+            "chat_template": app.state.chat_template,
             "modalities": {"vision": app.state.vision, "audio": False},
             "build_info": "b9999-mock",
         }
@@ -201,6 +254,7 @@ def create_mock_app(
                     "created": int(time.time()),
                     "owned_by": "llamacpp",
                     "meta": {"vocab_type": 2, "n_vocab": 151936, "n_ctx_train": 32768, "n_embd": 3584, "n_params": 7615616512},
+                    **app.state.model_extra.get(m, {}),
                 }
                 for m in app.state.models
             ],
@@ -226,6 +280,17 @@ def create_mock_app(
         app.state.think_titles = bool((await request.json()).get("enabled"))
         return {"think_titles": app.state.think_titles}
 
+    @app.post("/__mock/config")
+    async def mock_config(request: Request):
+        """Test control (e2e): chat template, per-model rules, models; returns the last requests."""
+        body = await request.json()
+        for key in ("chat_template", "rules", "model_extra"):
+            if key in body:
+                setattr(app.state, key, body[key])
+        if body.get("clear"):
+            app.state.requests.clear()
+        return {"requests": app.state.requests[-20:]}
+
     @app.post("/tokenize")
     async def tokenize_endpoint(request: Request):
         if not app.state.tokenize_supported:
@@ -247,6 +312,8 @@ def create_mock_app(
             return resp
         body = await request.json()
         app.state.requests.append(body)
+        if (rejected := check_rules(app, body)) is not None:
+            return rejected
         if body.get("model") not in app.state.models:
             return JSONResponse({"error": {"code": 400, "message": f"model '{body.get('model')}' not found"}}, 400)
         n_prompt = mock_tokens(render_template(body.get("messages") or []))
@@ -302,6 +369,10 @@ def create_mock_app(
             if images:
                 answer += f" (I can see {images} image(s).)"
         reasoning = "Let me think about this carefully." if "[reasoning]" in text else ""
+        asked = thinking_requested(body)
+        if asked and not reasoning and "Write a short, specific title" not in text:
+            reasoning = f"Thinking ({asked}) about it."
+        style = (app.state.rules.get(body.get("model")) or {}).get("style", "reasoning_content")
         if ("Write a short, specific title" in text and app.state.think_titles
                 and (body.get("chat_template_kwargs") or {}).get("enable_thinking") is not False):
             # Like a reasoning model (e.g. Qwen3): it thinks first, and the
@@ -316,7 +387,11 @@ def create_mock_app(
                 "id": "chatcmpl-mock",
                 "object": "chat.completion",
                 "model": body.get("model"),
-                "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": answer, "reasoning_content": reasoning or None}}],
+                "choices": [{"index": 0, "finish_reason": "stop", "message": (
+                    {"role": "assistant", "content": f"<think>{reasoning}</think>{answer}" if reasoning else answer} if style == "inline" else
+                    {"role": "assistant", "content": ([{"type": "thinking", "thinking": [{"type": "text", "text": reasoning}]}] if reasoning else [])
+                     + [{"type": "text", "text": answer}]} if style == "mistral" else
+                    {"role": "assistant", "content": answer, "reasoning_content": reasoning or None})}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": len(tokenize(answer)), "total_tokens": 10 + len(tokenize(answer))},
             }
 
@@ -338,14 +413,23 @@ def create_mock_app(
                 yield chunk({"role": "assistant", "content": None})
                 if "[waitfirst]" in text:
                     await asyncio.sleep(2)  # the model takes a while before the first token
-                for piece in tokenize(reasoning):
-                    yield chunk({"reasoning_content": piece})
+                if style == "inline" and reasoning:
+                    # Thinking left in the text, split at awkward places.
+                    raw = f"<think>{reasoning}</think>\n\n"
+                    for i in range(0, len(raw), 5):
+                        yield chunk({"content": raw[i:i + 5]})
+                elif style == "mistral":
+                    for piece in tokenize(reasoning):
+                        yield chunk({"content": [{"type": "thinking", "thinking": [{"type": "text", "text": piece}]}]})
+                else:
+                    for piece in tokenize(reasoning):
+                        yield chunk({"reasoning_content": piece})
                 tokens = tokenize(answer)
                 buffer = ""
                 for i, tok in enumerate(tokens):
                     if "[malformed]" in text and i % 5 == 2:
                         buffer += "data: {not valid json\n\n"
-                    buffer += chunk({"content": tok})
+                    buffer += chunk({"content": [{"type": "text", "text": tok}] if style == "mistral" else tok})
                     if "[midstream-error]" in text and i == 3:
                         buffer += 'data: {"error": {"code": 500, "message": "slot crashed"}}\n\n'
                         yield buffer

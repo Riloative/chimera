@@ -590,7 +590,7 @@ class ChatEngine:
         if gen.turn and plan.info.get("dropped"):
             gen.turn.step("history_trimmed", status="done", count=plan.info["dropped"])
         final = ([ChatMessage(role="system", content=plan.system)] if plan.system else []) + plan.messages
-        return ChatRequest(model=gen.model, messages=final, params=gen.params), sources
+        return ChatRequest(model=gen.model, messages=final, params=gen.params, thinking=conv.get("thinking") or "default"), sources
 
     @staticmethod
     def _drop_steps(gen: Generation, *kinds: str) -> None:
@@ -891,6 +891,8 @@ class ChatEngine:
                         continue
                     raise
                 break
+            if request.notes.get("thinking"):
+                metrics["thinking"] = request.notes["thinking"]  # what was asked for and what was sent
             if not stream and (gen.content or gen.reasoning):
                 gen.publish("delta", {"content": gen.content, "reasoning": gen.reasoning})
             self.registry.mark_ok(gen.provider_id)

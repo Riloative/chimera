@@ -15,9 +15,22 @@
     "after": "and add it here."
   },
   "kinds": {
-    "llamacpp": { "label": "llama.cpp server", "help": "llama-server's OpenAI-compatible API, plus /health and /props for diagnostics." },
-    "openai": { "label": "OpenAI-compatible", "help": "LM Studio, vLLM, LocalAI, llamafile or any server exposing /v1/models and /v1/chat/completions." },
-    "ollama": { "label": "Ollama", "help": "Ollama's native API (/api/tags, /api/chat)." }
+    "llamacpp": {
+      "label": "llama.cpp server",
+      "help": "llama-server's OpenAI-compatible API, plus /health and /props for diagnostics."
+    },
+    "openai": {
+      "label": "OpenAI-compatible",
+      "help": "LM Studio, vLLM, LocalAI, llamafile or any server exposing /v1/models and /v1/chat/completions."
+    },
+    "ollama": {
+      "label": "Ollama",
+      "help": "Ollama's native API (/api/tags, /api/chat)."
+    },
+    "anthropic": {
+      "label": "Anthropic",
+      "help": "Anthropic's Messages API (api.anthropic.com), with thinking levels and thinking summaries. Needs an API key."
+    }
   },
   "shared": "Shared",
   "ms": "{{value}} ms",
@@ -109,7 +122,11 @@
     "connectedMs": "Connected · {{value}} ms",
     "failed": "Connection failed",
     "foundModels_one": "{{count}} model: {{list}}",
-    "foundModels_other": "{{count}} models: {{list}}"
+    "foundModels_other": "{{count}} models: {{list}}",
+    "service": "Service",
+    "serviceHint": "Which hosted service this is, so Chimera knows how to set thinking. Usually recognised from the URL.",
+    "serviceDetect": "Recognise from the URL ({{name}})",
+    "anthropicCompat": "Anthropic's OpenAI-compatible endpoint can't set thinking or show it. Choose the Anthropic type instead to get thinking levels."
   },
   "picker": {
     "current": "Model: {{model}}",
@@ -126,5 +143,29 @@
     "noModels": "The server reported no models.",
     "noMatch": "No models match “{{query}}”.",
     "manage": "Manage connections"
+  },
+  "services": {
+    "openai": "OpenAI",
+    "mistral": "Mistral",
+    "gemini": "Google Gemini",
+    "deepseek": "DeepSeek",
+    "xai": "xAI",
+    "openrouter": "OpenRouter",
+    "anthropic": "Anthropic (OpenAI-compatible)",
+    "other": "Another server"
+  },
+  "thinkingCaps": {
+    "label": "Thinking",
+    "none": "not supported",
+    "rejected": "not supported (the server refused it)",
+    "always": "always thinks",
+    "toggle": "on or off",
+    "overrideFor": "Thinking control for {{model}}",
+    "override": {
+      "detect": "Detect",
+      "none": "Not supported",
+      "toggle": "On or off",
+      "levels": "Levels"
+    }
   }
 }

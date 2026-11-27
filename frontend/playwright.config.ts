@@ -6,6 +6,8 @@ const PY = process.env.CHIMERA_PYTHON ?? "../backend/.venv/bin/python";
 const MOCK_PORT = 18080;
 // Mock web pages + SearXNG-compatible search; results link back to itself.
 const WEB_PORT = 18090;
+// Mock Anthropic Messages API (thinking levels; see backend/tests/mock_anthropic.py).
+const CLAUDE_PORT = 18081;
 const APP_PORT = 18700;
 const DATA = "test-results/e2e-data";
 
@@ -30,6 +32,11 @@ export default defineConfig({
     {
       command: `${PY} ../backend/tests/mock_llama_server.py --port ${MOCK_PORT} --model qwen2.5-7b-instruct-q4_k_m.gguf --model llama-3.2-3b-instruct-q8_0.gguf`,
       url: `http://127.0.0.1:${MOCK_PORT}/health`,
+      reuseExistingServer: false,
+    },
+    {
+      command: `${PY} ../backend/tests/mock_anthropic.py --port ${CLAUDE_PORT}`,
+      url: `http://127.0.0.1:${CLAUDE_PORT}/v1/models`,
       reuseExistingServer: false,
     },
     {

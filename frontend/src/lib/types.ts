@@ -1,4 +1,20 @@
-export type ProviderKind = "llamacpp" | "openai" | "ollama";
+export type ProviderKind = "llamacpp" | "openai" | "ollama" | "anthropic";
+/** The hosted service behind an OpenAI-compatible connection. */
+export type ProviderService = "openai" | "mistral" | "gemini" | "deepseek" | "xai" | "openrouter" | "anthropic" | "other";
+
+/** Chimera's own thinking level (never a provider's value). "default" = the model decides. */
+export type ThinkingLevel = "default" | "off" | "on" | "low" | "medium" | "high" | "max";
+export type ThinkingShape = "none" | "toggle" | "levels" | "always";
+/** What the thinking control can offer for a model (detected, from a table, or the user's override). */
+export interface ThinkingCaps {
+  shape: ThinkingShape;
+  /** Selectable levels besides "default", cheapest first. */
+  levels: ThinkingLevel[];
+  /** What the model does when nothing is sent, if known. */
+  default: ThinkingLevel | null;
+  source: "detected" | "table" | "override" | "rejected" | "none";
+}
+export type ThinkingOverride = "detect" | "none" | "toggle" | "levels";
 export type ProviderStatus = "unknown" | "connected" | "error" | "disabled";
 
 export interface Provider {
@@ -26,6 +42,11 @@ export interface Provider {
   capabilities: Capabilities;
   /** Manual context size; null = what the server reports. */
   context_override: number | null;
+  /** OpenAI-compatible: the hosted service chosen; null = recognised by host (detected_service). */
+  service?: ProviderService | null;
+  detected_service?: ProviderService | null;
+  /** Per-model settings, e.g. the user's override of the thinking control. */
+  model_settings?: Record<string, { thinking: ThinkingOverride }>;
   supported_params: string[];
   created_at: string;
   updated_at: string;
@@ -54,6 +75,7 @@ export interface ModelInfo {
   loaded: boolean | null;
   source: "discovered" | "manual";
   meta: Record<string, string | number | boolean>;
+  thinking?: ThinkingCaps;
 }
 
 export interface ProviderModels {
@@ -114,6 +136,8 @@ export interface Conversation {
   context_strategy?: "sliding" | "summarize" | "off" | null;
   /** Web search in this conversation (stored on the server). */
   web_search?: SearchMode;
+  /** Thinking level in this conversation (stored on the server). */
+  thinking?: ThinkingLevel;
   created_at: string;
   updated_at: string;
   generating?: boolean;
@@ -151,6 +175,8 @@ export interface MessageMetrics {
   prompt_ms?: number;
   duration_ms?: number;
   ttft_ms?: number;
+  /** What thinking was asked for and what was sent (clamped, or dropped when the provider rejected it). */
+  thinking?: { requested: ThinkingLevel; applied: ThinkingLevel; source?: string; rejected?: boolean };
 }
 
 export interface Message {
@@ -390,6 +416,7 @@ export interface AppSettings {
   stream: boolean;
   auto_title: boolean;
   show_reasoning: boolean;
+  thinking_default: ThinkingLevel;
   max_attachment_mb: number;
   max_attachment_chars: number;
   knowledge: KnowledgeSettings;

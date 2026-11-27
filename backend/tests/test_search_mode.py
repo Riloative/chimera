@@ -176,8 +176,8 @@ def test_migration_keeps_each_users_search_preference(tmp_path):
     path = tmp_path / "chimera.sqlite"
     _v4_database(path)
     db = dbmod.Database(path, backups_dir=tmp_path / "backups")
-    assert db.schema_version() == len(dbmod.MIGRATIONS) == 5
-    assert db.last_backup and "pre-migration-v4-to-v5" in db.last_backup.name
+    assert db.schema_version() == len(dbmod.MIGRATIONS)
+    assert db.last_backup and f"pre-migration-v4-to-v{len(dbmod.MIGRATIONS)}" in db.last_backup.name
     modes = {r["id"]: r["web_search"] for r in db.all("SELECT id, web_search FROM conversations")}
     assert modes == {"c-u1": "on", "c-u2": "off", "c-u3": "off"}
     web = json.loads(db.one("SELECT value FROM user_settings WHERE user_id = 'u1' AND key = 'web'")["value"])

@@ -15,9 +15,22 @@
     "after": "ir pridėkite jį čia."
   },
   "kinds": {
-    "llamacpp": { "label": "llama.cpp serveris", "help": "llama-server su OpenAI suderinama sąsaja, taip pat /health ir /props diagnostikai." },
-    "openai": { "label": "Suderinamas su OpenAI", "help": "LM Studio, vLLM, LocalAI, llamafile ar bet kuris serveris, teikiantis /v1/models ir /v1/chat/completions." },
-    "ollama": { "label": "Ollama", "help": "Savoji Ollama sąsaja (/api/tags, /api/chat)." }
+    "llamacpp": {
+      "label": "llama.cpp serveris",
+      "help": "llama-server su OpenAI suderinama sąsaja, taip pat /health ir /props diagnostikai."
+    },
+    "openai": {
+      "label": "Suderinamas su OpenAI",
+      "help": "LM Studio, vLLM, LocalAI, llamafile ar bet kuris serveris, teikiantis /v1/models ir /v1/chat/completions."
+    },
+    "ollama": {
+      "label": "Ollama",
+      "help": "Savoji Ollama sąsaja (/api/tags, /api/chat)."
+    },
+    "anthropic": {
+      "label": "Anthropic",
+      "help": "„Anthropic“ Messages API (api.anthropic.com) su mąstymo lygiais ir mąstymo santraukomis. Reikia API rakto."
+    }
   },
   "shared": "Bendras",
   "ms": "{{value}} ms",
@@ -115,7 +128,11 @@
     "foundModels_one": "{{count}} modelis: {{list}}",
     "foundModels_few": "{{count}} modeliai: {{list}}",
     "foundModels_many": "{{count}} modelio: {{list}}",
-    "foundModels_other": "{{count}} modelių: {{list}}"
+    "foundModels_other": "{{count}} modelių: {{list}}",
+    "service": "Paslauga",
+    "serviceHint": "Kokia tai debesijos paslauga, kad „Chimera“ žinotų, kaip nustatyti mąstymą. Paprastai atpažįstama iš URL.",
+    "serviceDetect": "Atpažinti iš URL ({{name}})",
+    "anthropicCompat": "„Anthropic“ su OpenAI suderinama sąsaja negali nei nustatyti mąstymo, nei jo parodyti. Kad gautumėte mąstymo lygius, pasirinkite tipą „Anthropic“."
   },
   "picker": {
     "current": "Modelis: {{model}}",
@@ -132,5 +149,29 @@
     "noModels": "Serveris nepranešė apie jokius modelius.",
     "noMatch": "Pagal „{{query}}“ modelių nerasta.",
     "manage": "Tvarkyti ryšius"
+  },
+  "services": {
+    "openai": "OpenAI",
+    "mistral": "Mistral",
+    "gemini": "Google Gemini",
+    "deepseek": "DeepSeek",
+    "xai": "xAI",
+    "openrouter": "OpenRouter",
+    "anthropic": "Anthropic (suderinamas su OpenAI)",
+    "other": "Kitas serveris"
+  },
+  "thinkingCaps": {
+    "label": "Mąstymas",
+    "none": "nepalaikomas",
+    "rejected": "nepalaikomas (serveris jo neleido)",
+    "always": "visada mąsto",
+    "toggle": "įjungiamas arba išjungiamas",
+    "overrideFor": "Mąstymo valdymas modeliui {{model}}",
+    "override": {
+      "detect": "Nustatyti automatiškai",
+      "none": "Nepalaikomas",
+      "toggle": "Įjungti arba išjungti",
+      "levels": "Lygiai"
+    }
   }
 }

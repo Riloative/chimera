@@ -72,6 +72,8 @@ class AppSettings(BaseModel):
     stream: bool = True
     auto_title: bool = True
     show_reasoning: bool = True
+    # Thinking in new conversations (providers/reasoning.py); "default" = the model decides.
+    thinking_default: Literal["default", "off", "on", "low", "medium", "high", "max"] = "default"
     # Documents
     max_attachment_mb: int = Field(10, ge=1, le=100)
     max_attachment_chars: int = Field(100_000, ge=1_000, le=2_000_000)

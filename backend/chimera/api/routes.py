@@ -21,6 +21,7 @@ from .. import BUILD_COMMIT, __version__
 from ..db import SEARCH_MODES, SCHEMA_VERSION, dumps, is_chimera_database, new_id, now_iso, schema_version_of
 from ..errors import AppError
 from ..netpolicy import url_allowed
+from ..providers import reasoning
 from ..services.conversations import conversation_out, message_out
 from ..services.documents import ExtractionError, extract, safe_filename
 from ..services import tree as message_tree
@@ -232,6 +233,8 @@ async def create_conversation(
     data["collection_ids"] = state.knowledge.owned_ids(user["id"], body.collection_ids)
     if not data.get("web_search"):
         data["web_search"] = state.settings.get(user["id"]).web.search_default
+    if not data.get("thinking"):
+        data["thinking"] = state.settings.get(user["id"]).thinking_default
     if body.provider_id and not state.registry.visible(user, body.provider_id):
         data["provider_id"] = data["model"] = None
     return conversation_out(state.conversations.create(user["id"], data))
@@ -261,8 +264,9 @@ async def update_conversation(
     data = body.model_dump(exclude_unset=True)
     if "params" in data:
         data["params"] = body.params.model_dump(exclude_none=True) if body.params else {}
-    if "web_search" in data and data["web_search"] is None:
-        del data["web_search"]  # the column always holds a mode
+    for key in ("web_search", "thinking"):
+        if key in data and data[key] is None:
+            del data[key]  # the column always holds a mode
     if "title" in data:
         data["title"] = data["title"].strip() or "Untitled"
     if "collection_ids" in data:
@@ -638,12 +642,13 @@ async def import_data(file: UploadFile = File(...), user: dict = Depends(current
             ts = now_iso()
             conn.execute(
                 """INSERT INTO conversations(id, user_id, title, title_source, provider_id, model, system_prompt, params,
-                       collection_ids, pinned, web_search, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       collection_ids, pinned, web_search, thinking, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     cid, uid, str(conv.get("title") or "Imported conversation")[:200], "user",
                     None, conv.get("model"), conv.get("system_prompt"),
                     dumps(conv.get("params") or {}), "[]", 1 if conv.get("pinned") else 0,
                     conv.get("web_search") if conv.get("web_search") in SEARCH_MODES else "off",
+                    conv.get("thinking") if conv.get("thinking") in reasoning.LEVELS else "default",
                     conv.get("created_at") or ts, conv.get("updated_at") or ts,
                 ),
             )

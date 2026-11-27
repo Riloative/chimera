@@ -64,6 +64,9 @@ breaks, `el. paštas` abbreviation.
 | exchange (user message + answer) | apsikeitimas | |
 | leave out (history) | praleisti | marker: *neįtraukta į modelio kontekstą* |
 | summarize / summary | apibendrinti / santrauka | |
+| thinking (before answering) | mąstymas | the composer control *Mąstymas*; distinct from *samprotavimas* (the reasoning text shown under an answer) |
+| thinking level: low / medium / high / max | trumpas / vidutinis / išsamus / maksimalus | adjectives agree with *mąstymas* (masc.); off/on → *išjungtas / įjungtas*; default → *numatytasis* |
+| service (hosted) | paslauga | "Recognise from the URL" → *Atpažinti iš URL* |
 | tokenizer | žetonų skaidytuvas | |
 | draft | juodraštis | |
 | headless browser | foninė naršyklė | literally "background browser" |
@@ -188,3 +191,24 @@ Web search per conversation, Auto and polish (1.2), additionally:
 - **"Nepavyko nuspręsti, ar ieškoti, todėl atsakymas parašytas be interneto."**
 - **"Leisti Auto paiešką internete"** and its help text (administrators).
 - **"Nepavyko įkelti."** / **"Bandyti dar kartą"** (failed loads).
+
+Thinking control (1.3), additionally:
+
+- **Level names "Trumpas / Vidutinis / Išsamus / Maksimalus"** for Low /
+  Medium / High / Max: *trumpas* (short) and *išsamus* (thorough) describe the
+  thinking rather than a literal low/high; *žemas / aukštas* or adverbs
+  (*mažai / daug*) are alternatives.
+- **Accessible names that start with the visible word**, e.g. *"Išsamus
+  mąstymas"*, *"Išjungtas mąstymas: atsako iš karto"*, *"Mąstymas: modelio
+  numatytasis"* (WCAG 2.5.3).
+- **"{{wanted}} mąstymas šiam modeliui negalimas, todėl naudojamas
+  {{used}}."** (`chat.thinking.clamped`), with the level adjective lower-cased
+  in the second place.
+- **"Tiek, kiek modelis mąsto įprastai."** and the other one-line hints in
+  the menu (*Atsako iš karto.*, *Trumpai pagalvoja prieš atsakydamas.*,
+  *Subalansuotai.*, *Viską apgalvoja. Lėčiau ir sunaudoja daugiau žetonų.*).
+- **"išsiųsta be mąstymo (nepalaikoma)"** under an answer when a provider
+  refused the setting.
+- **"Mąstymo valdymas modeliui {{model}}"** and the override choices
+  (*Nustatyti automatiškai / Nepalaikomas / Įjungti arba išjungti / Lygiai*) on
+  the Models page.

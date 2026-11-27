@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import abc
 from dataclasses import asdict, dataclass, field
-from typing import Any, AsyncIterator, Literal
+from typing import TYPE_CHECKING, Any, AsyncIterator, Literal
 
 import httpx
 
-ProviderKind = Literal["llamacpp", "openai", "ollama"]
-PROVIDER_KINDS: tuple[str, ...] = ("llamacpp", "openai", "ollama")
+if TYPE_CHECKING:
+    from .reasoning import Caps
+
+ProviderKind = Literal["llamacpp", "openai", "ollama", "anthropic"]
+PROVIDER_KINDS: tuple[str, ...] = ("llamacpp", "openai", "ollama", "anthropic")
 
 # Sampling parameters understood by the app. Each provider declares the
 # subset it actually forwards to its server (see ``supported_params``).
@@ -70,6 +73,8 @@ class ProviderConfig:
     timeout: float = 300.0
     enabled: bool = True
     vision: str = "auto"  # auto | on | off
+    # The hosted service behind an OpenAI-compatible URL; None = recognise it by host.
+    service: str | None = None
 
 
 @dataclass
@@ -82,6 +87,8 @@ class ModelInfo:
     loaded: bool | None = None
     source: str = "discovered"  # discovered | manual
     meta: dict[str, Any] = field(default_factory=dict)
+    # Thinking capabilities the server reported for this model (reasoning.Caps.to_dict()).
+    reasoning: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -116,6 +123,12 @@ class ChatRequest:
     # model not to reason first where the server supports it. Reasoning models
     # otherwise spend the whole small token budget thinking and answer nothing.
     quick: bool = False
+    # Chimera's thinking level for this request (providers/reasoning.py);
+    # None = the model's default. Quick requests use the cheapest setting.
+    thinking: str | None = None
+    # Filled in by the provider: what it actually sent ("thinking": requested,
+    # applied, source, rejected) so the answer can say so.
+    notes: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -138,6 +151,28 @@ class Provider(abc.ABC):
     def __init__(self, config: ProviderConfig, client: httpx.AsyncClient):
         self.config = config
         self.client = client
+        # Set by the registry: cached model entries by id, the user's per-model
+        # settings and the connection's capabilities (for thinking detection).
+        self.hints: dict[str, dict[str, Any]] = {}
+        self.overrides: dict[str, dict[str, Any]] = {}
+        self.server_caps: dict[str, Any] = {}
+
+    def reasoning_caps(self, model: str) -> "Caps":
+        from .reasoning import caps_for
+
+        hint = self.hints.get(model) or {}
+        return caps_for(self.kind, self.config.base_url, model, provider_id=self.config.id, service=self.config.service,
+                        detected=hint.get("reasoning"), override=(self.overrides.get(model) or {}).get("thinking"),
+                        capabilities=self.server_caps)
+
+    def thinking_level(self, request: ChatRequest) -> tuple["Caps", str]:
+        """The descriptor and the level to send (clamped; cheapest for quick requests)."""
+        from .reasoning import resolve
+
+        caps = self.reasoning_caps(request.model)
+        level = resolve(request.thinking, caps, request.quick)
+        request.notes["thinking"] = {"requested": request.thinking or "default", "applied": level, "source": caps.source}
+        return caps, level
 
     # -- helpers ------------------------------------------------------------
     @property
@@ -273,7 +308,8 @@ def is_context_overflow(err: object, message: str = "") -> bool:
         return True
     text = (message or "").lower()
     return any(p in text for p in ("exceeds the available context size", "larger than the max context size",
-                                    "maximum context length", "context length exceeded", "context window"))
+                                    "maximum context length", "context length exceeded", "context window",
+                                    "prompt is too long"))
 
 
 def context_overflow_error(err: dict, provider_name: str, message: str = "") -> ProviderError:

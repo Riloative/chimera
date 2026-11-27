@@ -175,5 +175,14 @@ existing ones.
   `/api/chat`, `/api/embed`).
 - **LM Studio / vLLM / LocalAI / llamafile:** type *OpenAI-compatible*, URL of the
   server, API path `/v1`.
-- **Cloud APIs:** also *OpenAI-compatible* with an API key. Nothing remote is
-  configured by default; adding one sends your prompts to that service.
+- **Anthropic:** type *Anthropic*, URL `https://api.anthropic.com`, an API
+  key (native Messages API: thinking levels and thinking summaries).
+- **Cloud APIs** (OpenAI, Mistral, Gemini, DeepSeek, xAI, OpenRouter): type
+  *OpenAI-compatible* with an API key. The service is recognised from the URL
+  (or chosen under *Service*) so that the Thinking control sends what that
+  service expects. Nothing remote is configured by default; adding one sends
+  your prompts to that service.
+- **Thinking with llama-server:** for Qwen3-style models the chat template's
+  `enable_thinking` switch is detected from `/props`; start llama-server with
+  `--jinja`. If thinking text shows up inside answers, Chimera moves a leading
+  `<think>` block to the reasoning section.
